@@ -310,9 +310,15 @@ export default function BarberMobileView() {
           <p className="section-label mb-2">Servicio</p>
           <div className="grid grid-cols-3 gap-2">
             {services.map((s) => (
-              <button key={s.name} onClick={() => setEditSvc(s.name)}
+              <button key={s.name} onClick={() => {
+                setEditSvc(s.name)
+                if (s.base_price > 0) setEditAmount(String(s.base_price))
+              }}
                 className={`service-chip ${editSvc === s.name ? 'service-chip--active' : ''}`}>
                 {s.name}
+                {s.base_price > 0 && (
+                  <span className="block text-xs opacity-60 mt-0.5">{formatARS(s.base_price)}</span>
+                )}
               </button>
             ))}
           </div>
