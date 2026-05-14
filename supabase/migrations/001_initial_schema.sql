@@ -465,6 +465,8 @@ where not exists (select 1 from branches);
 --     encrypted_password, email_confirmed_at,
 --     raw_app_meta_data, raw_user_meta_data,
 --     confirmation_token, recovery_token,
+--     email_change, email_change_token_new, email_change_token_current,
+--     phone_change, phone_change_token,
 --     created_at, updated_at
 --   ) VALUES (
 --     (select instance_id from auth.users limit 1),
@@ -473,7 +475,10 @@ where not exists (select 1 from branches);
 --     crypt('Valhalla2025', gen_salt('bf')),
 --     now(),
 --     '{"provider":"email","providers":["email"]}'::jsonb,
---     '{}'::jsonb, '', '', now(), now()
+--     '{}'::jsonb,
+--     '', '',   -- confirmation_token, recovery_token
+--     '', '', '', '', '',  -- email_change, email_change_token_new, email_change_token_current, phone_change, phone_change_token
+--     now(), now()
 --   );
 --
 --   -- 2. Identity (OBLIGATORIO para que el login funcione)
