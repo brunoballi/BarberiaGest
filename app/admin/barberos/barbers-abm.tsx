@@ -148,7 +148,7 @@ export default function BarbersAbm() {
   const [inviteForm, setInviteForm] = useState<InviteForm>(EMPTY_INVITE)
   const [inviting, setInviting] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
-  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
+  const [newCredentials, setNewCredentials] = useState<{ email: string; password: string } | null>(null)
 
   // Edit
   const [editingBarber, setEditingBarber] = useState<Profile | null>(null)
@@ -200,7 +200,6 @@ export default function BarbersAbm() {
     e.preventDefault()
     setInviting(true)
     setInviteError(null)
-    setInviteSuccess(null)
 
     try {
       const payload = {
@@ -231,9 +230,10 @@ export default function BarbersAbm() {
       })
 
       const json = await res.json()
-      if (!res.ok) throw new Error(json.error ?? 'Error al invitar')
+      if (!res.ok) throw new Error(json.error ?? 'Error al crear barbero')
 
-      setInviteSuccess(`Invitación enviada a ${inviteForm.email}`)
+      setNewCredentials(json.credentials)
+      setShowInvite(false)
       setInviteForm({ ...EMPTY_INVITE, branch_id: selectedBranch })
       await loadBarbers(selectedBranch)
     } catch (e) {
@@ -335,7 +335,7 @@ export default function BarbersAbm() {
           </p>
         </div>
         <button
-          onClick={() => { setShowInvite(true); setInviteSuccess(null); setInviteError(null) }}
+          onClick={() => { setShowInvite(true); setInviteError(null) }}
           className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold px-4 py-2.5 rounded-lg text-sm transition-colors"
         >
           <span className="text-lg leading-none">+</span>
@@ -365,11 +365,6 @@ export default function BarbersAbm() {
       {showInvite && (
         <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-5 space-y-4">
           <h2 className="text-base font-bold text-white">Invitar nuevo barbero</h2>
-          {inviteSuccess && (
-            <p className="text-emerald-400 text-sm bg-emerald-950/40 border border-emerald-800/40 rounded-lg px-3 py-2">
-              {inviteSuccess}
-            </p>
-          )}
           <form onSubmit={handleInvite} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -577,6 +572,43 @@ export default function BarbersAbm() {
             />
           ))}
         </section>
+      )}
+
+      {/* Modal: credenciales del nuevo barbero */}
+      {newCredentials && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-sm space-y-5">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-xl">✓</div>
+              <div>
+                <p className="text-white font-bold">Barbero creado</p>
+                <p className="text-zinc-400 text-xs">Compartí estas credenciales por WhatsApp</p>
+              </div>
+            </div>
+
+            <div className="bg-zinc-800 rounded-xl p-4 space-y-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1">Email</p>
+                <p className="text-white font-mono text-sm select-all">{newCredentials.email}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1">Contraseña temporal</p>
+                <p className="text-amber-400 font-mono text-lg font-bold select-all">{newCredentials.password}</p>
+              </div>
+            </div>
+
+            <p className="text-zinc-500 text-xs">
+              El barbero puede cambiar su contraseña desde la app. Guardá esto antes de cerrar.
+            </p>
+
+            <button
+              onClick={() => setNewCredentials(null)}
+              className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-2.5 rounded-lg text-sm transition-colors"
+            >
+              Entendido, ya lo guardé
+            </button>
+          </div>
+        </div>
       )}
     </div>
   )
