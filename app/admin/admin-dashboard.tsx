@@ -52,7 +52,14 @@ function formatDate(d: string): string {
 }
 
 // ─── Tipos de tab ──────────────────────────────────────────────────────────
-type Tab = 'liquidaciones' | 'transacciones' | 'gastos' | 'semanas'
+type Tab = 'live' | 'liquidaciones' | 'transacciones' | 'gastos' | 'semanas'
+const TAB_LABELS: Record<Tab, string> = {
+  live: '🔴 En vivo',
+  liquidaciones: 'Liquidaciones',
+  transacciones: 'Transacciones',
+  gastos: 'Gastos',
+  semanas: 'Semanas',
+}
 
 // ─────────────────────────────────────────────────────────────────────────
 // COMPONENTE PRINCIPAL
@@ -75,6 +82,9 @@ export default function AdminDashboard() {
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [showNewWeekForm, setShowNewWeekForm] = useState(false)
   const [overrideTx, setOverrideTx] = useState<TransactionWithRelations | null>(null)
+
+  // Live view
+  const [liveTransactions, setLiveTransactions] = useState<TransactionWithRelations[]>([])
 
   // ─── Carga inicial ─────────────────────────────────────────────────
   useEffect(() => {
@@ -119,7 +129,10 @@ export default function AdminDashboard() {
   const loadTabData = useCallback(async () => {
     if (!selectedWeek) return
     try {
-      if (tab === 'liquidaciones') {
+      if (tab === 'live') {
+        const data = await getWeekTransactions(selectedWeek.id)
+        setLiveTransactions(data)
+      } else if (tab === 'liquidaciones') {
         const data = await getSettlementsForWeek(selectedWeek.id)
         setSettlements(data)
       } else if (tab === 'transacciones') {
@@ -139,6 +152,23 @@ export default function AdminDashboard() {
   }, [selectedWeek, tab, selectedBranch])
 
   useEffect(() => { loadTabData() }, [loadTabData])
+
+  // ─── Realtime: suscripción live cuando la semana está abierta ─────
+  useEffect(() => {
+    if (tab !== 'live' || !selectedWeek || selectedWeek.status !== 'open') return
+    const channel = supabase
+      .channel(`live-week-${selectedWeek.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'transactions', filter: `week_id=eq.${selectedWeek.id}` },
+        async () => {
+          const data = await getWeekTransactions(selectedWeek.id)
+          setLiveTransactions(data)
+        }
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [tab, selectedWeek])
 
   // ─── Acciones ──────────────────────────────────────────────────────
 
@@ -319,19 +349,26 @@ export default function AdminDashboard() {
 
       {/* ── TABS ── */}
       <div className="admin-tabs">
-        {(['liquidaciones', 'transacciones', 'gastos', 'semanas'] as Tab[]).map((t) => (
+        {((['live', 'liquidaciones', 'transacciones', 'gastos', 'semanas'] as Tab[])
+          .filter((t) => t !== 'live' || selectedWeek?.status === 'open')
+        ).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
             className={`admin-tab ${tab === t ? 'admin-tab--active' : ''}`}
           >
-            {t.charAt(0).toUpperCase() + t.slice(1)}
+            {TAB_LABELS[t]}
           </button>
         ))}
       </div>
 
       {/* ── CONTENT ── */}
       <main className="admin-content">
+
+        {/* ─── TAB: LIVE ─── */}
+        {tab === 'live' && selectedWeek && (
+          <LiveDashboard transactions={liveTransactions} weekNumber={weeks.length - weeks.findIndex((w) => w.id === selectedWeek.id)} />
+        )}
 
         {/* ─── TAB: LIQUIDACIONES ─── */}
         {tab === 'liquidaciones' && (
@@ -1025,6 +1062,101 @@ function OverrideSplitModal({
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── LiveDashboard ────────────────────────────────────────────────────────
+function LiveDashboard({
+  transactions,
+  weekNumber,
+}: {
+  transactions: TransactionWithRelations[]
+  weekNumber: number
+}) {
+  const today = new Date().toISOString().split('T')[0]
+
+  // Agrupar por barbero
+  const byBarber = transactions.reduce<Record<string, {
+    name: string
+    todayCuts: number
+    todayAmount: number
+    weekCuts: number
+    weekAmount: number
+    weekBarberShare: number
+  }>>((acc, tx) => {
+    const bid = tx.barber_id
+    const name = (tx.barber as { full_name: string } | null)?.full_name ?? bid
+    if (!acc[bid]) acc[bid] = { name, todayCuts: 0, todayAmount: 0, weekCuts: 0, weekAmount: 0, weekBarberShare: 0 }
+    acc[bid].weekCuts++
+    acc[bid].weekAmount += tx.amount
+    acc[bid].weekBarberShare += tx.barber_share
+    if (tx.transaction_date === today) {
+      acc[bid].todayCuts++
+      acc[bid].todayAmount += tx.amount
+    }
+    return acc
+  }, {})
+
+  const rows = Object.values(byBarber).sort((a, b) => b.weekAmount - a.weekAmount)
+
+  const totalToday = transactions.filter((t) => t.transaction_date === today).reduce((s, t) => s + t.amount, 0)
+  const totalTodayCuts = transactions.filter((t) => t.transaction_date === today).length
+  const totalWeek = transactions.reduce((s, t) => s + t.amount, 0)
+  const totalWeekCuts = transactions.length
+
+  return (
+    <div className="space-y-5">
+      {/* KPIs globales */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { label: 'Hoy — cortes', value: String(totalTodayCuts) },
+          { label: 'Hoy — facturado', value: formatARS(totalToday) },
+          { label: `Semana ${weekNumber} — cortes`, value: String(totalWeekCuts) },
+          { label: `Semana ${weekNumber} — facturado`, value: formatARS(totalWeek) },
+        ].map((k) => (
+          <div key={k.label} className="admin-kpi-card">
+            <p className="admin-kpi-label">{k.label}</p>
+            <p className="admin-kpi-value">{k.value}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Tabla por barbero */}
+      {rows.length === 0 ? (
+        <EmptyState message="Sin cortes registrados todavía en esta semana." />
+      ) : (
+        <div className="admin-table-wrap">
+          <table className="admin-table">
+            <thead>
+              <tr>
+                <th>Barbero</th>
+                <th>Cortes hoy</th>
+                <th>Facturado hoy</th>
+                <th>Cortes semana</th>
+                <th>Facturado semana</th>
+                <th className="th-highlight">Comisión semana</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => (
+                <tr key={r.name}>
+                  <td className="font-semibold">{r.name}</td>
+                  <td>{r.todayCuts}</td>
+                  <td>{formatARS(r.todayAmount)}</td>
+                  <td>{r.weekCuts}</td>
+                  <td>{formatARS(r.weekAmount)}</td>
+                  <td className="td-highlight">{formatARS(r.weekBarberShare)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      <p className="text-xs text-zinc-500 text-right">
+        Actualización automática · {transactions.length} transacciones cargadas
+      </p>
     </div>
   )
 }
