@@ -19,6 +19,7 @@ import {
   getBarberSettlements,
   getServicesByBranch,
   registerCut,
+  updateTransaction,
   supabase,
 } from '@/lib/supabase/supabase.client'
 import './barber.css'
@@ -120,6 +121,14 @@ export default function BarberMobileView() {
   const [submitting, setSubmitting] = useState(false)
   const [lastRegistered, setLastRegistered] = useState<Transaction | null>(null)
 
+  // Edit transaction
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null)
+  const [editSvc, setEditSvc] = useState<string>('')
+  const [editAmount, setEditAmount] = useState<string>('')
+  const [editMethod, setEditMethod] = useState<PaymentMethod | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
@@ -205,6 +214,47 @@ export default function BarberMobileView() {
     }
   }
 
+  function openEditTx(tx: Transaction) {
+    const svc = services.find((s) => s.id === tx.service_id)
+    setEditingTx(tx)
+    setEditSvc(svc?.name ?? '')
+    setEditAmount(String(tx.amount))
+    setEditMethod(tx.payment_method)
+    setEditError(null)
+  }
+
+  async function handleSaveTx() {
+    if (!editingTx || !editMethod || !profile) return
+    const amount = parseFloat(editAmount)
+    if (!amount || amount <= 0) { setEditError('Ingresá un monto válido'); return }
+    setEditSaving(true)
+    setEditError(null)
+    try {
+      const rate = profile.commission_rate ?? 0.5
+      const barberShare = Number((amount * rate).toFixed(2))
+      const branchShare = Number((amount - barberShare).toFixed(2))
+      const alreadyCollected = editMethod === 'cash' ? 0 : barberShare
+      const svcData = services.find((s) => s.name === editSvc)
+      const updates = {
+        service_id: svcData?.id ?? null,
+        amount,
+        payment_method: editMethod,
+        barber_share: barberShare,
+        branch_share: branchShare,
+        barber_already_collected: alreadyCollected,
+      }
+      await updateTransaction(editingTx.id, updates)
+      setTransactions((prev) =>
+        prev.map((t) => t.id === editingTx.id ? { ...t, ...updates } : t)
+      )
+      setEditingTx(null)
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : 'Error al guardar')
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
   function resetForm() {
     setSelectedService('')
     setCustomAmount('')
@@ -246,6 +296,62 @@ export default function BarberMobileView() {
       </div>
     )
   }
+
+  // ── EDIT TRANSACTION MODAL ───────────────────────────────────────────────
+  const editModal = editingTx && (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-0">
+      <div className="bg-zinc-900 border-t border-zinc-700 rounded-t-2xl w-full max-w-lg p-5 space-y-5 animate-fadein">
+        <div className="flex items-center justify-between">
+          <h2 className="text-white font-bold text-base">Editar corte</h2>
+          <button onClick={() => setEditingTx(null)} className="icon-btn"><span className="text-lg leading-none">✕</span></button>
+        </div>
+
+        <div>
+          <p className="section-label mb-2">Servicio</p>
+          <div className="grid grid-cols-3 gap-2">
+            {services.map((s) => (
+              <button key={s.name} onClick={() => setEditSvc(s.name)}
+                className={`service-chip ${editSvc === s.name ? 'service-chip--active' : ''}`}>
+                {s.name}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          <p className="section-label mb-2">Monto</p>
+          <div className="amount-input-wrapper">
+            <span className="amount-prefix">$</span>
+            <input type="number" inputMode="numeric" value={editAmount}
+              onChange={(e) => setEditAmount(e.target.value)} className="amount-input" />
+          </div>
+        </div>
+
+        <div>
+          <p className="section-label mb-2">Método de pago</p>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { method: 'cash' as PaymentMethod, label: 'Efectivo', Icon: IconCash },
+              { method: 'transfer' as PaymentMethod, label: 'Transf.', Icon: IconTransfer },
+              { method: 'card' as PaymentMethod, label: 'Tarjeta', Icon: IconCard },
+            ] as const).map(({ method, label, Icon }) => (
+              <button key={method} onClick={() => setEditMethod(method)}
+                className={`payment-chip ${editMethod === method ? 'payment-chip--active' : ''}`}>
+                <Icon /><span className="text-xs mt-1">{label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {editError && <p className="text-red-400 text-sm">{editError}</p>}
+
+        <button onClick={handleSaveTx} disabled={editSaving}
+          className="btn-primary disabled:opacity-40">
+          {editSaving ? 'Guardando...' : 'Guardar cambios'}
+        </button>
+      </div>
+    </div>
+  )
 
   // ── SUCCESS ──────────────────────────────────────────────────────────────
   if (view === 'success' && lastRegistered) {
@@ -518,6 +624,8 @@ export default function BarberMobileView() {
 
   // ── HOME ─────────────────────────────────────────────────────────────────
   return (
+    <>
+    {editModal}
     <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
       <header className="px-5 pt-safe pt-8 pb-6">
         <div className="flex items-start justify-between">
@@ -598,9 +706,18 @@ export default function BarberMobileView() {
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
-                    <p className="text-white text-sm font-semibold">{formatARS(tx.amount)}</p>
-                    <p className="text-amber-400 text-xs">{formatARS(tx.barber_share)}</p>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <p className="text-white text-sm font-semibold">{formatARS(tx.amount)}</p>
+                      <p className="text-amber-400 text-xs">{formatARS(tx.barber_share)}</p>
+                    </div>
+                    <button onClick={() => openEditTx(tx)}
+                      className="icon-btn flex-shrink-0" title="Editar">
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                      </svg>
+                    </button>
                   </div>
                 </div>
               ))}
@@ -609,5 +726,6 @@ export default function BarberMobileView() {
         </section>
       </div>
     </div>
+    </>
   )
 }

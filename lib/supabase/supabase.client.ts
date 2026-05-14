@@ -251,6 +251,25 @@ export async function getWeekTransactions(
   return data as TransactionWithRelations[]
 }
 
+export async function updateTransaction(
+  id: string,
+  updates: {
+    service_id: string | null
+    amount: number
+    payment_method: string
+    barber_share: number
+    branch_share: number
+    barber_already_collected: number
+  }
+): Promise<void> {
+  const { error } = await supabase
+    .from('transactions')
+    .update(updates)
+    .eq('id', id)
+
+  if (error) throw new Error(`[updateTransaction] ${error.message}`)
+}
+
 export async function overrideTransactionSplit(
   transactionId: string,
   branchShare: number,

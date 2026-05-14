@@ -695,11 +695,15 @@ function BarberRow({
         </p>
       </div>
 
-      <div className="flex items-center gap-3 flex-shrink-0">
+      <div className="flex items-center gap-2 flex-shrink-0">
         <button
           onClick={() => onEdit(barber)}
-          className="text-xs text-zinc-400 hover:text-amber-400 transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-amber-400 border border-zinc-700 hover:border-amber-500/50 bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors"
         >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
           Editar
         </button>
 
