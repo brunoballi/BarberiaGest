@@ -129,11 +129,15 @@ export default function BarberMobileView() {
       if (!p) { setError('No autenticado'); return }
       setProfile(p)
 
-      const svcs = await getServicesByBranch(p.branch_id)
+      // Servicios y semana en paralelo — ahorra 1 round-trip
+      const [svcs, w] = await Promise.all([
+        getServicesByBranch(p.branch_id),
+        getOpenWeek(p.branch_id),
+      ])
+
       const active = svcs.filter((s) => s.is_active)
       if (active.length > 0) setServices(active)
 
-      const w = await getOpenWeek(p.branch_id)
       if (!w) { setError('No hay semana abierta. Contactá al admin.'); return }
       setWeek(w)
 
@@ -192,7 +196,7 @@ export default function BarberMobileView() {
       }
       const tx = await registerCut(payload, profile, week.id)
       setLastRegistered(tx)
-      await loadData()
+      setTransactions((prev) => [tx, ...prev]) // actualización instantánea, sin reload
       setView('success')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al registrar')
@@ -246,7 +250,7 @@ export default function BarberMobileView() {
   // ── SUCCESS ──────────────────────────────────────────────────────────────
   if (view === 'success' && lastRegistered) {
     return (
-      <div className="valhalla-app flex flex-col items-center justify-center min-h-screen px-6 text-center">
+      <div className="valhalla-app animate-fadein flex flex-col items-center justify-center min-h-screen px-6 text-center">
         <div className="success-circle mb-8">
           <IconCheck />
         </div>
@@ -291,7 +295,7 @@ export default function BarberMobileView() {
   if (view === 'register') {
     const isValid = selectedService && paymentMethod && resolvedAmount > 0
     return (
-      <div className="valhalla-app min-h-screen flex flex-col">
+      <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
         <header className="flex items-center gap-3 px-5 pt-safe pt-6 pb-4">
           <button onClick={() => setView('home')} className="icon-btn">
             <IconBack />
@@ -414,7 +418,7 @@ export default function BarberMobileView() {
   // ── SETTLEMENTS ──────────────────────────────────────────────────────────
   if (view === 'settlements') {
     return (
-      <div className="valhalla-app min-h-screen flex flex-col">
+      <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
         <header className="flex items-center gap-3 px-5 pt-safe pt-6 pb-4">
           <button onClick={() => setView('home')} className="icon-btn">
             <IconBack />
@@ -514,7 +518,7 @@ export default function BarberMobileView() {
 
   // ── HOME ─────────────────────────────────────────────────────────────────
   return (
-    <div className="valhalla-app min-h-screen flex flex-col">
+    <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
       <header className="px-5 pt-safe pt-8 pb-6">
         <div className="flex items-start justify-between">
           <div>

@@ -77,7 +77,7 @@ export async function getBranches(): Promise<Branch[]> {
 export async function getServicesByBranch(branchId: string): Promise<ServiceCatalog[]> {
   const { data, error } = await supabase
     .from('service_catalog')
-    .select('*')
+    .select('id, name, base_price, is_active, branch_id, created_at')
     .eq('branch_id', branchId)
     .order('name')
 
@@ -225,7 +225,7 @@ export async function getBarberTransactionsForWeek(
 ): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
-    .select('*')
+    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at')
     .eq('barber_id', barberId)
     .eq('week_id', weekId)
     .order('transaction_date', { ascending: false })

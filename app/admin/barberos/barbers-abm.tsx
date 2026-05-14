@@ -576,40 +576,80 @@ export default function BarbersAbm() {
 
       {/* Modal: credenciales del nuevo barbero */}
       {newCredentials && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-sm space-y-5">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-xl">✓</div>
-              <div>
-                <p className="text-white font-bold">Barbero creado</p>
-                <p className="text-zinc-400 text-xs">Compartí estas credenciales por WhatsApp</p>
-              </div>
-            </div>
+        <CredentialsModal
+          credentials={newCredentials}
+          onClose={() => setNewCredentials(null)}
+        />
+      )}
+    </div>
+  )
+}
 
-            <div className="bg-zinc-800 rounded-xl p-4 space-y-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1">Email</p>
-                <p className="text-white font-mono text-sm select-all">{newCredentials.email}</p>
-              </div>
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1">Contraseña temporal</p>
-                <p className="text-amber-400 font-mono text-lg font-bold select-all">{newCredentials.password}</p>
-              </div>
-            </div>
+// ─── CredentialsModal ─────────────────────────────────────────────────────
+function CredentialsModal({
+  credentials,
+  onClose,
+}: {
+  credentials: { email: string; password: string }
+  onClose: () => void
+}) {
+  const [copied, setCopied] = useState(false)
+  const [editablePassword, setEditablePassword] = useState(credentials.password)
 
-            <p className="text-zinc-500 text-xs">
-              El barbero puede cambiar su contraseña desde la app. Guardá esto antes de cerrar.
-            </p>
+  function copyAll() {
+    const text = `Usuario: ${credentials.email}\nContraseña: ${editablePassword}`
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    })
+  }
 
-            <button
-              onClick={() => setNewCredentials(null)}
-              className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-2.5 rounded-lg text-sm transition-colors"
-            >
-              Entendido, ya lo guardé
-            </button>
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-sm space-y-5">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-xl">✓</div>
+          <div>
+            <p className="text-white font-bold">Barbero creado</p>
+            <p className="text-zinc-400 text-xs">Compartí estas credenciales por WhatsApp</p>
           </div>
         </div>
-      )}
+
+        <div className="bg-zinc-800 rounded-xl p-4 space-y-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1">Email</p>
+            <p className="text-white font-mono text-sm select-all">{credentials.email}</p>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1">Contraseña</p>
+            <input
+              type="text"
+              value={editablePassword}
+              onChange={(e) => setEditablePassword(e.target.value)}
+              className="w-full bg-zinc-700 border border-zinc-600 text-amber-400 font-mono text-base font-bold rounded-lg px-3 py-2 focus:outline-none focus:border-amber-500"
+            />
+            <p className="text-zinc-600 text-xs mt-1">Podés editarla antes de copiar</p>
+          </div>
+        </div>
+
+        <button
+          onClick={copyAll}
+          className={`w-full font-bold py-2.5 rounded-lg text-sm transition-colors ${
+            copied
+              ? 'bg-emerald-500 text-white'
+              : 'bg-zinc-700 hover:bg-zinc-600 text-white border border-zinc-600'
+          }`}
+        >
+          {copied ? '✓ Copiado al portapapeles' : 'Copiar credenciales'}
+        </button>
+
+        <button
+          onClick={onClose}
+          className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-2.5 rounded-lg text-sm transition-colors"
+        >
+          Listo, ya lo guardé
+        </button>
+      </div>
     </div>
   )
 }
