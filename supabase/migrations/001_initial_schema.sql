@@ -446,3 +446,46 @@ $$;
 insert into branches (name, address)
 select 'Valhalla — Central', 'Dirección principal'
 where not exists (select 1 from branches);
+
+-- ============================================================
+-- HELPER: crear barbero por SQL correctamente
+-- Requiere insertar en auth.users + auth.identities + profiles
+-- NUNCA omitir auth.identities o el login falla silenciosamente
+-- ============================================================
+-- Ejemplo de uso (reemplazar valores y ejecutar en SQL Editor):
+--
+-- DO $$
+-- DECLARE
+--   v_uid uuid := gen_random_uuid();
+--   v_branch_id uuid := (select id from branches limit 1);
+-- BEGIN
+--   -- 1. Usuario de autenticación
+--   INSERT INTO auth.users (
+--     instance_id, id, aud, role, email,
+--     encrypted_password, email_confirmed_at,
+--     raw_app_meta_data, raw_user_meta_data,
+--     confirmation_token, recovery_token,
+--     created_at, updated_at
+--   ) VALUES (
+--     (select instance_id from auth.users limit 1),
+--     v_uid, 'authenticated', 'authenticated',
+--     'nombre@valhalla.internal',
+--     crypt('Valhalla2025', gen_salt('bf')),
+--     now(),
+--     '{"provider":"email","providers":["email"]}'::jsonb,
+--     '{}'::jsonb, '', '', now(), now()
+--   );
+--
+--   -- 2. Identity (OBLIGATORIO para que el login funcione)
+--   INSERT INTO auth.identities (id, user_id, provider_id, provider, identity_data, created_at, updated_at, last_sign_in_at)
+--   VALUES (
+--     gen_random_uuid(), v_uid,
+--     'nombre@valhalla.internal', 'email',
+--     jsonb_build_object('sub', v_uid::text, 'email', 'nombre@valhalla.internal', 'email_verified', true),
+--     now(), now(), now()
+--   );
+--
+--   -- 3. Perfil de la app
+--   INSERT INTO profiles (id, branch_id, full_name, role, compensation_type, commission_rate, is_active)
+--   VALUES (v_uid, v_branch_id, 'Nombre Apellido', 'barber', 'percentage', 0.5, true);
+-- END $$;
