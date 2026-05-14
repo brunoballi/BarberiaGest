@@ -507,8 +507,8 @@ export default function AdminDashboard() {
                 </tfoot>
               </table>
             )}
-          </div>{/* /admin-table-wrap */}
-          </div>{/* /liquidaciones wrapper */}
+          </div>
+          </div>
         )}
 
         {/* ─── TAB: TRANSACCIONES ─── */}
