@@ -211,14 +211,17 @@
 
 .admin-table th {
   text-align: left;
-  padding: 0.5rem 0.75rem;
-  color: #71717a;
+  padding: 0.625rem 0.75rem;
+  color: #f59e0b;
   font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  border-bottom: 1px solid #2d2d2d;
-  background: #141414;
+  border-bottom: 2px solid #78350f;
+  background: #1c1505;
+  white-space: nowrap;
 }
+.admin-table thead tr th:first-child { border-radius: 0.5rem 0 0 0; }
+.admin-table thead tr th:last-child  { border-radius: 0 0.5rem 0 0; }
 
 .admin-table td {
   padding: 0.625rem 0.75rem;
@@ -250,6 +253,44 @@
 .td-highlight {
   color: #f59e0b;
   font-weight: 600;
+}
+
+/* Filter bar */
+.filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 1.25rem 0.75rem;
+  border-bottom: 1px solid #1f1f1f;
+}
+.filter-input {
+  background: #111;
+  border: 1px solid #2d2d2d;
+  border-radius: 0.5rem;
+  color: #e4e4e7;
+  font-size: 0.8125rem;
+  padding: 0.4rem 0.625rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.filter-input:focus { border-color: #f59e0b; }
+.filter-input option { background: #111; }
+.filter-clear {
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 0.5rem;
+  color: #a1a1aa;
+  font-size: 0.8125rem;
+  padding: 0.4rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.filter-clear:hover { background: #3f3f46; color: #f4f4f5; }
+.filter-count {
+  margin-left: auto;
+  font-size: 0.75rem;
+  color: #52525b;
 }
 
 /* Live dashboard KPI mini-cards */

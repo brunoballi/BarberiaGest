@@ -86,6 +86,12 @@ export default function AdminDashboard() {
   // Live view
   const [liveTransactions, setLiveTransactions] = useState<TransactionWithRelations[]>([])
 
+  // Filtros tab transacciones
+  const [filterDate, setFilterDate] = useState('')
+  const [filterBarber, setFilterBarber] = useState('')
+  const [filterMethod, setFilterMethod] = useState('')
+  const [filterService, setFilterService] = useState('')
+
   // ─── Carga inicial ─────────────────────────────────────────────────
   useEffect(() => {
     async function init() {
@@ -506,10 +512,57 @@ export default function AdminDashboard() {
         )}
 
         {/* ─── TAB: TRANSACCIONES ─── */}
-        {tab === 'transacciones' && (
-          <div className="admin-table-wrap">
-            {transactions.length === 0 ? (
-              <EmptyState message="No hay transacciones en esta semana." />
+        {tab === 'transacciones' && (() => {
+          // Opciones únicas para los selects
+          const barberOptions = Array.from(new Map(transactions.map((t) => [t.barber_id, t.barber.full_name])))
+          const serviceOptions = Array.from(new Set(transactions.map((t) => t.service?.name).filter(Boolean))) as string[]
+          const hasFilters = filterDate || filterBarber || filterMethod || filterService
+          const filtered = transactions.filter((tx) => {
+            if (filterDate && tx.transaction_date !== filterDate) return false
+            if (filterBarber && tx.barber_id !== filterBarber) return false
+            if (filterMethod && tx.payment_method !== filterMethod) return false
+            if (filterService && (tx.service?.name ?? '') !== filterService) return false
+            return true
+          })
+          return (
+          <div>
+            {/* Barra de filtros */}
+            <div className="filter-bar">
+              <input
+                type="date"
+                value={filterDate}
+                onChange={(e) => setFilterDate(e.target.value)}
+                className="filter-input"
+                title="Filtrar por fecha"
+              />
+              <select value={filterBarber} onChange={(e) => setFilterBarber(e.target.value)} className="filter-input">
+                <option value="">Todos los barberos</option>
+                {barberOptions.map(([id, name]) => (
+                  <option key={id} value={id}>{name}</option>
+                ))}
+              </select>
+              <select value={filterMethod} onChange={(e) => setFilterMethod(e.target.value)} className="filter-input">
+                <option value="">Todos los métodos</option>
+                <option value="cash">Efectivo</option>
+                <option value="transfer">Transferencia</option>
+                <option value="card">Tarjeta</option>
+              </select>
+              <select value={filterService} onChange={(e) => setFilterService(e.target.value)} className="filter-input">
+                <option value="">Todos los servicios</option>
+                {serviceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
+              </select>
+              {hasFilters && (
+                <button onClick={() => { setFilterDate(''); setFilterBarber(''); setFilterMethod(''); setFilterService('') }}
+                  className="filter-clear">
+                  ✕ Limpiar
+                </button>
+              )}
+              <span className="filter-count">{filtered.length} resultado{filtered.length !== 1 ? 's' : ''}</span>
+            </div>
+
+            <div className="admin-table-wrap">
+            {filtered.length === 0 ? (
+              <EmptyState message="Sin resultados para los filtros aplicados." />
             ) : (
               <table className="admin-table">
                 <thead>
@@ -527,7 +580,7 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {transactions.map((tx) => (
+                  {filtered.map((tx) => (
                     <tr key={tx.id} className={tx.is_manual_override ? 'tr-override' : ''}>
                       <td className="td-date">{formatDate(tx.transaction_date)}</td>
                       <td>{tx.barber.full_name}</td>
@@ -563,8 +616,10 @@ export default function AdminDashboard() {
                 </tbody>
               </table>
             )}
+            </div>{/* /admin-table-wrap */}
           </div>
-        )}
+          )
+        })()}
 
         {/* ─── TAB: GASTOS ─── */}
         {tab === 'gastos' && (
