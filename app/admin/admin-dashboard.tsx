@@ -340,19 +340,6 @@ export default function AdminDashboard() {
         </div>
       </header>
 
-      {/* ── KPI STRIP ── */}
-      {selectedWeek && tab === 'liquidaciones' && (
-        <div className="kpi-strip">
-          <KpiCard label="Facturado bruto" value={formatARS(kpis.grossTotal)} sub={`${kpis.totalCuts} cortes`} />
-          <KpiCard label="Para la barbería" value={formatARS(kpis.branchTotal)} accent="positive" />
-          <KpiCard label="A pagar barberos" value={formatARS(kpis.totalPayable)} accent="warning" />
-          <KpiCard label="Efectivo" value={formatARS(kpis.cashTotal)} sub="en caja" />
-          <KpiCard label="Transferencias" value={formatARS(kpis.transferTotal)} />
-          <KpiCard label="Tarjetas" value={formatARS(kpis.cardTotal)} />
-          <KpiCard label="Gastos semana" value={formatARS(kpis.expensesTotal)} accent="negative" />
-        </div>
-      )}
-
       {/* ── TABS ── */}
       <div className="admin-tabs">
         {((['live', 'liquidaciones', 'transacciones', 'gastos', 'semanas'] as Tab[])
@@ -378,6 +365,18 @@ export default function AdminDashboard() {
 
         {/* ─── TAB: LIQUIDACIONES ─── */}
         {tab === 'liquidaciones' && (
+          <div>
+          {selectedWeek && (
+            <div className="kpi-strip">
+              <KpiCard label="Facturado bruto" value={formatARS(kpis.grossTotal)} sub={`${kpis.totalCuts} cortes`} />
+              <KpiCard label="Para la barbería" value={formatARS(kpis.branchTotal)} accent="positive" />
+              <KpiCard label="A pagar barberos" value={formatARS(kpis.totalPayable)} accent="warning" />
+              <KpiCard label="Efectivo" value={formatARS(kpis.cashTotal)} sub="en caja" />
+              <KpiCard label="Transferencias" value={formatARS(kpis.transferTotal)} />
+              <KpiCard label="Tarjetas" value={formatARS(kpis.cardTotal)} />
+              <KpiCard label="Gastos semana" value={formatARS(kpis.expensesTotal)} accent="negative" />
+            </div>
+          )}
           <div className="admin-table-wrap">
             {settlements.length === 0 ? (
               <EmptyState message="No hay liquidaciones para esta semana. Cerrá la semana para generarlas." />
@@ -508,7 +507,8 @@ export default function AdminDashboard() {
                 </tfoot>
               </table>
             )}
-          </div>
+          </div>{/* /admin-table-wrap */}
+          </div>{/* /liquidaciones wrapper */}
         )}
 
         {/* ─── TAB: TRANSACCIONES ─── */}
