@@ -11,6 +11,9 @@ import type {
   Transaction,
   TransactionInsert,
   TransactionWithRelations,
+  Month,
+  MonthWithWeeks,
+  MonthInsert,
   Week,
   WeekInsert,
   Settlement,
@@ -172,6 +175,131 @@ export async function markWeekPaid(weekId: string): Promise<void> {
     .eq('status', 'closed')
 
   if (error) throw new Error(`[markWeekPaid] ${error.message}`)
+}
+
+// ============================================================
+// MONTHS
+// ============================================================
+
+const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+export { MONTH_NAMES }
+
+/** Genera rangos lunes-domingo para todas las semanas que tocan el mes */
+function generateWeekRangesForMonth(year: number, month: number): Array<{ start_date: string; end_date: string }> {
+  const firstDay = new Date(year, month - 1, 1)
+  const lastDay  = new Date(year, month, 0)
+
+  // Retroceder al lunes anterior o igual al primer día del mes
+  const dow = firstDay.getDay() // 0=Dom, 1=Lun, ..., 6=Sáb
+  const daysBack = dow === 0 ? 6 : dow - 1
+  const weekStart = new Date(firstDay)
+  weekStart.setDate(firstDay.getDate() - daysBack)
+
+  const ranges: Array<{ start_date: string; end_date: string }> = []
+  const cur = new Date(weekStart)
+
+  while (cur <= lastDay) {
+    const end = new Date(cur)
+    end.setDate(cur.getDate() + 6)
+    ranges.push({
+      start_date: cur.toISOString().split('T')[0],
+      end_date:   end.toISOString().split('T')[0],
+    })
+    cur.setDate(cur.getDate() + 7)
+  }
+  return ranges
+}
+
+export async function getMonthsWithWeeks(branchId: string): Promise<MonthWithWeeks[]> {
+  const { data, error } = await supabase
+    .from('months')
+    .select(`
+      id, branch_id, year, month, status, created_at,
+      weeks ( id, branch_id, month_id, week_number, start_date, end_date, status, closed_at, closed_by, created_at )
+    `)
+    .eq('branch_id', branchId)
+    .order('year',  { ascending: false })
+    .order('month', { ascending: false })
+
+  if (error) throw new Error(`[getMonthsWithWeeks] ${error.message}`)
+
+  // Ordenar semanas por start_date dentro de cada mes
+  return (data as MonthWithWeeks[]).map((m) => ({
+    ...m,
+    weeks: [...m.weeks].sort((a, b) => a.start_date.localeCompare(b.start_date)),
+  }))
+}
+
+export async function createMonth(
+  branchId: string,
+  year: number,
+  month: number
+): Promise<MonthWithWeeks> {
+  // 1. Verificar que no exista
+  const { data: existing } = await supabase
+    .from('months')
+    .select('id')
+    .eq('branch_id', branchId)
+    .eq('year', year)
+    .eq('month', month)
+    .maybeSingle()
+
+  if (existing) throw new Error(`El mes ${MONTH_NAMES[month-1]} ${year} ya existe`)
+
+  // 2. Insertar mes
+  const { data: monthData, error: monthErr } = await supabase
+    .from('months')
+    .insert({ branch_id: branchId, year, month, status: 'active' } satisfies MonthInsert)
+    .select()
+    .single()
+
+  if (monthErr) throw new Error(`[createMonth] ${monthErr.message}`)
+
+  // 3. Obtener el máximo week_number actual para numerar correlativamente
+  const { data: maxRow } = await supabase
+    .from('weeks')
+    .select('week_number')
+    .eq('branch_id', branchId)
+    .order('week_number', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const baseNumber = (maxRow?.week_number ?? 0)
+
+  // 4. Generar e insertar semanas
+  const ranges = generateWeekRangesForMonth(year, month)
+  const weekInserts: WeekInsert[] = ranges.map((r, i) => ({
+    branch_id:   branchId,
+    month_id:    monthData.id,
+    week_number: baseNumber + i + 1,
+    start_date:  r.start_date,
+    end_date:    r.end_date,
+    status:      'open' as const,   // todas arrancan abiertas; el admin las cierra manualmente
+  }))
+
+  const { data: weeksData, error: weeksErr } = await supabase
+    .from('weeks')
+    .insert(weekInserts)
+    .select()
+
+  if (weeksErr) {
+    await supabase.from('months').delete().eq('id', monthData.id)
+    throw new Error(`[createMonth/weeks] ${weeksErr.message}`)
+  }
+
+  return {
+    ...monthData,
+    weeks: (weeksData as Week[]).sort((a, b) => a.start_date.localeCompare(b.start_date)),
+  }
+}
+
+export async function closeMonth(monthId: string): Promise<void> {
+  const { error } = await supabase
+    .from('months')
+    .update({ status: 'closed' })
+    .eq('id', monthId)
+
+  if (error) throw new Error(`[closeMonth] ${error.message}`)
 }
 
 // ============================================================

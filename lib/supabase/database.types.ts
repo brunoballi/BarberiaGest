@@ -11,6 +11,7 @@ export type UserRole = 'admin' | 'barber'
 export type CompensationType = 'percentage' | 'salary' | 'box_rental'
 export type PaymentMethod = 'cash' | 'transfer' | 'card'
 export type WeekStatus = 'open' | 'closed' | 'paid'
+export type MonthStatus = 'active' | 'closed'
 export type SettlementStatus = 'draft' | 'confirmed' | 'paid'
 export type AdvanceStatus = 'pending' | 'deducted' | 'cancelled'
 
@@ -53,9 +54,25 @@ export interface ServiceCatalog {
   created_at: string
 }
 
+export interface Month {
+  id: string
+  branch_id: string
+  year: number
+  month: number
+  status: MonthStatus
+  created_at: string
+}
+
+export interface MonthWithWeeks extends Month {
+  weeks: Week[]
+}
+
+export type MonthInsert = Omit<Month, 'id' | 'created_at'>
+
 export interface Week {
   id: string
   branch_id: string
+  month_id: string | null
   week_number: number
   start_date: string
   end_date: string
