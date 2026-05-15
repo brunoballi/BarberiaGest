@@ -21,6 +21,7 @@ import {
   getSettlementsForWeek,
   getWeekTransactions,
   getExpensesByBranch,
+  getExpensesByWeek,
   createWeek,
   closeWeek,
   calculateAllSettlementsForWeek,
@@ -139,17 +140,17 @@ export default function AdminDashboard() {
         const data = await getWeekTransactions(selectedWeek.id)
         setLiveTransactions(data)
       } else if (tab === 'liquidaciones') {
-        const data = await getSettlementsForWeek(selectedWeek.id)
-        setSettlements(data)
+        const [settlData, expData] = await Promise.all([
+          getSettlementsForWeek(selectedWeek.id),
+          getExpensesByWeek(selectedWeek.id),
+        ])
+        setSettlements(settlData)
+        setExpenses(expData)
       } else if (tab === 'transacciones') {
         const data = await getWeekTransactions(selectedWeek.id)
         setTransactions(data)
       } else if (tab === 'gastos') {
-        const data = await getExpensesByBranch(
-          selectedBranch,
-          selectedWeek.start_date,
-          selectedWeek.end_date
-        )
+        const data = await getExpensesByWeek(selectedWeek.id)
         setExpenses(data)
       }
     } catch (e) {

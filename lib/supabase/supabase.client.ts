@@ -480,6 +480,17 @@ export async function getExpensesByBranch(
   return data
 }
 
+export async function getExpensesByWeek(weekId: string): Promise<Expense[]> {
+  const { data, error } = await supabase
+    .from('expenses')
+    .select('*')
+    .eq('week_id', weekId)
+    .order('expense_date', { ascending: false })
+
+  if (error) throw new Error(`[getExpensesByWeek] ${error.message}`)
+  return data
+}
+
 // ============================================================
 // PROFILES (Admin)
 // ============================================================
