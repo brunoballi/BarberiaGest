@@ -195,6 +195,12 @@ export default function BarberMobileView() {
 
   async function handleSubmit() {
     if (!profile || !week || !selectedService || !paymentMethod || resolvedAmount <= 0) return
+    // Validar que sigue siendo el mismo día (protege si el form quedó abierto hasta medianoche)
+    const nowDate = new Date().toISOString().split('T')[0]
+    if (nowDate !== today) {
+      setError('El día cambió. Recargá la app para continuar.')
+      return
+    }
     try {
       setSubmitting(true)
       const payload: RegisterCutPayload = {
