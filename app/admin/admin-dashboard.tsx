@@ -53,13 +53,12 @@ function formatDate(d: string): string {
 }
 
 // ─── Tipos de tab ──────────────────────────────────────────────────────────
-type Tab = 'live' | 'liquidaciones' | 'transacciones' | 'gastos' | 'semanas'
+type Tab = 'live' | 'liquidaciones' | 'transacciones' | 'gastos'
 const TAB_LABELS: Record<Tab, string> = {
   live: '🔴 En vivo',
   liquidaciones: 'Liquidaciones',
   transacciones: 'Transacciones',
   gastos: 'Gastos',
-  semanas: 'Semanas',
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -331,7 +330,7 @@ export default function AdminDashboard() {
           >
             + Nueva semana
           </button>
-          <Link href="/admin/semanas"   className="admin-btn admin-btn--ghost">Semanas</Link>
+          <Link href="/admin/configuracion" className="admin-btn admin-btn--ghost">Configuración</Link>
           <Link href="/admin/barberos"  className="admin-btn admin-btn--ghost">Barberos</Link>
           <Link href="/admin/adelantos" className="admin-btn admin-btn--ghost">Adelantos</Link>
           <Link href="/admin/servicios" className="admin-btn admin-btn--ghost">Servicios</Link>
@@ -343,7 +342,7 @@ export default function AdminDashboard() {
 
       {/* ── TABS ── */}
       <div className="admin-tabs">
-        {((['live', 'liquidaciones', 'transacciones', 'gastos', 'semanas'] as Tab[])
+        {((['live', 'liquidaciones', 'transacciones', 'gastos'] as Tab[])
           .filter((t) => t !== 'live' || selectedWeek?.status === 'open')
         ).map((t) => (
           <button
@@ -667,44 +666,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* ─── TAB: SEMANAS ─── */}
-        {tab === 'semanas' && (
-          <div className="admin-table-wrap">
-            <table className="admin-table">
-              <thead>
-                <tr>
-                  <th>Semana</th>
-                  <th>Inicio</th>
-                  <th>Fin</th>
-                  <th>Estado</th>
-                  <th>Cerrada</th>
-                </tr>
-              </thead>
-              <tbody>
-                {weeks.map((w, i) => (
-                  <tr
-                    key={w.id}
-                    className={selectedWeek?.id === w.id ? 'tr-selected' : ''}
-                    onClick={() => setSelectedWeek(w)}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <td><strong>Semana {weeks.length - i}</strong></td>
-                    <td className="td-date">{formatDate(w.start_date)}</td>
-                    <td className="td-date">{formatDate(w.end_date)}</td>
-                    <td>
-                      <span className={`badge badge--week-${w.status}`}>
-                        {WEEK_STATUS_LABELS[w.status]}
-                      </span>
-                    </td>
-                    <td className="td-muted">
-                      {w.closed_at ? formatDate(w.closed_at.split('T')[0]) : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
       </main>
 
       {/* ── MODALES ── */}

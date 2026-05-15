@@ -1,0 +1,970 @@
+'use client'
+
+import { useEffect, useState, useCallback } from 'react'
+import '../admin-dashboard.css'
+import {
+  getMonthsWithWeeks,
+  createMonth,
+  closeMonth,
+  closeWeek,
+  getWeekTransactions,
+  getSettlementsForWeek,
+  getCurrentProfile,
+  MONTH_NAMES,
+} from '@/lib/supabase/supabase.client'
+import type {
+  MonthWithWeeks,
+  Month,
+  Week,
+  WeekStatus,
+  TransactionWithRelations,
+  SettlementWithBarber,
+  PaymentMethod,
+} from '@/lib/supabase/database.types'
+import { PAYMENT_METHOD_LABELS, WEEK_STATUS_LABELS } from '@/lib/supabase/database.types'
+
+// ============================================================
+// HELPERS
+// ============================================================
+function formatARS(amount: number): string {
+  return new Intl.NumberFormat('es-AR', {
+    style: 'currency',
+    currency: 'ARS',
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 0,
+  }).format(amount)
+}
+
+function formatDate(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  const date = new Date(year, month - 1, day)
+  return date.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+}
+
+function getMonthDateRange(year: number, month: number): { firstDay: string; lastDay: string } {
+  const firstDay = `${year}-${String(month).padStart(2, '0')}-01`
+  const lastDayDate = new Date(year, month, 0)
+  const lastDay = `${year}-${String(month).padStart(2, '0')}-${String(lastDayDate.getDate()).padStart(2, '0')}`
+  return { firstDay, lastDay }
+}
+
+function clampDate(date: string, min: string, max: string): string {
+  if (date < min) return min
+  if (date > max) return max
+  return date
+}
+
+function getWeekActiveRange(
+  week: Week,
+  year: number,
+  month: number
+): { activeFrom: string; activeTo: string; clampedStart: boolean; clampedEnd: boolean } {
+  const { firstDay, lastDay } = getMonthDateRange(year, month)
+  const activeFrom = clampDate(week.start_date, firstDay, lastDay)
+  const activeTo = clampDate(week.end_date, firstDay, lastDay)
+  return {
+    activeFrom,
+    activeTo,
+    clampedStart: activeFrom !== week.start_date,
+    clampedEnd: activeTo !== week.end_date,
+  }
+}
+
+function previewWeeksForMonth(year: number, month: number): Array<{ start: string; end: string }> {
+  const { firstDay, lastDay } = getMonthDateRange(year, month)
+  const first = new Date(firstDay)
+  const last = new Date(lastDay)
+  const weeks: Array<{ start: string; end: string }> = []
+
+  // Start from first Monday at or before first day
+  let cursor = new Date(first)
+  const dayOfWeek = cursor.getDay() // 0=Sun
+  const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
+  cursor.setDate(cursor.getDate() - daysSinceMonday)
+
+  while (cursor <= last) {
+    const weekStart = new Date(cursor)
+    const weekEnd = new Date(cursor)
+    weekEnd.setDate(weekEnd.getDate() + 6)
+
+    const fmt = (d: Date) =>
+      `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+
+    weeks.push({ start: fmt(weekStart), end: fmt(weekEnd) })
+    cursor.setDate(cursor.getDate() + 7)
+  }
+
+  return weeks
+}
+
+function weekStatusBadgeClass(status: WeekStatus): string {
+  if (status === 'open') return 'badge badge--week-open'
+  if (status === 'closed') return 'badge badge--week-closed'
+  return 'badge badge--week-paid'
+}
+
+function monthSummary(
+  weeks: Week[]
+): { totalCuts: number; totalAmount: number } {
+  // Without settlement data at list level, we show week count only
+  // Cuts/amount would require loading all transactions – skip for list view
+  return { totalCuts: 0, totalAmount: 0 }
+}
+
+// ============================================================
+// TYPES
+// ============================================================
+interface WeekDetailData {
+  transactions: TransactionWithRelations[]
+  settlements: SettlementWithBarber[]
+}
+
+interface BarberRow {
+  barberId: string
+  barberName: string
+  cuts: number
+  billed: number
+  commission: number
+  toCollect: number
+}
+
+// ============================================================
+// MAIN COMPONENT
+// ============================================================
+export default function ConfiguracionView() {
+  const currentYear = new Date().getFullYear()
+
+  // State
+  const [months, setMonths] = useState<MonthWithWeeks[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set([currentYear]))
+  const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set())
+  const [showNewMonthModal, setShowNewMonthModal] = useState(false)
+  const [detailWeek, setDetailWeek] = useState<Week | null>(null)
+  const [detailWeekMonth, setDetailWeekMonth] = useState<Month | null>(null)
+  const [detailData, setDetailData] = useState<WeekDetailData | null>(null)
+  const [detailLoading, setDetailLoading] = useState(false)
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null)
+  const [branchId, setBranchId] = useState<string | null>(null)
+
+  // Load data
+  const loadMonths = useCallback(async (bid: string) => {
+    try {
+      setLoading(true)
+      setError(null)
+      const data = await getMonthsWithWeeks(bid)
+      setMonths(data)
+      // Auto-expand current month
+      const now = new Date()
+      const current = data.find(
+        (m) => m.year === now.getFullYear() && m.month === now.getMonth() + 1
+      )
+      if (current) {
+        setExpandedMonths((prev) => new Set([...prev, current.id]))
+      }
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error cargando meses')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    getCurrentProfile().then((profile) => {
+      if (!profile) return
+      setCurrentUserId(profile.id)
+      setBranchId(profile.branch_id)
+      loadMonths(profile.branch_id)
+    })
+  }, [loadMonths])
+
+  // Group months by year
+  const byYear = months.reduce<Map<number, MonthWithWeeks[]>>((acc, m) => {
+    const arr = acc.get(m.year) ?? []
+    arr.push(m)
+    acc.set(m.year, arr)
+    return acc
+  }, new Map())
+
+  const sortedYears = [...byYear.keys()].sort((a, b) => b - a)
+
+  // Toggle handlers
+  function toggleYear(year: number) {
+    setExpandedYears((prev) => {
+      const next = new Set(prev)
+      if (next.has(year)) next.delete(year)
+      else next.add(year)
+      return next
+    })
+  }
+
+  function toggleMonth(monthId: string) {
+    setExpandedMonths((prev) => {
+      const next = new Set(prev)
+      if (next.has(monthId)) next.delete(monthId)
+      else next.add(monthId)
+      return next
+    })
+  }
+
+  // Close week
+  async function handleCloseWeek(week: Week) {
+    if (!currentUserId) return
+    if (
+      !confirm(
+        `¿Cerrar Semana ${week.week_number} (${formatDate(week.start_date)} – ${formatDate(week.end_date)})?`
+      )
+    )
+      return
+    try {
+      await closeWeek(week.id, currentUserId)
+      if (branchId) await loadMonths(branchId)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error cerrando semana')
+    }
+  }
+
+  // Close month
+  async function handleCloseMonth(month: MonthWithWeeks) {
+    if (!confirm(`¿Cerrar ${MONTH_NAMES[month.month - 1]} ${month.year}? Esta acción no se puede deshacer.`))
+      return
+    try {
+      await closeMonth(month.id)
+      if (branchId) await loadMonths(branchId)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error cerrando mes')
+    }
+  }
+
+  // Open week detail modal
+  async function handleViewDetail(week: Week, month: Month) {
+    setDetailWeek(week)
+    setDetailWeekMonth(month)
+    setDetailData(null)
+    setDetailLoading(true)
+    try {
+      const [transactions, settlements] = await Promise.all([
+        getWeekTransactions(week.id),
+        getSettlementsForWeek(week.id),
+      ])
+      setDetailData({ transactions, settlements })
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error cargando detalle')
+    } finally {
+      setDetailLoading(false)
+    }
+  }
+
+  function closeDetail() {
+    setDetailWeek(null)
+    setDetailWeekMonth(null)
+    setDetailData(null)
+  }
+
+  if (loading) {
+    return (
+      <div className="admin-app flex-center" style={{ minHeight: '60vh' }}>
+        <div className="admin-loader" />
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="admin-app flex-center" style={{ minHeight: '60vh' }}>
+        <div className="error-box">
+          <p className="error-msg">{error}</p>
+          <button
+            className="admin-btn admin-btn--ghost"
+            onClick={() => branchId && loadMonths(branchId)}
+          >
+            Reintentar
+          </button>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="admin-app">
+      {/* Header */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '1.25rem 1.5rem',
+          borderBottom: '1px solid #2d2d2d',
+          background: '#141414',
+        }}
+      >
+        <div>
+          <h1 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#e5e5e5', margin: 0 }}>
+            Configuración
+          </h1>
+          <p style={{ fontSize: '0.8125rem', color: '#71717a', margin: '0.25rem 0 0' }}>
+            Meses y Semanas
+          </p>
+        </div>
+        <button
+          className="admin-btn admin-btn--primary"
+          onClick={() => setShowNewMonthModal(true)}
+        >
+          + Nuevo mes
+        </button>
+      </div>
+
+      {/* Content */}
+      <div style={{ padding: '1.25rem 1.5rem' }}>
+        {sortedYears.length === 0 && (
+          <div className="empty-state">
+            <p>No hay meses creados aún.</p>
+            <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem' }}>
+              Creá el primer mes con el botón "Nuevo mes".
+            </p>
+          </div>
+        )}
+
+        {sortedYears.map((year) => {
+          const yearExpanded = expandedYears.has(year)
+          const yearMonths = byYear.get(year) ?? []
+
+          return (
+            <div key={year} style={{ marginBottom: '1rem' }}>
+              {/* Year row */}
+              <button
+                onClick={() => toggleYear(year)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  background: 'none',
+                  border: 'none',
+                  cursor: 'pointer',
+                  color: '#a1a1aa',
+                  fontSize: '0.8125rem',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.1em',
+                  padding: '0.5rem 0',
+                  width: '100%',
+                  textAlign: 'left',
+                }}
+              >
+                <span style={{ color: '#52525b' }}>{yearExpanded ? '▼' : '▶'}</span>
+                {year}
+              </button>
+
+              {yearExpanded && (
+                <div style={{ paddingLeft: '1rem' }}>
+                  {yearMonths.map((m) => (
+                    <MonthRow
+                      key={m.id}
+                      month={m}
+                      expanded={expandedMonths.has(m.id)}
+                      onToggle={() => toggleMonth(m.id)}
+                      onCloseMonth={() => handleCloseMonth(m)}
+                      onCloseWeek={handleCloseWeek}
+                      onViewDetail={handleViewDetail}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* New Month Modal */}
+      {showNewMonthModal && branchId && (
+        <NewMonthModal
+          branchId={branchId}
+          onClose={() => setShowNewMonthModal(false)}
+          onCreated={() => {
+            setShowNewMonthModal(false)
+            if (branchId) loadMonths(branchId)
+          }}
+        />
+      )}
+
+      {/* Week Detail Modal */}
+      {detailWeek && detailWeekMonth && (
+        <WeekDetailModal
+          week={detailWeek}
+          month={detailWeekMonth}
+          data={detailData}
+          loading={detailLoading}
+          onClose={closeDetail}
+        />
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// MONTH ROW
+// ============================================================
+interface MonthRowProps {
+  month: MonthWithWeeks
+  expanded: boolean
+  onToggle: () => void
+  onCloseMonth: () => void
+  onCloseWeek: (week: Week) => void
+  onViewDetail: (week: Week, month: Month) => void
+}
+
+function MonthRow({
+  month,
+  expanded,
+  onToggle,
+  onCloseMonth,
+  onCloseWeek,
+  onViewDetail,
+}: MonthRowProps) {
+  const name = MONTH_NAMES[month.month - 1]
+  const weekCount = month.weeks.length
+  const isActive = month.status === 'active'
+
+  return (
+    <div
+      style={{
+        marginBottom: '0.75rem',
+        background: '#1a1a1a',
+        border: '1px solid #2d2d2d',
+        borderRadius: '0.5rem',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Month header */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '0.75rem 1rem',
+          cursor: 'pointer',
+          gap: '0.75rem',
+        }}
+        onClick={onToggle}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flex: 1 }}>
+          <span style={{ color: '#52525b', fontSize: '0.75rem' }}>{expanded ? '▼' : '▶'}</span>
+          <span style={{ fontWeight: 600, color: '#e5e5e5' }}>
+            {name} {month.year}
+          </span>
+          <span
+            className={`badge ${isActive ? 'badge--green' : 'badge--gray'}`}
+            style={{ marginLeft: '0.25rem' }}
+          >
+            {isActive ? 'activo' : 'cerrado'}
+          </span>
+          <span style={{ color: '#71717a', fontSize: '0.8125rem', marginLeft: '0.5rem' }}>
+            {weekCount} {weekCount === 1 ? 'semana' : 'semanas'}
+          </span>
+        </div>
+
+        {isActive && (
+          <button
+            className="admin-btn admin-btn--danger"
+            style={{ fontSize: '0.75rem', padding: '0.25rem 0.75rem' }}
+            onClick={(e) => {
+              e.stopPropagation()
+              onCloseMonth()
+            }}
+          >
+            Cerrar mes
+          </button>
+        )}
+      </div>
+
+      {/* Weeks */}
+      {expanded && (
+        <div style={{ borderTop: '1px solid #2d2d2d' }}>
+          {month.weeks.length === 0 && (
+            <p
+              style={{ padding: '1rem', color: '#52525b', fontSize: '0.8125rem', margin: 0 }}
+            >
+              Sin semanas asociadas a este mes.
+            </p>
+          )}
+          {month.weeks.map((week) => (
+            <WeekRow
+              key={week.id}
+              week={week}
+              month={month}
+              onCloseWeek={onCloseWeek}
+              onViewDetail={onViewDetail}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ============================================================
+// WEEK ROW
+// ============================================================
+interface WeekRowProps {
+  week: Week
+  month: MonthWithWeeks
+  onCloseWeek: (week: Week) => void
+  onViewDetail: (week: Week, month: Month) => void
+}
+
+function WeekRow({ week, month, onCloseWeek, onViewDetail }: WeekRowProps) {
+  const { activeFrom, activeTo, clampedStart, clampedEnd } = getWeekActiveRange(
+    week,
+    month.year,
+    month.month
+  )
+  const isOpen = week.status === 'open'
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '0.625rem 1rem 0.625rem 2rem',
+        borderBottom: '1px solid #1f1f1f',
+        gap: '0.75rem',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
+        <span style={{ color: '#71717a', fontSize: '0.8125rem', minWidth: '4.5rem' }}>
+          Semana {week.week_number}
+        </span>
+        <span style={{ fontSize: '0.8125rem' }}>
+          <span style={{ color: clampedStart ? '#52525b' : '#a1a1aa' }}>
+            Lun {formatDate(activeFrom)}
+          </span>
+          <span style={{ color: '#3f3f46', margin: '0 0.375rem' }}>–</span>
+          <span style={{ color: clampedEnd ? '#52525b' : '#a1a1aa' }}>
+            Dom {formatDate(activeTo)}
+          </span>
+        </span>
+        <span className={weekStatusBadgeClass(week.status)}>
+          {WEEK_STATUS_LABELS[week.status]}
+        </span>
+      </div>
+
+      <div className="action-group">
+        {isOpen && (
+          <button
+            className="action-btn action-btn--confirm"
+            onClick={() => onCloseWeek(week)}
+          >
+            Cerrar
+          </button>
+        )}
+        <button
+          className="action-btn action-btn--pay"
+          style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8' }}
+          onClick={() => onViewDetail(week, month)}
+        >
+          Ver detalle
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// NEW MONTH MODAL
+// ============================================================
+interface NewMonthModalProps {
+  branchId: string
+  onClose: () => void
+  onCreated: () => void
+}
+
+function NewMonthModal({ branchId, onClose, onCreated }: NewMonthModalProps) {
+  const now = new Date()
+  const [selectedMonth, setSelectedMonth] = useState(now.getMonth() + 1)
+  const [selectedYear, setSelectedYear] = useState(now.getFullYear())
+  const [creating, setCreating] = useState(false)
+  const [createError, setCreateError] = useState<string | null>(null)
+  const [showPreview, setShowPreview] = useState(false)
+
+  const preview = previewWeeksForMonth(selectedYear, selectedMonth)
+
+  async function handleCreate() {
+    setCreating(true)
+    setCreateError(null)
+    try {
+      await createMonth(branchId, selectedYear, selectedMonth)
+      onCreated()
+    } catch (e) {
+      setCreateError(e instanceof Error ? e.message : 'Error creando mes')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-box"
+        style={{ maxWidth: '520px' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-header">
+          <h3>Nuevo mes</h3>
+          <button className="modal-close" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+
+        <div className="modal-body">
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Mes</label>
+              <select
+                className="form-input admin-select"
+                value={selectedMonth}
+                onChange={(e) => {
+                  setSelectedMonth(Number(e.target.value))
+                  setShowPreview(false)
+                }}
+              >
+                {MONTH_NAMES.map((name, i) => (
+                  <option key={i} value={i + 1}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="form-group">
+              <label className="form-label">Año</label>
+              <input
+                type="number"
+                className="form-input"
+                value={selectedYear}
+                min={2020}
+                max={2099}
+                onChange={(e) => {
+                  setSelectedYear(Number(e.target.value))
+                  setShowPreview(false)
+                }}
+              />
+            </div>
+          </div>
+
+          <button
+            className="admin-btn admin-btn--ghost"
+            style={{ width: '100%', justifyContent: 'center' }}
+            onClick={() => setShowPreview((v) => !v)}
+          >
+            {showPreview ? 'Ocultar preview' : 'Ver semanas que se generarán'}
+          </button>
+
+          {showPreview && (
+            <div
+              style={{
+                background: '#0f0f0f',
+                border: '1px solid #2d2d2d',
+                borderRadius: '0.375rem',
+                padding: '0.75rem',
+              }}
+            >
+              <p
+                style={{
+                  fontSize: '0.75rem',
+                  color: '#71717a',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.08em',
+                  marginBottom: '0.5rem',
+                }}
+              >
+                {MONTH_NAMES[selectedMonth - 1]} {selectedYear} · {preview.length} semanas
+              </p>
+              {preview.map((w, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    padding: '0.3rem 0',
+                    borderBottom: i < preview.length - 1 ? '1px solid #1f1f1f' : 'none',
+                    fontSize: '0.8125rem',
+                    color: '#a1a1aa',
+                  }}
+                >
+                  <span>Semana {i + 1}</span>
+                  <span>
+                    {formatDate(w.start)} – {formatDate(w.end)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {createError && <p className="form-error">{createError}</p>}
+        </div>
+
+        <div className="modal-footer">
+          <button className="admin-btn admin-btn--ghost" onClick={onClose}>
+            Cancelar
+          </button>
+          <button
+            className="admin-btn admin-btn--primary"
+            disabled={creating}
+            onClick={handleCreate}
+          >
+            {creating ? 'Creando...' : 'Crear mes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// WEEK DETAIL MODAL
+// ============================================================
+interface WeekDetailModalProps {
+  week: Week
+  month: Month
+  data: WeekDetailData | null
+  loading: boolean
+  onClose: () => void
+}
+
+function WeekDetailModal({ week, month, data, loading, onClose }: WeekDetailModalProps) {
+  const monthName = MONTH_NAMES[month.month - 1]
+
+  // Compute summary from transactions
+  const summary = data
+    ? (() => {
+        const txs = data.transactions
+        const totalCuts = txs.length
+        const totalBilled = txs.reduce((s, t) => s + t.amount, 0)
+        const byMethod: Record<PaymentMethod, number> = { cash: 0, transfer: 0, card: 0 }
+        for (const t of txs) byMethod[t.payment_method] += t.amount
+        return { totalCuts, totalBilled, byMethod }
+      })()
+    : null
+
+  // Compute per-barber rows from settlements
+  const barberRows: BarberRow[] = data
+    ? data.settlements.map((s) => ({
+        barberId: s.barber_id,
+        barberName: s.barber.full_name,
+        cuts: s.total_cuts,
+        billed: s.gross_amount,
+        commission: s.total_earned,
+        toCollect: s.net_payable,
+      }))
+    : []
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div
+        className="modal-box"
+        style={{ maxWidth: '760px', width: '100%' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="modal-header">
+          <h3>
+            Semana {week.week_number} · {monthName} {month.year}
+            <span
+              style={{ marginLeft: '0.75rem', fontSize: '0.75rem', fontWeight: 400, color: '#71717a' }}
+            >
+              {formatDate(week.start_date)} – {formatDate(week.end_date)}
+            </span>
+          </h3>
+          <button className="modal-close" onClick={onClose}>
+            ✕
+          </button>
+        </div>
+
+        <div className="modal-body" style={{ gap: '1.25rem' }}>
+          {loading && (
+            <div className="flex-center" style={{ padding: '2rem' }}>
+              <div className="admin-loader" />
+            </div>
+          )}
+
+          {!loading && data && (
+            <>
+              {/* --- Resumen --- */}
+              <section>
+                <p
+                  style={{
+                    fontSize: '0.6875rem',
+                    color: '#71717a',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    marginBottom: '0.75rem',
+                  }}
+                >
+                  Resumen
+                </p>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(4, 1fr)',
+                    gap: '0.5rem',
+                  }}
+                >
+                  <KpiMini label="Cortes" value={String(summary!.totalCuts)} />
+                  <KpiMini label="Facturado" value={formatARS(summary!.totalBilled)} />
+                  <KpiMini
+                    label="Efectivo"
+                    value={formatARS(summary!.byMethod.cash)}
+                    color="#34d399"
+                  />
+                  <KpiMini
+                    label="Transfer"
+                    value={formatARS(summary!.byMethod.transfer)}
+                    color="#818cf8"
+                  />
+                </div>
+              </section>
+
+              {/* --- Por barbero --- */}
+              {barberRows.length > 0 && (
+                <section>
+                  <p
+                    style={{
+                      fontSize: '0.6875rem',
+                      color: '#71717a',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.08em',
+                      marginBottom: '0.5rem',
+                    }}
+                  >
+                    Por barbero
+                  </p>
+                  <div className="admin-table-wrap" style={{ padding: 0 }}>
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Barbero</th>
+                          <th>Cortes</th>
+                          <th>Facturado</th>
+                          <th>Comisión</th>
+                          <th>A cobrar</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {barberRows.map((row) => (
+                          <tr key={row.barberId}>
+                            <td>{row.barberName}</td>
+                            <td className="td-center">{row.cuts}</td>
+                            <td>{formatARS(row.billed)}</td>
+                            <td>{formatARS(row.commission)}</td>
+                            <td
+                              className={
+                                row.toCollect >= 0 ? 'net-payable net-payable--pos' : 'net-payable net-payable--neg'
+                              }
+                            >
+                              {formatARS(row.toCollect)}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              )}
+
+              {/* --- Transacciones --- */}
+              <section>
+                <p
+                  style={{
+                    fontSize: '0.6875rem',
+                    color: '#71717a',
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.08em',
+                    marginBottom: '0.5rem',
+                  }}
+                >
+                  Transacciones ({data.transactions.length})
+                </p>
+
+                {data.transactions.length === 0 && (
+                  <div className="empty-state">
+                    <p>Sin transacciones en esta semana.</p>
+                  </div>
+                )}
+
+                {data.transactions.length > 0 && (
+                  <div className="admin-table-wrap" style={{ padding: 0, maxHeight: '260px', overflowY: 'auto' }}>
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Fecha</th>
+                          <th>Barbero</th>
+                          <th>Servicio</th>
+                          <th>Método</th>
+                          <th>Monto</th>
+                          <th>Comisión</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {data.transactions.map((t) => (
+                          <tr key={t.id}>
+                            <td className="td-date">{formatDate(t.transaction_date)}</td>
+                            <td>{t.barber.full_name}</td>
+                            <td className="td-muted">{t.service?.name ?? '—'}</td>
+                            <td>
+                              <span className={`dot-badge dot-badge--${t.payment_method}`}>
+                                {PAYMENT_METHOD_LABELS[t.payment_method]}
+                              </span>
+                            </td>
+                            <td className="td-bold">{formatARS(t.amount)}</td>
+                            <td className="td-amber">{formatARS(t.barber_share)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </section>
+            </>
+          )}
+        </div>
+
+        <div className="modal-footer">
+          <button className="admin-btn admin-btn--ghost" onClick={onClose}>
+            Cerrar
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// KPI MINI CARD
+// ============================================================
+function KpiMini({
+  label,
+  value,
+  color,
+}: {
+  label: string
+  value: string
+  color?: string
+}) {
+  return (
+    <div
+      style={{
+        background: '#0f0f0f',
+        border: '1px solid #2d2d2d',
+        borderRadius: '0.375rem',
+        padding: '0.625rem 0.75rem',
+      }}
+    >
+      <p style={{ fontSize: '0.6875rem', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 0.25rem' }}>
+        {label}
+      </p>
+      <p style={{ fontSize: '1rem', fontWeight: 700, color: color ?? '#e5e5e5', margin: 0 }}>
+        {value}
+      </p>
+    </div>
+  )
+}
