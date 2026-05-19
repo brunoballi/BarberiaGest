@@ -13,7 +13,7 @@ export type PaymentMethod = 'cash' | 'transfer' | 'card'
 export type WeekStatus = 'open' | 'closed' | 'paid'
 export type MonthStatus = 'active' | 'closed'
 export type SettlementStatus = 'draft' | 'confirmed' | 'paid'
-export type AdvanceStatus = 'pending' | 'deducted' | 'cancelled'
+export type AdvanceStatus = 'pending' | 'approved' | 'deducted' | 'cancelled'
 
 // ============================================================
 // ROW TYPES — Tipado exacto de lo que devuelve Supabase
@@ -171,7 +171,9 @@ export type ProfileInsert = Omit<Profile, 'created_at'>
 
 export type ServiceCatalogInsert = Omit<ServiceCatalog, 'id' | 'created_at'>
 
-export type WeekInsert = Omit<Week, 'id' | 'created_at' | 'closed_at' | 'closed_by'>
+export type WeekInsert = Omit<Week, 'id' | 'created_at' | 'closed_at' | 'closed_by' | 'month_id'> & {
+  month_id?: string | null
+}
 
 export type TransactionInsert = Omit<
   Transaction,
@@ -266,14 +268,29 @@ export interface AdvanceWithBarber extends Advance {
 // UTILITY TYPES — Para formularios y lógica de UI
 // ============================================================
 
+/** Reporte agregado por sucursal para un período */
+export interface BranchReport {
+  branchId: string
+  branchName: string
+  cutCount: number
+  totalIncome: number        // suma de transactions.amount
+  branchShare: number        // suma de transactions.branch_share (lo que queda al negocio de cortes)
+  barberShare: number        // suma de transactions.barber_share (comisiones)
+  totalExpenses: number      // suma de expenses.amount
+  expensesByCategory: Record<string, number>
+  netProfit: number          // branchShare - totalExpenses
+  profitMargin: number       // netProfit / totalIncome * 100
+}
+
 /** Payload que envía el barbero al registrar un corte */
 export interface RegisterCutPayload {
   service_id: string | null
   amount: number
   payment_method: PaymentMethod
   transaction_date: string
-  // barber_already_collected se calcula automáticamente:
-  // si payment_method es 'transfer' o 'card', iguala al barber_share
+  // Opcional: override manual de barber_already_collected.
+  // Si se omite, se calcula automáticamente (0 para cash, barber_share para transfer/card).
+  barber_already_collected_override?: number
 }
 
 /** Resultado del cálculo de un settlement para mostrar en UI */
@@ -337,7 +354,8 @@ export const SETTLEMENT_STATUS_LABELS: Record<SettlementStatus, string> = {
 
 /** Labels en español para estados de adelanto */
 export const ADVANCE_STATUS_LABELS: Record<AdvanceStatus, string> = {
-  pending: 'Pendiente',
-  deducted: 'Descontado',
+  pending:   'Solicitado',
+  approved:  'Autorizado',
+  deducted:  'Descontado',
   cancelled: 'Cancelado',
 }

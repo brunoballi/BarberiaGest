@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Valhalla — Gestión',
-  description: 'Sistema de gestión para Valhalla Barbershop',
+  title: 'Flowi — Management',
+  description: 'Flowi — Sistema de gestión para barberías',
 };
 
 export default function RootLayout({
@@ -27,7 +27,18 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        <div className="flowi-root">{children}</div>
+        <footer className="flowi-footer">
+          <span className="flowi-footer__logo">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/>
+              <path d="M5 8.5h3.5M5 6h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+          </span>
+          <span className="flowi-footer__brand">Flowi Management</span>
+        </footer>
+      </body>
     </html>
   );
 }

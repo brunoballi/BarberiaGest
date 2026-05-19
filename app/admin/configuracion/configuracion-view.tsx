@@ -1,11 +1,13 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { getStoredBranch } from '@/lib/hooks/usePersistedBranch'
 import '../admin-dashboard.css'
 import {
   getMonthsWithWeeks,
   createMonth,
   closeMonth,
+  reopenMonth,
   closeWeek,
   getWeekTransactions,
   getSettlementsForWeek,
@@ -174,8 +176,10 @@ export default function ConfiguracionView() {
     getCurrentProfile().then((profile) => {
       if (!profile) return
       setCurrentUserId(profile.id)
-      setBranchId(profile.branch_id)
-      loadMonths(profile.branch_id)
+      // Usar sucursal guardada si existe, si no la del perfil
+      const bid = getStoredBranch() ?? profile.branch_id
+      setBranchId(bid)
+      loadMonths(bid)
     })
   }, [loadMonths])
 
@@ -211,11 +215,7 @@ export default function ConfiguracionView() {
   // Close week
   async function handleCloseWeek(week: Week) {
     if (!currentUserId) return
-    if (
-      !confirm(
-        `¿Cerrar Semana ${week.week_number} (${formatDate(week.start_date)} – ${formatDate(week.end_date)})?`
-      )
-    )
+    if (!confirm(`¿Cerrar Semana ${week.week_number} (${formatDate(week.start_date)} – ${formatDate(week.end_date)})?`))
       return
     try {
       await closeWeek(week.id, currentUserId)
@@ -227,13 +227,24 @@ export default function ConfiguracionView() {
 
   // Close month
   async function handleCloseMonth(month: MonthWithWeeks) {
-    if (!confirm(`¿Cerrar ${MONTH_NAMES[month.month - 1]} ${month.year}? Esta acción no se puede deshacer.`))
-      return
+    if (!confirm(`¿Cerrar ${MONTH_NAMES[month.month - 1]} ${month.year}?`)) return
     try {
       await closeMonth(month.id)
       if (branchId) await loadMonths(branchId)
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Error cerrando mes')
+    }
+  }
+
+  // Reopen month
+  async function handleReopenMonth(month: MonthWithWeeks) {
+    if (!confirm(`¿Reabrir ${MONTH_NAMES[month.month - 1]} ${month.year}? El mes volverá a estado activo.`))
+      return
+    try {
+      await reopenMonth(month.id)
+      if (branchId) await loadMonths(branchId)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error reabriendo mes')
     }
   }
 
@@ -288,6 +299,7 @@ export default function ConfiguracionView() {
 
   return (
     <div className="admin-app">
+      <div style={{ maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
       {/* Header */}
       <div
         style={{
@@ -297,6 +309,8 @@ export default function ConfiguracionView() {
           padding: '1.25rem 1.5rem',
           borderBottom: '1px solid #2d2d2d',
           background: '#141414',
+          flexWrap: 'wrap',
+          gap: '0.75rem',
         }}
       >
         <div>
@@ -318,6 +332,7 @@ export default function ConfiguracionView() {
       {/* Content */}
       <div style={{ padding: '1.25rem 1.5rem' }}>
         {sortedYears.length === 0 && (
+
           <div className="empty-state">
             <p>No hay meses creados aún.</p>
             <p style={{ marginTop: '0.5rem', fontSize: '0.8125rem' }}>
@@ -365,6 +380,7 @@ export default function ConfiguracionView() {
                       expanded={expandedMonths.has(m.id)}
                       onToggle={() => toggleMonth(m.id)}
                       onCloseMonth={() => handleCloseMonth(m)}
+                      onReopenMonth={() => handleReopenMonth(m)}
                       onCloseWeek={handleCloseWeek}
                       onViewDetail={handleViewDetail}
                     />
@@ -398,6 +414,7 @@ export default function ConfiguracionView() {
           onClose={closeDetail}
         />
       )}
+      </div>{/* end max-width wrapper */}
     </div>
   )
 }
@@ -410,6 +427,7 @@ interface MonthRowProps {
   expanded: boolean
   onToggle: () => void
   onCloseMonth: () => void
+  onReopenMonth: () => void
   onCloseWeek: (week: Week) => void
   onViewDetail: (week: Week, month: Month) => void
 }
@@ -419,6 +437,7 @@ function MonthRow({
   expanded,
   onToggle,
   onCloseMonth,
+  onReopenMonth,
   onCloseWeek,
   onViewDetail,
 }: MonthRowProps) {
@@ -464,18 +483,25 @@ function MonthRow({
           </span>
         </div>
 
-        {isActive && (
-          <button
-            className="admin-btn admin-btn--danger"
-            style={{ fontSize: '0.75rem', padding: '0.25rem 0.75rem' }}
-            onClick={(e) => {
-              e.stopPropagation()
-              onCloseMonth()
-            }}
-          >
-            Cerrar mes
-          </button>
-        )}
+        <div style={{ display: 'flex', gap: '0.5rem' }} onClick={(e) => e.stopPropagation()}>
+          {isActive ? (
+            <button
+              className="admin-btn admin-btn--danger"
+              style={{ fontSize: '0.75rem', padding: '0.25rem 0.75rem' }}
+              onClick={onCloseMonth}
+            >
+              Cerrar mes
+            </button>
+          ) : (
+            <button
+              className="admin-btn admin-btn--ghost"
+              style={{ fontSize: '0.75rem', padding: '0.25rem 0.75rem', borderColor: '#f59e0b', color: '#f59e0b' }}
+              onClick={onReopenMonth}
+            >
+              ↩ Reabrir mes
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Weeks */}
@@ -527,12 +553,13 @@ function WeekRow({ week, month, onCloseWeek, onViewDetail }: WeekRowProps) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
-        padding: '0.625rem 1rem 0.625rem 2rem',
+        flexWrap: 'wrap',
+        padding: '0.625rem 1rem 0.625rem 1.5rem',
         borderBottom: '1px solid #1f1f1f',
-        gap: '0.75rem',
+        gap: '0.5rem',
       }}
     >
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', flex: 1, flexWrap: 'wrap' }}>
         <span style={{ color: '#71717a', fontSize: '0.8125rem', minWidth: '4.5rem' }}>
           Semana {week.week_number}
         </span>
@@ -802,13 +829,7 @@ function WeekDetailModal({ week, month, data, loading, onClose }: WeekDetailModa
                 >
                   Resumen
                 </p>
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(4, 1fr)',
-                    gap: '0.5rem',
-                  }}
-                >
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <KpiMini label="Cortes" value={String(summary!.totalCuts)} />
                   <KpiMini label="Facturado" value={formatARS(summary!.totalBilled)} />
                   <KpiMini

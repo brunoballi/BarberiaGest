@@ -342,3 +342,73 @@
 .valhalla-app.animate-fadein {
   animation: view-enter 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
+
+/* ── Advance chip — acción diferenciada del método de pago ─────── */
+.payment-chip--advance {
+  border-color: #3f3f46;
+  color: #a78bfa;
+}
+.payment-chip--advance:hover {
+  border-color: #7c3aed;
+  background: rgba(124, 58, 237, 0.08);
+  color: #c4b5fd;
+}
+
+/* ── Keep-cash toggle ───────────────────────────────────────────── */
+.keep-cash-toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 14px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.keep-cash-toggle--on {
+  border-color: #34d399;
+  background: #052e16;
+}
+
+/* Track */
+.keep-cash-toggle__track {
+  position: relative;
+  width: 40px;
+  height: 22px;
+  border-radius: 11px;
+  background: #3f3f46;
+  flex-shrink: 0;
+  transition: background 0.15s;
+}
+.keep-cash-toggle--on .keep-cash-toggle__track {
+  background: #34d399;
+}
+
+/* Thumb */
+.keep-cash-toggle__thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.15s;
+}
+.keep-cash-toggle--on .keep-cash-toggle__thumb {
+  transform: translateX(18px);
+}
+
+/* Label */
+.keep-cash-toggle__label {
+  font-size: 0.875rem;
+  color: #a1a1aa;
+  text-align: left;
+  transition: color 0.15s;
+}
+.keep-cash-toggle--on .keep-cash-toggle__label {
+  color: #34d399;
+  font-weight: 600;
+}

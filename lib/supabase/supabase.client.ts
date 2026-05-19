@@ -7,6 +7,7 @@
 import { createBrowserClient } from '@supabase/ssr'
 import type {
   Branch,
+  BranchReport,
   Profile,
   Transaction,
   TransactionInsert,
@@ -167,6 +168,15 @@ export async function closeWeek(
   if (error) throw new Error(`[closeWeek] ${error.message}`)
 }
 
+export async function reopenWeek(weekId: string): Promise<void> {
+  const { error } = await supabase
+    .from('weeks')
+    .update({ status: 'open', closed_at: null, closed_by: null } satisfies WeekUpdate)
+    .eq('id', weekId)
+
+  if (error) throw new Error(`[reopenWeek] ${error.message}`)
+}
+
 export async function markWeekPaid(weekId: string): Promise<void> {
   const { error } = await supabase
     .from('weeks')
@@ -218,8 +228,8 @@ export async function getMonthsWithWeeks(branchId: string): Promise<MonthWithWee
       weeks ( id, branch_id, month_id, week_number, start_date, end_date, status, closed_at, closed_by, created_at )
     `)
     .eq('branch_id', branchId)
-    .order('year',  { ascending: false })
-    .order('month', { ascending: false })
+    .order('year',  { ascending: true })
+    .order('month', { ascending: true })
 
   if (error) throw new Error(`[getMonthsWithWeeks] ${error.message}`)
 
@@ -302,6 +312,15 @@ export async function closeMonth(monthId: string): Promise<void> {
   if (error) throw new Error(`[closeMonth] ${error.message}`)
 }
 
+export async function reopenMonth(monthId: string): Promise<void> {
+  const { error } = await supabase
+    .from('months')
+    .update({ status: 'active' })
+    .eq('id', monthId)
+
+  if (error) throw new Error(`[reopenMonth] ${error.message}`)
+}
+
 // ============================================================
 // TRANSACTIONS
 // ============================================================
@@ -320,7 +339,9 @@ export async function registerCut(
   const branchShare = Number((payload.amount - barberShare).toFixed(2))
 
   const barberAlreadyCollected: number =
-    payload.payment_method === 'cash' ? 0 : barberShare
+    payload.barber_already_collected_override !== undefined
+      ? payload.barber_already_collected_override
+      : payload.payment_method === 'cash' ? 0 : barberShare
 
   const insert: TransactionInsert = {
     branch_id: barber.branch_id,
@@ -353,7 +374,7 @@ export async function getBarberTransactionsForWeek(
 ): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
-    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at')
+    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at')
     .eq('barber_id', barberId)
     .eq('week_id', weekId)
     .order('transaction_date', { ascending: false })
@@ -551,6 +572,27 @@ export async function getPendingAdvances(barberId: string): Promise<Advance[]> {
   return data
 }
 
+export async function getAdvancesByDateRange(
+  branchId: string,
+  startDate: string,
+  endDate: string
+): Promise<AdvanceWithBarber[]> {
+  const { data, error } = await supabase
+    .from('advances')
+    .select(`
+      *,
+      barber:profiles!barber_id ( id, full_name )
+    `)
+    .eq('branch_id', branchId)
+    .gte('advance_date', startDate)
+    .lte('advance_date', endDate)
+    .in('status', ['pending', 'approved'])
+    .order('advance_date', { ascending: false })
+
+  if (error) throw new Error(`[getAdvancesByDateRange] ${error.message}`)
+  return data as AdvanceWithBarber[]
+}
+
 export async function getPendingAdvancesByBranch(
   branchId: string
 ): Promise<AdvanceWithBarber[]> {
@@ -561,11 +603,21 @@ export async function getPendingAdvancesByBranch(
       barber:profiles!barber_id ( id, full_name )
     `)
     .eq('branch_id', branchId)
-    .eq('status', 'pending')
+    .in('status', ['pending', 'approved'])
     .order('advance_date', { ascending: false })
 
   if (error) throw new Error(`[getPendingAdvancesByBranch] ${error.message}`)
   return data as AdvanceWithBarber[]
+}
+
+export async function approveAdvance(advanceId: string): Promise<void> {
+  const { error } = await supabase
+    .from('advances')
+    .update({ status: 'approved' } satisfies AdvanceUpdate)
+    .eq('id', advanceId)
+    .eq('status', 'pending')
+
+  if (error) throw new Error(`[approveAdvance] ${error.message}`)
 }
 
 export async function cancelAdvance(advanceId: string): Promise<void> {
@@ -617,6 +669,62 @@ export async function getExpensesByWeek(weekId: string): Promise<Expense[]> {
 
   if (error) throw new Error(`[getExpensesByWeek] ${error.message}`)
   return data
+}
+
+// ============================================================
+// REPORTS
+// ============================================================
+export async function getReportByPeriod(
+  branches: Pick<Branch, 'id' | 'name'>[],
+  startDate: string,
+  endDate: string
+): Promise<BranchReport[]> {
+  const branchIds = branches.map((b) => b.id)
+
+  const [{ data: txData }, { data: expData }] = await Promise.all([
+    supabase
+      .from('transactions')
+      .select('branch_id, amount, branch_share, barber_share')
+      .in('branch_id', branchIds)
+      .gte('transaction_date', startDate)
+      .lte('transaction_date', endDate),
+    supabase
+      .from('expenses')
+      .select('branch_id, amount, category')
+      .in('branch_id', branchIds)
+      .gte('expense_date', startDate)
+      .lte('expense_date', endDate),
+  ])
+
+  return branches.map((branch) => {
+    const txs = (txData ?? []).filter((t) => t.branch_id === branch.id)
+    const exps = (expData ?? []).filter((e) => e.branch_id === branch.id)
+
+    const totalIncome   = txs.reduce((s, t) => s + t.amount, 0)
+    const branchShare   = txs.reduce((s, t) => s + t.branch_share, 0)
+    const barberShare   = txs.reduce((s, t) => s + t.barber_share, 0)
+    const totalExpenses = exps.reduce((s, e) => s + e.amount, 0)
+    const netProfit     = branchShare - totalExpenses
+    const profitMargin  = totalIncome > 0 ? (netProfit / totalIncome) * 100 : 0
+
+    const expensesByCategory: Record<string, number> = {}
+    exps.forEach((e) => {
+      expensesByCategory[e.category] = (expensesByCategory[e.category] ?? 0) + e.amount
+    })
+
+    return {
+      branchId: branch.id,
+      branchName: branch.name,
+      cutCount: txs.length,
+      totalIncome,
+      branchShare,
+      barberShare,
+      totalExpenses,
+      expensesByCategory,
+      netProfit,
+      profitMargin,
+    }
+  })
 }
 
 // ============================================================

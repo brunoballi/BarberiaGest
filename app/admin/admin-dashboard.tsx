@@ -1,12 +1,15 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { usePersistedBranch, resolveInitialBranch } from '@/lib/hooks/usePersistedBranch'
 import Link from 'next/link'
 import {
   type Branch,
   type Week,
+  type MonthWithWeeks,
   type SettlementWithBarber,
   type TransactionWithRelations,
+  type AdvanceWithBarber,
   type Expense,
   type ExpenseInsert,
   PAYMENT_METHOD_LABELS,
@@ -16,13 +19,13 @@ import {
 } from '@/lib/supabase/database.types'
 import {
   getBranches,
-  getWeeksByBranch,
+  getMonthsWithWeeks,
+  MONTH_NAMES,
   getBarbersByBranch,
   getSettlementsForWeek,
   getWeekTransactions,
-  getExpensesByBranch,
+  getAdvancesByDateRange,
   getExpensesByWeek,
-  createWeek,
   closeWeek,
   calculateAllSettlementsForWeek,
   setPresentismo,
@@ -66,25 +69,60 @@ const TAB_LABELS: Record<Tab, string> = {
 // ─────────────────────────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const [branches, setBranches] = useState<Branch[]>([])
-  const [selectedBranch, setSelectedBranch] = useState<string>('')
-  const [weeks, setWeeks] = useState<Week[]>([])
+  const [selectedBranch, setSelectedBranch] = usePersistedBranch()
+  const [months, setMonths] = useState<MonthWithWeeks[]>([])
+  const [selectedMonthIdx, setSelectedMonthIdx] = useState<number>(0)
   const [selectedWeek, setSelectedWeek] = useState<Week | null>(null)
   const [tab, setTab] = useState<Tab>('liquidaciones')
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string>('')
 
+  // Semanas del mes seleccionado (derivado)
+  const weeks: Week[] = months[selectedMonthIdx]?.weeks ?? []
+
   const [settlements, setSettlements] = useState<SettlementWithBarber[]>([])
   const [transactions, setTransactions] = useState<TransactionWithRelations[]>([])
+  const [weekAdvances, setWeekAdvances] = useState<AdvanceWithBarber[]>([])
   const [expenses, setExpenses] = useState<Expense[]>([])
 
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [showExpenseForm, setShowExpenseForm] = useState(false)
-  const [showNewWeekForm, setShowNewWeekForm] = useState(false)
   const [overrideTx, setOverrideTx] = useState<TransactionWithRelations | null>(null)
 
   // Live view
   const [liveTransactions, setLiveTransactions] = useState<TransactionWithRelations[]>([])
+
+  // Dropdown configuración
+  const [showConfigMenu, setShowConfigMenu] = useState(false)
+  const [menuPos, setMenuPos] = useState({ top: 0, right: 0 })
+  const configBtnRef = useRef<HTMLButtonElement>(null)
+  const configMenuRef = useRef<HTMLDivElement>(null)
+
+  function openConfigMenu() {
+    if (configBtnRef.current) {
+      const rect = configBtnRef.current.getBoundingClientRect()
+      setMenuPos({
+        top: rect.bottom + 6,
+        right: window.innerWidth - rect.right,
+      })
+    }
+    setShowConfigMenu((v) => !v)
+  }
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      const target = e.target as Node
+      if (
+        configMenuRef.current && !configMenuRef.current.contains(target) &&
+        configBtnRef.current  && !configBtnRef.current.contains(target)
+      ) {
+        setShowConfigMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // Filtros tab transacciones
   const [filterDate, setFilterDate] = useState('')
@@ -106,7 +144,9 @@ export default function AdminDashboard() {
         }
         setCurrentUserId(profile.id)
         setBranches(branchList)
-        if (branchList.length > 0) setSelectedBranch(branchList[0].id)
+        if (branchList.length > 0) {
+          setSelectedBranch(resolveInitialBranch(branchList))
+        }
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error de inicialización')
       } finally {
@@ -116,19 +156,28 @@ export default function AdminDashboard() {
     init()
   }, [])
 
-  // ─── Carga de semanas al cambiar sucursal ──────────────────────────
+  // ─── Carga de meses/semanas al cambiar sucursal ────────────────────
   useEffect(() => {
     if (!selectedBranch) return
-    async function loadWeeks() {
+    async function loadMonths() {
       try {
-        const ws = await getWeeksByBranch(selectedBranch)
-        setWeeks(ws)
-        setSelectedWeek(ws.find((w) => w.status === 'open') ?? ws[0] ?? null)
+        // Reset inmediato para no mostrar datos de la sucursal anterior
+        setSelectedMonthIdx(0)
+        setSelectedWeek(null)
+        setMonths([])
+        const ms = await getMonthsWithWeeks(selectedBranch)
+        setMonths(ms)
+        // Apuntar al mes que tiene semana abierta, o el último mes
+        const openIdx = ms.findIndex((m) => m.weeks.some((w) => w.status === 'open'))
+        const idx = openIdx >= 0 ? openIdx : Math.max(0, ms.length - 1)
+        setSelectedMonthIdx(idx)
+        const ws = ms[idx]?.weeks ?? []
+        setSelectedWeek(ws.find((w) => w.status === 'open') ?? ws[ws.length - 1] ?? null)
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Error cargando semanas')
+        setError(e instanceof Error ? e.message : 'Error cargando meses')
       }
     }
-    loadWeeks()
+    loadMonths()
   }, [selectedBranch])
 
   // ─── Carga de datos al cambiar semana/tab ─────────────────────────
@@ -146,8 +195,12 @@ export default function AdminDashboard() {
         setSettlements(settlData)
         setExpenses(expData)
       } else if (tab === 'transacciones') {
-        const data = await getWeekTransactions(selectedWeek.id)
-        setTransactions(data)
+        const [txData, advData] = await Promise.all([
+          getWeekTransactions(selectedWeek.id),
+          getAdvancesByDateRange(selectedBranch, selectedWeek.start_date, selectedWeek.end_date),
+        ])
+        setTransactions(txData)
+        setWeekAdvances(advData)
       } else if (tab === 'gastos') {
         const data = await getExpensesByWeek(selectedWeek.id)
         setExpenses(data)
@@ -180,16 +233,18 @@ export default function AdminDashboard() {
 
   async function handleCloseWeek() {
     if (!selectedWeek || !currentUserId) return
-    const weekDisplayNum = weeks.length - weeks.findIndex((w) => w.id === selectedWeek.id)
+    const weekIdx = weeks.findIndex((w) => w.id === selectedWeek.id)
+    const weekDisplayNum = weekIdx + 1
     if (!confirm(`¿Cerrar la Semana ${weekDisplayNum}? Se calcularán todas las liquidaciones.`)) return
     try {
       setActionLoading('close-week')
       const barbers = await getBarbersByBranch(selectedBranch)
       await closeWeek(selectedWeek.id, currentUserId)
       await calculateAllSettlementsForWeek(selectedWeek.id, barbers.map((b) => b.id))
-      const ws = await getWeeksByBranch(selectedBranch)
-      setWeeks(ws)
-      setSelectedWeek(ws.find((w) => w.id === selectedWeek.id) ?? null)
+      const ms = await getMonthsWithWeeks(selectedBranch)
+      setMonths(ms)
+      const updatedWeeks = ms[selectedMonthIdx]?.weeks ?? []
+      setSelectedWeek(updatedWeeks.find((w) => w.id === selectedWeek.id) ?? null)
       await loadTabData()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error cerrando semana')
@@ -276,69 +331,133 @@ export default function AdminDashboard() {
 
   return (
     <div className="admin-app">
-      {/* ── TOP BAR ── */}
-      <header className="admin-topbar">
-        <div className="admin-topbar-left">
+      {/* ── HEADER WRAPPER (sticky) ── */}
+      <div className="admin-header-wrapper">
+
+        {/* ── Barra de marca ── */}
+        <div className="admin-brand-bar">
           <span className="admin-logo">VALHALLA</span>
           <span className="admin-badge">Admin</span>
         </div>
-        <div className="admin-topbar-right">
-          <select
-            value={selectedBranch}
-            onChange={(e) => setSelectedBranch(e.target.value)}
-            className="admin-select"
-          >
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
-          <select
-            value={selectedWeek?.id ?? ''}
-            onChange={(e) => {
-              const w = weeks.find((x) => x.id === e.target.value) ?? null
-              setSelectedWeek(w)
-            }}
-            className="admin-select"
-          >
-            {weeks.map((w, i) => (
-              <option key={w.id} value={w.id}>
-                Sem. {weeks.length - i} · {formatDate(w.start_date)} – {formatDate(w.end_date)} · {WEEK_STATUS_LABELS[w.status]}
-              </option>
-            ))}
-          </select>
-          {selectedWeek?.status === 'open' && (
-            <button
-              onClick={handleCloseWeek}
-              disabled={actionLoading === 'close-week'}
-              className="admin-btn admin-btn--danger"
+
+        {/* ── Barra de controles ── */}
+        <header className="admin-topbar">
+          {/* Izquierda: sucursal + semana */}
+          <div className="admin-topbar-left">
+            <select
+              value={selectedBranch}
+              onChange={(e) => setSelectedBranch(e.target.value)}
+              className="admin-select"
             >
-              {actionLoading === 'close-week' ? 'Cerrando...' : 'Cerrar semana'}
-            </button>
-          )}
-          {selectedWeek?.status !== 'open' && (
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>{b.name}</option>
+              ))}
+            </select>
+            {months.length > 0 && (
+              <div className="month-nav">
+                <button
+                  className="month-nav-arrow"
+                  disabled={selectedMonthIdx === 0}
+                  onClick={() => {
+                    const idx = selectedMonthIdx - 1
+                    setSelectedMonthIdx(idx)
+                    const ws = months[idx]?.weeks ?? []
+                    setSelectedWeek(ws.find((w) => w.status === 'open') ?? ws[ws.length - 1] ?? null)
+                  }}
+                >‹</button>
+                <span className="month-nav-label">
+                  {MONTH_NAMES[(months[selectedMonthIdx]?.month ?? 1) - 1]}{' '}
+                  {months[selectedMonthIdx]?.year}
+                </span>
+                <button
+                  className="month-nav-arrow"
+                  disabled={selectedMonthIdx === months.length - 1}
+                  onClick={() => {
+                    const idx = selectedMonthIdx + 1
+                    setSelectedMonthIdx(idx)
+                    const ws = months[idx]?.weeks ?? []
+                    setSelectedWeek(ws.find((w) => w.status === 'open') ?? ws[ws.length - 1] ?? null)
+                  }}
+                >›</button>
+              </div>
+            )}
+            {weeks.length > 0 && (
+              <div className="week-pills">
+                {weeks.map((w, i) => (
+                  <button
+                    key={w.id}
+                    onClick={() => setSelectedWeek(w)}
+                    title={`${formatDate(w.start_date)} – ${formatDate(w.end_date)} · ${WEEK_STATUS_LABELS[w.status]}`}
+                    className={[
+                      'week-pill',
+                      selectedWeek?.id === w.id ? 'week-pill--active' : '',
+                      w.status === 'open' ? 'week-pill--open' : '',
+                      w.status === 'paid' ? 'week-pill--paid' : '',
+                    ].join(' ')}
+                  >
+                    S{i + 1}
+                  </button>
+                ))}
+              </div>
+            )}
+            {selectedWeek?.status === 'open' && (
+              <button
+                onClick={handleCloseWeek}
+                disabled={actionLoading === 'close-week'}
+                className="admin-btn admin-btn--danger"
+              >
+                {actionLoading === 'close-week' ? 'Cerrando...' : 'Cerrar semana'}
+              </button>
+            )}
+            {selectedWeek && selectedWeek.status !== 'open' && (
+              <button
+                onClick={handleRecalculate}
+                disabled={actionLoading === 'recalc'}
+                className="admin-btn admin-btn--ghost"
+              >
+                {actionLoading === 'recalc' ? 'Recalculando...' : '↺ Recalcular'}
+              </button>
+            )}
+          </div>
+
+          {/* Derecha: navegación a secciones */}
+          <div className="admin-topbar-right">
+            <Link href="/admin/reportes" className="admin-btn admin-btn--ghost">Reportes</Link>
+
+            {/* Dropdown Configuración */}
             <button
-              onClick={handleRecalculate}
-              disabled={actionLoading === 'recalc'}
-              className="admin-btn admin-btn--ghost"
+              ref={configBtnRef}
+              onClick={openConfigMenu}
+              className={`admin-btn admin-btn--ghost admin-dropdown-trigger${showConfigMenu ? ' admin-btn--active' : ''}`}
             >
-              {actionLoading === 'recalc' ? 'Recalculando...' : '↺ Recalcular'}
+              Configuración
+              <span className="admin-dropdown-arrow">{showConfigMenu ? '▴' : '▾'}</span>
             </button>
-          )}
-          <button
-            onClick={() => setShowNewWeekForm(true)}
-            className="admin-btn admin-btn--primary"
-          >
-            + Nueva semana
-          </button>
-          <Link href="/admin/configuracion" className="admin-btn admin-btn--ghost">Configuración</Link>
-          <Link href="/admin/barberos"  className="admin-btn admin-btn--ghost">Barberos</Link>
-          <Link href="/admin/adelantos" className="admin-btn admin-btn--ghost">Adelantos</Link>
-          <Link href="/admin/servicios" className="admin-btn admin-btn--ghost">Servicios</Link>
-          <button onClick={handleLogout} className="admin-btn admin-btn--ghost">
-            Salir
-          </button>
-        </div>
-      </header>
+            {showConfigMenu && (
+              <div
+                ref={configMenuRef}
+                className="admin-dropdown-menu"
+                style={{ position: 'fixed', top: menuPos.top, right: menuPos.right }}
+              >
+                <Link href="/admin/configuracion" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
+                  Calendario
+                </Link>
+                <Link href="/admin/barberos" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
+                  Barberos
+                </Link>
+                <Link href="/admin/servicios" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
+                  Servicios
+                </Link>
+              </div>
+            )}
+
+
+            <Link href="/admin/adelantos" className="admin-btn admin-btn--ghost">Adelantos</Link>
+            <button onClick={handleLogout} className="admin-btn admin-btn--ghost">Salir</button>
+          </div>
+        </header>
+
+      </div>
 
       {/* ── TABS ── */}
       <div className="admin-tabs">
@@ -614,9 +733,72 @@ export default function AdminDashboard() {
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr className="tfoot-row">
+                    <td colSpan={4}><strong>{filtered.length} transacción{filtered.length !== 1 ? 'es' : ''}</strong></td>
+                    <td><strong>{formatARS(filtered.reduce((s, t) => s + t.amount, 0))}</strong></td>
+                    <td><strong>{formatARS(filtered.reduce((s, t) => s + t.branch_share, 0))}</strong></td>
+                    <td><strong className="td-amber">{formatARS(filtered.reduce((s, t) => s + t.barber_share, 0))}</strong></td>
+                    <td><strong>{formatARS(filtered.reduce((s, t) => s + t.barber_already_collected, 0))}</strong></td>
+                    <td colSpan={2}></td>
+                  </tr>
+                </tfoot>
               </table>
             )}
             </div>{/* /admin-table-wrap */}
+
+            {/* ── Adelantos del período ─────────────────────────── */}
+            {weekAdvances.length > 0 && (
+              <div className="advances-section">
+                <div className="advances-section__header">
+                  <span className="advances-section__title">Adelantos del período</span>
+                  <span className="advances-section__total">
+                    Total: <strong>{formatARS(weekAdvances.reduce((s, a) => s + a.amount, 0))}</strong>
+                  </span>
+                </div>
+                <div className="admin-table-wrap">
+                  <table className="admin-table">
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th>Barbero</th>
+                        <th>Motivo</th>
+                        <th>Estado</th>
+                        <th>Monto</th>
+                        <th>Origen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {weekAdvances.map((adv) => (
+                        <tr key={adv.id}>
+                          <td className="td-date">{formatDate(adv.advance_date)}</td>
+                          <td>{adv.barber.full_name}</td>
+                          <td>{adv.reason ?? '—'}</td>
+                          <td>
+                            <span className={`badge ${adv.status === 'approved' ? 'badge--green' : 'badge--violet'}`}>
+                              {adv.status === 'approved' ? 'Autorizado' : 'Pendiente'}
+                            </span>
+                          </td>
+                          <td className="td-amber"><strong>{formatARS(adv.amount)}</strong></td>
+                          <td>
+                            <span className="text-xs text-zinc-500">
+                              {adv.registered_by === adv.barber_id ? 'Barbero' : 'Admin'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot>
+                      <tr className="tfoot-row">
+                        <td colSpan={4}><strong>{weekAdvances.length} adelanto{weekAdvances.length !== 1 ? 's' : ''}</strong></td>
+                        <td><strong className="td-amber">{formatARS(weekAdvances.reduce((s, a) => s + a.amount, 0))}</strong></td>
+                        <td></td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
           )
         })()}
@@ -691,19 +873,15 @@ export default function AdminDashboard() {
           }}
         />
       )}
-      {showNewWeekForm && (
-        <NewWeekFormModal
-          branchId={selectedBranch}
-          lastWeekNumber={weeks.length > 0 ? Math.max(...weeks.map((w) => w.week_number)) : 0}
-          onClose={() => setShowNewWeekForm(false)}
-          onSaved={async () => {
-            setShowNewWeekForm(false)
-            const ws = await getWeeksByBranch(selectedBranch)
-            setWeeks(ws)
-            setSelectedWeek(ws[0])
-          }}
-        />
-      )}
+
+      {/* ── Marca de agua Flowi (fija en el centro) ── */}
+      <div className="admin-watermark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" className="admin-watermark__icon">
+          <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/>
+          <path d="M5 8.5h3.5M5 6h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+        <span className="admin-watermark__text">Flowi Management</span>
+      </div>
     </div>
   )
 }
@@ -877,96 +1055,6 @@ function ExpenseFormModal({
           <button onClick={onClose} className="admin-btn admin-btn--ghost">Cancelar</button>
           <button onClick={handleSave} disabled={saving} className="admin-btn admin-btn--primary">
             {saving ? 'Guardando...' : 'Guardar gasto'}
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Modal: Nueva semana ───────────────────────────────────────────────────
-function NewWeekFormModal({
-  branchId,
-  lastWeekNumber,
-  onClose,
-  onSaved,
-}: {
-  branchId: string
-  lastWeekNumber: number
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const nextMonday = (() => {
-    const d = new Date()
-    const day = d.getDay()
-    const diff = day === 0 ? 1 : 8 - day
-    d.setDate(d.getDate() + diff)
-    return d.toISOString().split('T')[0]
-  })()
-
-  const [form, setForm] = useState({
-    start_date: nextMonday,
-    end_date: (() => {
-      const d = new Date(nextMonday + 'T12:00:00')
-      d.setDate(d.getDate() + 6)
-      return d.toISOString().split('T')[0]
-    })(),
-  })
-  const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-
-  async function handleSave() {
-    try {
-      setSaving(true)
-      await createWeek({
-        branch_id: branchId,
-        week_number: lastWeekNumber + 1,
-        start_date: form.start_date,
-        end_date: form.end_date,
-        status: 'open',
-      })
-      onSaved()
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Error creando semana')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>Nueva semana — Semana {lastWeekNumber + 1}</h3>
-          <button onClick={onClose} className="modal-close">✕</button>
-        </div>
-        <div className="modal-body">
-          {err && <p className="form-error">{err}</p>}
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Inicio *</label>
-              <input
-                type="date"
-                className="form-input"
-                value={form.start_date}
-                onChange={(e) => setForm({ ...form, start_date: e.target.value })}
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Fin *</label>
-              <input
-                type="date"
-                className="form-input"
-                value={form.end_date}
-                onChange={(e) => setForm({ ...form, end_date: e.target.value })}
-              />
-            </div>
-          </div>
-        </div>
-        <div className="modal-footer">
-          <button onClick={onClose} className="admin-btn admin-btn--ghost">Cancelar</button>
-          <button onClick={handleSave} disabled={saving} className="admin-btn admin-btn--primary">
-            {saving ? 'Creando...' : 'Crear semana'}
           </button>
         </div>
       </div>

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { usePersistedBranch, resolveInitialBranch } from '@/lib/hooks/usePersistedBranch'
 import type { Branch, Profile, ServiceCatalog, ServiceCatalogInsert } from '@/lib/supabase/database.types'
 import {
   getCurrentProfile,
@@ -21,7 +22,7 @@ function formatARS(n: number): string {
 export default function ServicesView() {
   const [profile, setProfile]               = useState<Profile | null>(null)
   const [branches, setBranches]             = useState<Branch[]>([])
-  const [selectedBranch, setSelectedBranch] = useState<string>('')
+  const [selectedBranch, setSelectedBranch] = usePersistedBranch()
   const [services, setServices]             = useState<ServiceCatalog[]>([])
   const [loading, setLoading]               = useState(true)
   const [error, setError]                   = useState<string | null>(null)
@@ -55,8 +56,9 @@ export default function ServicesView() {
       if (!p) { setError('No autenticado'); return }
       setProfile(p)
       setBranches(bs)
-      setSelectedBranch(p.branch_id)
-      await loadServices(p.branch_id)
+      const initialBranch = resolveInitialBranch(bs)
+      setSelectedBranch(initialBranch)
+      await loadServices(initialBranch)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error inesperado')
     } finally {
@@ -155,7 +157,7 @@ export default function ServicesView() {
   if (error)   return <div className="p-6 text-red-400">{error}</div>
 
   return (
-    <div className="max-w-2xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 py-8 space-y-6">
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -237,7 +239,7 @@ export default function ServicesView() {
       )}
 
       {/* Active services */}
-      <section className="space-y-2">
+      <section className="space-y-3">
         <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
           Activos · {active.length}
         </h2>
@@ -246,53 +248,57 @@ export default function ServicesView() {
             <p className="text-zinc-500 text-sm">No hay servicios activos. Creá el primero.</p>
           </div>
         ) : (
-          active.map((svc) => (
-            <ServiceRow
-              key={svc.id}
-              svc={svc}
-              editingId={editingId}
-              editName={editName}
-              editPrice={editPrice}
-              editError={editError}
-              saving={saving}
-              togglingId={togglingId}
-              onEdit={openEdit}
-              onEditName={setEditName}
-              onEditPrice={setEditPrice}
-              onSave={handleSaveEdit}
-              onCancelEdit={() => { setEditingId(null); setEditError(null) }}
-              onToggle={handleToggle}
-              onCancelToggle={() => setTogglingId(null)}
-            />
-          ))
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {active.map((svc) => (
+              <ServiceRow
+                key={svc.id}
+                svc={svc}
+                editingId={editingId}
+                editName={editName}
+                editPrice={editPrice}
+                editError={editError}
+                saving={saving}
+                togglingId={togglingId}
+                onEdit={openEdit}
+                onEditName={setEditName}
+                onEditPrice={setEditPrice}
+                onSave={handleSaveEdit}
+                onCancelEdit={() => { setEditingId(null); setEditError(null) }}
+                onToggle={handleToggle}
+                onCancelToggle={() => setTogglingId(null)}
+              />
+            ))}
+          </div>
         )}
       </section>
 
       {/* Inactive services */}
       {inactive.length > 0 && (
-        <section className="space-y-2">
+        <section className="space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
             Inactivos · {inactive.length}
           </h2>
-          {inactive.map((svc) => (
-            <ServiceRow
-              key={svc.id}
-              svc={svc}
-              editingId={editingId}
-              editName={editName}
-              editPrice={editPrice}
-              editError={editError}
-              saving={saving}
-              togglingId={togglingId}
-              onEdit={openEdit}
-              onEditName={setEditName}
-              onEditPrice={setEditPrice}
-              onSave={handleSaveEdit}
-              onCancelEdit={() => { setEditingId(null); setEditError(null) }}
-              onToggle={handleToggle}
-              onCancelToggle={() => setTogglingId(null)}
-            />
-          ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {inactive.map((svc) => (
+              <ServiceRow
+                key={svc.id}
+                svc={svc}
+                editingId={editingId}
+                editName={editName}
+                editPrice={editPrice}
+                editError={editError}
+                saving={saving}
+                togglingId={togglingId}
+                onEdit={openEdit}
+                onEditName={setEditName}
+                onEditPrice={setEditPrice}
+                onSave={handleSaveEdit}
+                onCancelEdit={() => { setEditingId(null); setEditError(null) }}
+                onToggle={handleToggle}
+                onCancelToggle={() => setTogglingId(null)}
+              />
+            ))}
+          </div>
         </section>
       )}
     </div>

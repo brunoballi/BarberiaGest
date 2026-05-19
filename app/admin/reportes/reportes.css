@@ -1,0 +1,305 @@
+/* ── Reportes page ──────────────────────────────────────────────── */
+
+.report-page {
+  width: 100%;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 4rem;
+  background: #0f0f0f;
+  min-height: 100vh;
+  color: #e5e5e5;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 0.875rem;
+  box-sizing: border-box;
+}
+
+@media (min-width: 768px) {
+  .report-page { padding: 2rem 1.5rem 4rem; }
+}
+
+@media (min-width: 1024px) {
+  .report-page { padding: 2.5rem 2rem 4rem; }
+}
+
+.report-loading,
+.report-error,
+.report-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  min-height: 40vh;
+  color: #71717a;
+  font-size: 0.9rem;
+}
+
+.report-error { color: #f87171; }
+
+/* ── Header ─────────────────────────────────────────────────────── */
+.report-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-bottom: 2rem;
+}
+
+.report-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #fff;
+  margin: 0;
+}
+
+.report-subtitle {
+  font-size: 0.8125rem;
+  color: #52525b;
+  margin-top: 0.25rem;
+}
+
+.report-period {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  padding: 6px 12px;
+}
+
+.report-period__arrow {
+  background: none;
+  border: none;
+  color: #a1a1aa;
+  font-size: 1.25rem;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+.report-period__arrow:hover:not(:disabled) { color: #fff; }
+.report-period__arrow--disabled { opacity: 0.3; cursor: not-allowed; }
+
+.report-period__label {
+  font-size: 0.875rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #e4e4e7;
+  min-width: 110px;
+  text-align: center;
+}
+
+/* ── Cards grid ─────────────────────────────────────────────────── */
+.report-cards-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  margin-bottom: 2.5rem;
+}
+
+@media (min-width: 640px) {
+  .report-cards-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 1024px) {
+  .report-cards-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+}
+
+.report-card {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 14px;
+  padding: 1.25rem;
+}
+
+.report-card--total {
+  border-color: #3f3f46;
+  background: #1c1c20;
+}
+
+.report-card__name {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #71717a;
+  margin-bottom: 1rem;
+}
+
+.report-card__metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.report-card__divider {
+  height: 1px;
+  background: #27272a;
+  margin: 0.5rem 0;
+}
+
+.report-card__avg-title {
+  font-size: 0.65rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #52525b;
+  margin-bottom: 0.25rem;
+}
+
+/* ── Metric row ─────────────────────────────────────────────────── */
+.metric-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.metric-row__label {
+  font-size: 0.75rem;
+  color: #71717a;
+  white-space: nowrap;
+}
+
+.metric-row__value {
+  font-size: 0.875rem;
+  text-align: right;
+}
+
+/* ── Sections ───────────────────────────────────────────────────── */
+.report-section {
+  margin-bottom: 2.5rem;
+}
+
+.report-section__title {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #52525b;
+  margin-bottom: 1rem;
+}
+
+.report-chart-box {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 14px;
+  padding: 1.5rem 1rem 1rem;
+  height: 300px;
+}
+
+@media (min-width: 768px) {
+  .report-chart-box { height: 360px; }
+}
+
+@media (min-width: 1024px) {
+  .report-chart-box { height: 420px; }
+}
+
+/* ── Pie grid ───────────────────────────────────────────────────── */
+.report-pie-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .report-pie-grid { grid-template-columns: repeat(2, 1fr); }
+}
+
+@media (min-width: 1024px) {
+  .report-pie-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+}
+
+.report-pie-card {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 14px;
+  padding: 1.25rem;
+}
+
+.report-pie-card__name {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #71717a;
+  margin-bottom: 0.5rem;
+}
+
+.report-pie-card__empty {
+  color: #3f3f46;
+  font-size: 0.8rem;
+  text-align: center;
+  padding: 3rem 0;
+}
+
+.report-pie-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.5rem;
+}
+
+.report-pie-legend__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.report-pie-legend__dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.report-pie-legend__label {
+  flex: 1;
+  font-size: 0.75rem;
+  color: #a1a1aa;
+}
+
+.report-pie-legend__value {
+  font-size: 0.75rem;
+  color: #e4e4e7;
+  font-weight: 500;
+}
+
+/* ── Recharts tooltip ───────────────────────────────────────────── */
+.report-tooltip {
+  background: #1c1c1e;
+  border: 1px solid #3f3f46;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 0.8rem;
+}
+
+.report-tooltip__label {
+  color: #71717a;
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.report-tooltip__row {
+  margin: 2px 0;
+}
+
+/* ── Loader (reuse admin pattern) ───────────────────────────────── */
+.loader {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #27272a;
+  border-top-color: #f59e0b;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

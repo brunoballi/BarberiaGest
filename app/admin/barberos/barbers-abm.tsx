@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { usePersistedBranch, resolveInitialBranch } from '@/lib/hooks/usePersistedBranch'
 import type {
   Branch,
   Profile,
@@ -139,7 +140,7 @@ export default function BarbersAbm() {
   const [adminProfile, setAdminProfile] = useState<Profile | null>(null)
   const [branches, setBranches] = useState<Branch[]>([])
   const [barbers, setBarbers] = useState<Profile[]>([])
-  const [selectedBranch, setSelectedBranch] = useState<string>('')
+  const [selectedBranch, setSelectedBranch] = usePersistedBranch()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -155,6 +156,15 @@ export default function BarbersAbm() {
   const [editForm, setEditForm] = useState<EditForm | null>(null)
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+
+  // Invite existing barber
+  const [invitingExisting, setInvitingExisting] = useState<Profile | null>(null)
+  const [inviteExistingEmail, setInviteExistingEmail] = useState('')
+  const [inviteExistingError, setInviteExistingError] = useState<string | null>(null)
+  const [sendingExistingInvite, setSendingExistingInvite] = useState(false)
+
+  // Delete confirmation
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // Toggle active confirmation
   const [togglingId, setTogglingId] = useState<string | null>(null)
@@ -172,7 +182,7 @@ export default function BarbersAbm() {
       if (!p) { setError('No autenticado'); return }
       setAdminProfile(p)
       setBranches(bs)
-      const branch = p.branch_id
+      const branch = resolveInitialBranch(bs)
       setSelectedBranch(branch)
       setInviteForm((f) => ({ ...f, branch_id: branch }))
       await loadBarbers(branch)
@@ -307,6 +317,44 @@ export default function BarbersAbm() {
     }
   }
 
+  // ── Invite existing barber ───────────────────────────────────────────────
+  async function handleInviteExisting(e: React.FormEvent) {
+    e.preventDefault()
+    if (!invitingExisting) return
+    setSendingExistingInvite(true)
+    setInviteExistingError(null)
+    try {
+      const res = await fetch('/api/invite-existing-barber', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId: invitingExisting.id, email: inviteExistingEmail.trim() }),
+      })
+      const json = await res.json()
+      if (!res.ok) throw new Error(json.error ?? 'Error al invitar')
+      setNewCredentials(json.credentials)
+      setInvitingExisting(null)
+      setInviteExistingEmail('')
+      await loadBarbers(selectedBranch)
+    } catch (e) {
+      setInviteExistingError(e instanceof Error ? e.message : 'Error al invitar')
+    } finally {
+      setSendingExistingInvite(false)
+    }
+  }
+
+  // ── Delete (soft) ─────────────────────────────────────────────────────────
+  async function handleDelete(barber: Profile) {
+    if (deletingId !== barber.id) { setDeletingId(barber.id); return }
+    try {
+      await updateBarberProfile(barber.id, { is_active: false })
+      setBarbers((prev) => prev.map((b) => b.id === barber.id ? { ...b, is_active: false } : b))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al eliminar')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   // ── Render ───────────────────────────────────────────────────────────────
   if (loading) {
     return (
@@ -324,7 +372,7 @@ export default function BarbersAbm() {
   const inactive = barbers.filter((b) => !b.is_active)
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto px-4 py-8 space-y-6">
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -533,7 +581,7 @@ export default function BarbersAbm() {
       )}
 
       {/* Active barbers */}
-      <section className="space-y-2">
+      <section className="space-y-3">
         <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
           Activos · {active.length}
         </h2>
@@ -542,39 +590,85 @@ export default function BarbersAbm() {
             <p className="text-zinc-500 text-sm">No hay barberos activos</p>
           </div>
         ) : (
-          active.map((barber) => (
-            <BarberRow
-              key={barber.id}
-              barber={barber}
-              togglingId={togglingId}
-              onEdit={openEdit}
-              onToggle={handleToggleActive}
-              onCancelToggle={() => setTogglingId(null)}
-            />
-          ))
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {active.map((barber) => (
+              <BarberRow
+                key={barber.id}
+                barber={barber}
+                deletingId={deletingId}
+                onEdit={openEdit}
+                onInvite={(b) => { setInvitingExisting(b); setInviteExistingEmail(''); setInviteExistingError(null) }}
+                onDelete={handleDelete}
+                onCancelDelete={() => setDeletingId(null)}
+              />
+            ))}
+          </div>
         )}
       </section>
 
       {/* Inactive barbers */}
       {inactive.length > 0 && (
-        <section className="space-y-2">
+        <section className="space-y-3">
           <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
             Inactivos · {inactive.length}
           </h2>
-          {inactive.map((barber) => (
-            <BarberRow
-              key={barber.id}
-              barber={barber}
-              togglingId={togglingId}
-              onEdit={openEdit}
-              onToggle={handleToggleActive}
-              onCancelToggle={() => setTogglingId(null)}
-            />
-          ))}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {inactive.map((barber) => (
+              <BarberRow
+                key={barber.id}
+                barber={barber}
+                deletingId={deletingId}
+                onEdit={openEdit}
+                onInvite={(b) => { setInvitingExisting(b); setInviteExistingEmail(''); setInviteExistingError(null) }}
+                onDelete={handleDelete}
+                onCancelDelete={() => setDeletingId(null)}
+              />
+            ))}
+          </div>
         </section>
       )}
 
-      {/* Modal: credenciales del nuevo barbero */}
+      {/* Modal: invitar barbero existente */}
+      {invitingExisting && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-zinc-900 border border-zinc-700 rounded-2xl p-6 w-full max-w-sm space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-base font-bold text-white">Invitar a {invitingExisting.full_name}</h2>
+                <p className="text-zinc-500 text-xs mt-0.5">Se creará su acceso a la app</p>
+              </div>
+              <button onClick={() => { setInvitingExisting(null); setInviteExistingEmail(''); setInviteExistingError(null) }} className="text-zinc-500 hover:text-white text-xl">✕</button>
+            </div>
+            <form onSubmit={handleInviteExisting} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">Email del barbero</label>
+                <input
+                  required
+                  type="email"
+                  autoFocus
+                  value={inviteExistingEmail}
+                  onChange={(e) => setInviteExistingEmail(e.target.value)}
+                  placeholder="nombre@email.com"
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              {inviteExistingError && <p className="text-red-400 text-sm">{inviteExistingError}</p>}
+              <div className="flex gap-3">
+                <button type="submit" disabled={sendingExistingInvite}
+                  className="flex-1 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-zinc-950 font-bold px-4 py-2.5 rounded-lg text-sm transition-colors">
+                  {sendingExistingInvite ? 'Creando acceso...' : 'Generar acceso'}
+                </button>
+                <button type="button" onClick={() => { setInvitingExisting(null); setInviteExistingEmail(''); setInviteExistingError(null) }}
+                  className="px-4 py-2.5 rounded-lg text-sm border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500 transition-colors">
+                  Cancelar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: credenciales del barbero */}
       {newCredentials && (
         <CredentialsModal
           credentials={newCredentials}
@@ -595,12 +689,13 @@ function CredentialsModal({
 }) {
   const [copied, setCopied] = useState(false)
   const [editablePassword, setEditablePassword] = useState(credentials.password)
+  const appLink = typeof window !== 'undefined' ? `${window.location.origin}/barber` : '/barber'
 
   function copyAll() {
-    const text = `Usuario: ${credentials.email}\nContraseña: ${editablePassword}`
+    const text = `🪒 Acceso a Valhalla Barbershop\n\nUsuario: ${credentials.email}\nContraseña: ${editablePassword}\nLink directo: ${appLink}`
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
-      setTimeout(() => setCopied(false), 2000)
+      setTimeout(() => setCopied(false), 2500)
     })
   }
 
@@ -610,8 +705,8 @@ function CredentialsModal({
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-full bg-emerald-500/20 flex items-center justify-center text-emerald-400 text-xl">✓</div>
           <div>
-            <p className="text-white font-bold">Barbero creado</p>
-            <p className="text-zinc-400 text-xs">Compartí estas credenciales por WhatsApp</p>
+            <p className="text-white font-bold">Acceso creado</p>
+            <p className="text-zinc-400 text-xs">Compartí estos datos con el barbero</p>
           </div>
         </div>
 
@@ -630,6 +725,10 @@ function CredentialsModal({
             />
             <p className="text-zinc-600 text-xs mt-1">Podés editarla antes de copiar</p>
           </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1">Link directo</p>
+            <p className="text-emerald-400 font-mono text-xs select-all break-all">{appLink}</p>
+          </div>
         </div>
 
         <button
@@ -640,14 +739,14 @@ function CredentialsModal({
               : 'bg-zinc-700 hover:bg-zinc-600 text-white border border-zinc-600'
           }`}
         >
-          {copied ? '✓ Copiado al portapapeles' : 'Copiar credenciales'}
+          {copied ? '✓ Copiado — listo para enviar' : '📋 Copiar todo para compartir'}
         </button>
 
         <button
           onClick={onClose}
           className="w-full bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold py-2.5 rounded-lg text-sm transition-colors"
         >
-          Listo, ya lo guardé
+          Listo
         </button>
       </div>
     </div>
@@ -657,34 +756,32 @@ function CredentialsModal({
 // ─── BarberRow sub-component ──────────────────────────────────────────────
 function BarberRow({
   barber,
-  togglingId,
+  deletingId,
   onEdit,
-  onToggle,
-  onCancelToggle,
+  onInvite,
+  onDelete,
+  onCancelDelete,
 }: {
   barber: Profile
-  togglingId: string | null
+  deletingId: string | null
   onEdit: (b: Profile) => void
-  onToggle: (b: Profile) => void
-  onCancelToggle: () => void
+  onInvite: (b: Profile) => void
+  onDelete: (b: Profile) => void
+  onCancelDelete: () => void
 }) {
   function rateLabel(b: Profile): string {
-    if (b.compensation_type === 'percentage') {
-      return b.commission_rate != null
-        ? `${Math.round(b.commission_rate * 100)}%`
-        : '—'
-    }
-    if (b.compensation_type === 'salary') {
+    if (b.compensation_type === 'percentage')
+      return b.commission_rate != null ? `${Math.round(b.commission_rate * 100)}%` : '—'
+    if (b.compensation_type === 'salary')
       return b.base_salary_rate != null
         ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(b.base_salary_rate)
         : '—'
-    }
     return b.box_rental_amount != null
       ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(b.box_rental_amount)
       : '—'
   }
 
-  const isToggling = togglingId === barber.id
+  const isDeleting = deletingId === barber.id
 
   return (
     <div className={`bg-zinc-900 border rounded-xl px-5 py-4 flex items-center justify-between gap-4 ${barber.is_active ? 'border-zinc-800' : 'border-zinc-800/50 opacity-60'}`}>
@@ -692,10 +789,12 @@ function BarberRow({
         <p className="text-white font-semibold text-sm truncate">{barber.full_name}</p>
         <p className="text-zinc-500 text-xs mt-0.5">
           {COMP_LABELS[barber.compensation_type]} · {rateLabel(barber)}
+          {!barber.is_active && <span className="ml-2 text-zinc-600">· Inactivo</span>}
         </p>
       </div>
 
       <div className="flex items-center gap-2 flex-shrink-0">
+        {/* Editar */}
         <button
           onClick={() => onEdit(barber)}
           className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-amber-400 border border-zinc-700 hover:border-amber-500/50 bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors"
@@ -707,28 +806,38 @@ function BarberRow({
           Editar
         </button>
 
-        {isToggling ? (
+        {/* Invitar */}
+        {barber.is_active && (
+          <button
+            onClick={() => onInvite(barber)}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-emerald-400 border border-zinc-700 hover:border-emerald-500/50 bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
+              <polyline points="22,6 12,13 2,6"/>
+            </svg>
+            Invitar
+          </button>
+        )}
+
+        {/* Eliminar / Activar */}
+        {isDeleting ? (
           <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-400">¿Confirmar?</span>
-            <button
-              onClick={() => onToggle(barber)}
-              className="text-xs text-red-400 hover:text-red-300 font-semibold"
-            >
-              Sí
-            </button>
-            <button
-              onClick={onCancelToggle}
-              className="text-xs text-zinc-500 hover:text-zinc-300"
-            >
-              No
-            </button>
+            <span className="text-xs text-zinc-400">¿{barber.is_active ? 'Eliminar' : 'Ya eliminado'}?</span>
+            <button onClick={() => onDelete(barber)} className="text-xs text-red-400 hover:text-red-300 font-bold">Sí</button>
+            <button onClick={onCancelDelete} className="text-xs text-zinc-500 hover:text-zinc-300">No</button>
           </div>
         ) : (
           <button
-            onClick={() => onToggle(barber)}
-            className={`text-xs transition-colors ${barber.is_active ? 'text-zinc-500 hover:text-red-400' : 'text-zinc-500 hover:text-emerald-400'}`}
+            onClick={() => onDelete(barber)}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500 hover:text-red-400 border border-zinc-700 hover:border-red-500/40 bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors"
           >
-            {barber.is_active ? 'Desactivar' : 'Activar'}
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+              <path d="M10 11v6"/><path d="M14 11v6"/>
+              <path d="M9 6V4h6v2"/>
+            </svg>
+            {barber.is_active ? 'Eliminar' : 'Activar'}
           </button>
         )}
       </div>

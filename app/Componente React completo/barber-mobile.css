@@ -1,0 +1,310 @@
+/* ============================================================
+   VALHALLA BARBERSHOP — Mobile Barber Styles
+   /app/globals.css  (agregar a tu hoja global, o importar aparte)
+   ============================================================ */
+
+/* ── Fuentes ── */
+@import url('https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@300;400;500;600;700&display=swap');
+
+/* ── Variables ── */
+:root {
+  --c-bg: #0a0a0b;
+  --c-surface: #131316;
+  --c-surface-2: #1c1c21;
+  --c-border: #27272d;
+  --c-text: #f4f4f5;
+  --c-muted: #71717a;
+  --c-amber: #f59e0b;
+  --c-amber-dim: rgba(245, 158, 11, 0.12);
+  --c-emerald: #34d399;
+  --c-red: #f87171;
+  --c-cash: #34d399;
+  --c-transfer: #60a5fa;
+  --c-card: #c084fc;
+  --font-display: 'Bebas Neue', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+}
+
+/* ── Reset base ── */
+.valhalla-app {
+  background-color: var(--c-bg);
+  color: var(--c-text);
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+}
+
+/* ── Loader ── */
+.loader {
+  width: 36px;
+  height: 36px;
+  border: 2px solid var(--c-border);
+  border-top-color: var(--c-amber);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Cards ── */
+.card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+/* ── Stat cards ── */
+.stat-card {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 16px;
+  padding: 16px;
+}
+.stat-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--c-muted);
+  margin-bottom: 6px;
+}
+.stat-value {
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 0.02em;
+  color: var(--c-text);
+  line-height: 1;
+  margin-bottom: 4px;
+}
+.stat-sub {
+  font-size: 11px;
+  color: var(--c-muted);
+}
+.stat-count {
+  font-size: 11px;
+  color: var(--c-muted);
+  margin-top: 2px;
+}
+
+/* ── Botón primario ── */
+.btn-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--c-amber);
+  color: #000;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 16px;
+  border-radius: 14px;
+  padding: 16px 24px;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.1s, opacity 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-primary:active { transform: scale(0.97); }
+
+/* ── Botón ghost ── */
+.btn-ghost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--c-muted);
+  font-weight: 500;
+  font-size: 15px;
+  border-radius: 14px;
+  padding: 14px 24px;
+  border: 1px solid var(--c-border);
+  cursor: pointer;
+  transition: color 0.15s;
+}
+.btn-ghost:active { color: var(--c-text); }
+
+/* ── Botón register grande ── */
+.register-btn {
+  background: var(--c-amber-dim);
+  border: 1.5px solid var(--c-amber);
+  color: var(--c-amber);
+  border-radius: 18px;
+  padding: 24px;
+  cursor: pointer;
+  transition: background 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.register-btn:active {
+  background: rgba(245, 158, 11, 0.2);
+  transform: scale(0.98);
+}
+
+/* ── Icon button ── */
+.icon-btn {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 10px;
+  padding: 8px;
+  color: var(--c-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s;
+}
+.icon-btn:active { color: var(--c-text); }
+
+/* ── Section label ── */
+.section-label {
+  display: block;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--c-muted);
+  margin-bottom: 10px;
+}
+
+/* ── Service chips ── */
+.service-chip {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  padding: 12px 8px;
+  color: var(--c-text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+  text-align: center;
+  -webkit-tap-highlight-color: transparent;
+}
+.service-chip:active { transform: scale(0.96); }
+.service-chip--active {
+  background: var(--c-amber-dim);
+  border-color: var(--c-amber);
+  color: var(--c-amber);
+}
+
+/* ── Payment chips ── */
+.payment-chip {
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 14px;
+  padding: 16px 8px 12px;
+  color: var(--c-muted);
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  transition: border-color 0.15s, background 0.15s, color 0.15s, transform 0.1s;
+  -webkit-tap-highlight-color: transparent;
+}
+.payment-chip:active { transform: scale(0.96); }
+.payment-chip--active {
+  background: var(--c-amber-dim);
+  border-color: var(--c-amber);
+  color: var(--c-amber);
+}
+
+/* ── Amount input ── */
+.amount-input-wrapper {
+  display: flex;
+  align-items: center;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 14px;
+  padding: 0 16px;
+  transition: border-color 0.15s;
+}
+.amount-input-wrapper:focus-within {
+  border-color: var(--c-amber);
+}
+.amount-prefix {
+  color: var(--c-muted);
+  font-size: 22px;
+  font-weight: 300;
+  margin-right: 6px;
+  padding-top: 2px;
+}
+.amount-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  color: var(--c-text);
+  font-family: var(--font-display);
+  font-size: 36px;
+  letter-spacing: 0.02em;
+  padding: 14px 0;
+  width: 100%;
+}
+.amount-input::placeholder { color: var(--c-border); }
+
+/* ── Preview row ── */
+.preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--c-surface);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+
+/* ── Transaction row ── */
+.tx-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--c-surface);
+  border: 1px solid var(--c-border);
+  border-radius: 12px;
+  padding: 12px 14px;
+}
+
+/* ── Payment dot ── */
+.payment-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.payment-dot--cash     { background: var(--c-cash); }
+.payment-dot--transfer { background: var(--c-transfer); }
+.payment-dot--card     { background: var(--c-card); }
+
+/* ── Divider ── */
+.divider {
+  height: 1px;
+  background: var(--c-border);
+  margin: 4px 0;
+}
+
+/* ── Success circle ── */
+.success-circle {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: rgba(52, 211, 153, 0.12);
+  border: 1.5px solid var(--c-emerald);
+  color: var(--c-emerald);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+@keyframes pop {
+  0%   { transform: scale(0.6); opacity: 0; }
+  100% { transform: scale(1);   opacity: 1; }
+}
+
+/* ── Fade in ── */
+.animate-fadein {
+  animation: fadein 0.25s ease;
+}
+@keyframes fadein {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── Safe area padding (notch) ── */
+.pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }

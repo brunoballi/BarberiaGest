@@ -71,6 +71,13 @@ export default function LoginForm({ redirectTo, authError }: LoginFormProps) {
       <div className="login-box">
         {/* Logo */}
         <div className="login-logo">
+          <div className="login-flowi-badge">
+            <svg viewBox="0 0 16 16" fill="none" aria-hidden="true" className="login-flowi-icon">
+              <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/>
+              <path d="M5 8.5h3.5M5 6h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+            </svg>
+            Flowi Management
+          </div>
           <p className="login-logo-text">VALHALLA</p>
           <p className="login-logo-sub">Sistema de gestión</p>
         </div>

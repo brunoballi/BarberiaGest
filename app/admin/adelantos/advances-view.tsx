@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { usePersistedBranch, resolveInitialBranch } from '@/lib/hooks/usePersistedBranch'
 import type {
   Branch,
   Profile,
@@ -13,6 +14,7 @@ import {
   getBarbersByBranch,
   getPendingAdvancesByBranch,
   createAdvance,
+  approveAdvance,
   cancelAdvance,
 } from '@/lib/supabase/supabase.client'
 
@@ -32,12 +34,17 @@ function formatDate(dateStr: string): string {
   })
 }
 
+/** True si el adelanto fue solicitado por el propio barbero (no por un admin) */
+function isSelfRequested(advance: AdvanceWithBarber): boolean {
+  return advance.registered_by === advance.barber_id
+}
+
 export default function AdvancesView() {
   const [profile, setProfile] = useState<Profile | null>(null)
   const [branches, setBranches] = useState<Branch[]>([])
   const [barbers, setBarbers] = useState<Profile[]>([])
   const [advances, setAdvances] = useState<AdvanceWithBarber[]>([])
-  const [selectedBranch, setSelectedBranch] = useState<string>('')
+  const [selectedBranch, setSelectedBranch] = usePersistedBranch()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -50,8 +57,9 @@ export default function AdvancesView() {
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  // Cancel confirmation
+  // Actions state
   const [cancelingId, setCancelingId] = useState<string | null>(null)
+  const [approvingId, setApprovingId] = useState<string | null>(null)
 
   const loadInitial = useCallback(async () => {
     try {
@@ -61,7 +69,7 @@ export default function AdvancesView() {
       if (!p) { setError('No autenticado'); return }
       setProfile(p)
       setBranches(bs)
-      const initialBranch = p.branch_id
+      const initialBranch = resolveInitialBranch(bs)
       setSelectedBranch(initialBranch)
       const [barbersData, advancesData] = await Promise.all([
         getBarbersByBranch(initialBranch),
@@ -130,6 +138,20 @@ export default function AdvancesView() {
     }
   }
 
+  async function handleApprove(advanceId: string) {
+    setApprovingId(advanceId)
+    try {
+      await approveAdvance(advanceId)
+      setAdvances((prev) =>
+        prev.map((a) => a.id === advanceId ? { ...a, status: 'approved' } : a)
+      )
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al autorizar')
+    } finally {
+      setApprovingId(null)
+    }
+  }
+
   async function handleCancel(advanceId: string) {
     if (cancelingId !== advanceId) {
       setCancelingId(advanceId)
@@ -145,7 +167,10 @@ export default function AdvancesView() {
     }
   }
 
-  const totalPending = advances.reduce((s, a) => s + a.amount, 0)
+  // Separar solicitudes pendientes de autorizar vs autorizados
+  const pendingApproval = advances.filter((a) => a.status === 'pending' && isSelfRequested(a))
+  const authorized      = advances.filter((a) => a.status === 'approved' || (a.status === 'pending' && !isSelfRequested(a)))
+  const totalAuthorized = authorized.reduce((s, a) => s + a.amount, 0)
 
   if (loading) {
     return (
@@ -156,20 +181,18 @@ export default function AdvancesView() {
   }
 
   if (error) {
-    return (
-      <div className="p-6 text-red-400">{error}</div>
-    )
+    return <div className="p-6 text-red-400">{error}</div>
   }
 
   return (
-    <div className="max-w-3xl mx-auto px-4 py-8 space-y-6">
+    <div className="max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto px-4 py-8 space-y-6">
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Adelantos</h1>
           <p className="text-zinc-400 text-sm mt-1">
-            Registrá y gestioná los adelantos pendientes de descuento
+            Solicitudes de barberos y adelantos registrados
           </p>
         </div>
         <button
@@ -181,7 +204,7 @@ export default function AdvancesView() {
         </button>
       </div>
 
-      {/* Branch selector (only if multiple branches) */}
+      {/* Branch selector */}
       {branches.length > 1 && (
         <div>
           <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-2">
@@ -203,7 +226,6 @@ export default function AdvancesView() {
       {showForm && (
         <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-5 space-y-4">
           <h2 className="text-base font-bold text-white">Registrar adelanto</h2>
-
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -269,9 +291,7 @@ export default function AdvancesView() {
               </div>
             </div>
 
-            {formError && (
-              <p className="text-red-400 text-sm">{formError}</p>
-            )}
+            {formError && <p className="text-red-400 text-sm">{formError}</p>}
 
             <div className="flex gap-3 pt-1">
               <button
@@ -293,52 +313,100 @@ export default function AdvancesView() {
         </div>
       )}
 
-      {/* Summary strip */}
-      {advances.length > 0 && (
-        <div className="bg-amber-950/40 border border-amber-800/40 rounded-xl px-5 py-4 flex items-center justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-widest text-amber-600">
-              Pendiente de descuento
-            </p>
-            <p className="text-2xl font-bold text-amber-400 mt-0.5">
-              {formatARS(totalPending)}
-            </p>
+      {/* ── Solicitudes pendientes de autorizar ─────────────────── */}
+      {pendingApproval.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-violet-400 flex items-center gap-2">
+            <span className="inline-block w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+            Solicitudes pendientes ({pendingApproval.length})
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {pendingApproval.map((advance) => (
+            <div
+              key={advance.id}
+              className="bg-zinc-900 border border-violet-800/50 rounded-xl px-5 py-4 flex items-start justify-between gap-4"
+            >
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-white font-semibold text-sm">{advance.barber.full_name}</p>
+                  <span className="text-xs px-2 py-0.5 rounded-full bg-violet-900/50 text-violet-400 border border-violet-700/50">
+                    Solicitado por barbero
+                  </span>
+                </div>
+                <p className="text-violet-300 font-bold text-lg mt-0.5">{formatARS(advance.amount)}</p>
+                <p className="text-zinc-500 text-xs mt-1">
+                  {formatDate(advance.advance_date)}
+                  {advance.reason && <> · <span className="text-zinc-400">{advance.reason}</span></>}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3 flex-shrink-0">
+                <button
+                  onClick={() => handleApprove(advance.id)}
+                  disabled={approvingId === advance.id}
+                  className="text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg transition-colors"
+                >
+                  {approvingId === advance.id ? '...' : 'Autorizar'}
+                </button>
+
+                {cancelingId === advance.id ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-zinc-400">¿Cancelar?</span>
+                    <button onClick={() => handleCancel(advance.id)} className="text-xs text-red-400 hover:text-red-300 font-semibold">Sí</button>
+                    <button onClick={() => setCancelingId(null)} className="text-xs text-zinc-500 hover:text-zinc-300">No</button>
+                  </div>
+                ) : (
+                  <button onClick={() => handleCancel(advance.id)} className="text-xs text-zinc-500 hover:text-red-400 transition-colors">
+                    Rechazar
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
           </div>
-          <p className="text-zinc-400 text-sm">
-            {advances.length} adelanto{advances.length !== 1 ? 's' : ''}
-          </p>
         </div>
       )}
 
-      {/* Advances list */}
-      {advances.length === 0 ? (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-12 text-center">
-          <p className="text-zinc-500 text-sm">No hay adelantos pendientes</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {advances.map((advance) => (
+      {/* ── Adelantos autorizados / registrados ─────────────────── */}
+      {authorized.length > 0 && (
+        <div className="space-y-3">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
+            Autorizados — pendientes de descuento
+          </h2>
+
+          {/* Summary strip */}
+          <div className="bg-amber-950/40 border border-amber-800/40 rounded-xl px-5 py-4 flex items-center justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-amber-600">Total a descontar</p>
+              <p className="text-2xl font-bold text-amber-400 mt-0.5">{formatARS(totalAuthorized)}</p>
+            </div>
+            <p className="text-zinc-400 text-sm">{authorized.length} adelanto{authorized.length !== 1 ? 's' : ''}</p>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {authorized.map((advance) => (
             <div
               key={advance.id}
               className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-4 flex items-start justify-between gap-4"
             >
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-white font-semibold text-sm">
-                    {advance.barber.full_name}
-                  </p>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-amber-900/50 text-amber-400 border border-amber-800/50">
-                    pendiente
+                  <p className="text-white font-semibold text-sm">{advance.barber.full_name}</p>
+                  <span className={`text-xs px-2 py-0.5 rounded-full border ${
+                    advance.status === 'approved'
+                      ? 'bg-emerald-900/40 text-emerald-400 border-emerald-800/50'
+                      : 'bg-amber-900/40 text-amber-400 border-amber-800/50'
+                  }`}>
+                    {advance.status === 'approved' ? 'Autorizado' : 'Pendiente'}
                   </span>
+                  {!isSelfRequested(advance) && (
+                    <span className="text-xs text-zinc-600">Registrado por admin</span>
+                  )}
                 </div>
-                <p className="text-amber-400 font-bold text-lg mt-0.5">
-                  {formatARS(advance.amount)}
-                </p>
+                <p className="text-amber-400 font-bold text-lg mt-0.5">{formatARS(advance.amount)}</p>
                 <p className="text-zinc-500 text-xs mt-1">
                   {formatDate(advance.advance_date)}
-                  {advance.reason && (
-                    <> · <span className="text-zinc-400">{advance.reason}</span></>
-                  )}
+                  {advance.reason && <> · <span className="text-zinc-400">{advance.reason}</span></>}
                 </p>
               </div>
 
@@ -346,30 +414,25 @@ export default function AdvancesView() {
                 {cancelingId === advance.id ? (
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-zinc-400">¿Confirmar?</span>
-                    <button
-                      onClick={() => handleCancel(advance.id)}
-                      className="text-xs text-red-400 hover:text-red-300 font-semibold transition-colors"
-                    >
-                      Sí
-                    </button>
-                    <button
-                      onClick={() => setCancelingId(null)}
-                      className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-                    >
-                      No
-                    </button>
+                    <button onClick={() => handleCancel(advance.id)} className="text-xs text-red-400 hover:text-red-300 font-semibold">Sí</button>
+                    <button onClick={() => setCancelingId(null)} className="text-xs text-zinc-500 hover:text-zinc-300">No</button>
                   </div>
                 ) : (
-                  <button
-                    onClick={() => handleCancel(advance.id)}
-                    className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
-                  >
+                  <button onClick={() => handleCancel(advance.id)} className="text-xs text-zinc-500 hover:text-red-400 transition-colors">
                     Cancelar
                   </button>
                 )}
               </div>
             </div>
           ))}
+          </div>
+        </div>
+      )}
+
+      {/* Empty state */}
+      {advances.length === 0 && (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-12 text-center">
+          <p className="text-zinc-500 text-sm">No hay adelantos registrados</p>
         </div>
       )}
     </div>

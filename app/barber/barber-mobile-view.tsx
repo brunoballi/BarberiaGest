@@ -20,6 +20,7 @@ import {
   getServicesByBranch,
   registerCut,
   updateTransaction,
+  createAdvance,
   supabase,
 } from '@/lib/supabase/supabase.client'
 import './barber.css'
@@ -67,6 +68,11 @@ const IconCard = () => (
     <rect x="2" y="5" width="20" height="14" rx="2"/>
     <line x1="2" y1="10" x2="22" y2="10"/>
     <line x1="6" y1="15" x2="10" y2="15"/>
+  </svg>
+)
+const IconAdvance = () => (
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-7 h-7">
+    <path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>
   </svg>
 )
 const IconCheck = () => (
@@ -120,6 +126,15 @@ export default function BarberMobileView() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [lastRegistered, setLastRegistered] = useState<Transaction | null>(null)
+  const [keepCash, setKeepCash] = useState(false)
+
+  // Advance request
+  const [showAdvanceModal, setShowAdvanceModal] = useState(false)
+  const [advanceAmount, setAdvanceAmount] = useState('')
+  const [advanceReason, setAdvanceReason] = useState('')
+  const [advanceSubmitting, setAdvanceSubmitting] = useState(false)
+  const [advanceError, setAdvanceError] = useState<string | null>(null)
+  const [advanceDone, setAdvanceDone] = useState(false)
 
   // Edit transaction
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
@@ -191,7 +206,10 @@ export default function BarberMobileView() {
 
   const commissionRate = profile?.commission_rate ?? 0.5
   const previewBarberShare = Math.round(resolvedAmount * commissionRate)
-  const previewAlreadyCollected = paymentMethod !== 'cash' ? previewBarberShare : 0
+  const previewAlreadyCollected =
+    paymentMethod !== 'cash'
+      ? previewBarberShare
+      : keepCash ? previewBarberShare : 0
 
   async function handleSubmit() {
     if (!profile || !week || !selectedService || !paymentMethod || resolvedAmount <= 0) return
@@ -208,6 +226,9 @@ export default function BarberMobileView() {
         amount: resolvedAmount,
         payment_method: paymentMethod,
         transaction_date: today,
+        ...(paymentMethod === 'cash' && keepCash
+          ? { barber_already_collected_override: previewBarberShare }
+          : {}),
       }
       const tx = await registerCut(payload, profile, week.id)
       setLastRegistered(tx)
@@ -218,6 +239,40 @@ export default function BarberMobileView() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  async function handleRequestAdvance() {
+    if (!profile) return
+    const amount = parseFloat(advanceAmount)
+    if (!amount || amount <= 0) { setAdvanceError('Ingresá un monto válido'); return }
+    setAdvanceSubmitting(true)
+    setAdvanceError(null)
+    try {
+      await createAdvance({
+        barber_id: profile.id,
+        branch_id: profile.branch_id,
+        week_id: null,
+        amount,
+        advance_date: new Date().toISOString().split('T')[0],
+        reason: advanceReason.trim() || null,
+        registered_by: profile.id,
+      })
+      setAdvanceDone(true)
+      setAdvanceAmount('')
+      setAdvanceReason('')
+    } catch (e) {
+      setAdvanceError(e instanceof Error ? e.message : 'Error al enviar')
+    } finally {
+      setAdvanceSubmitting(false)
+    }
+  }
+
+  function closeAdvanceModal() {
+    setShowAdvanceModal(false)
+    setAdvanceDone(false)
+    setAdvanceAmount('')
+    setAdvanceReason('')
+    setAdvanceError(null)
   }
 
   function openEditTx(tx: Transaction) {
@@ -265,6 +320,7 @@ export default function BarberMobileView() {
     setSelectedService('')
     setCustomAmount('')
     setPaymentMethod(null)
+    setKeepCash(false)
     setLastRegistered(null)
     setView('home')
   }
@@ -273,6 +329,7 @@ export default function BarberMobileView() {
     setSelectedService('')
     setCustomAmount('')
     setPaymentMethod(null)
+    setKeepCash(false)
     setView('register')
   }
 
@@ -302,6 +359,67 @@ export default function BarberMobileView() {
       </div>
     )
   }
+
+  // ── ADVANCE REQUEST MODAL ────────────────────────────────────────────────
+  const advanceModal = showAdvanceModal && (
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-0">
+      <div className="bg-zinc-900 border-t border-zinc-700 rounded-t-2xl w-full max-w-lg p-5 space-y-5 animate-fadein">
+        <div className="flex items-center justify-between">
+          <h2 className="text-white font-bold text-base">Pedir adelanto</h2>
+          <button onClick={closeAdvanceModal} className="icon-btn"><span className="text-lg leading-none">✕</span></button>
+        </div>
+
+        {advanceDone ? (
+          <div className="text-center py-6 space-y-3">
+            <div className="text-4xl">✓</div>
+            <p className="text-emerald-400 font-semibold">¡Solicitud enviada!</p>
+            <p className="text-zinc-400 text-sm">El admin va a ver tu pedido en el módulo de adelantos.</p>
+            <button onClick={closeAdvanceModal} className="btn-primary w-full mt-2">Cerrar</button>
+          </div>
+        ) : (
+          <>
+            <div>
+              <p className="section-label mb-2">Monto solicitado</p>
+              <div className="amount-input-wrapper">
+                <span className="amount-prefix">$</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={advanceAmount}
+                  onChange={(e) => setAdvanceAmount(e.target.value)}
+                  className="amount-input"
+                  autoFocus
+                />
+              </div>
+            </div>
+
+            <div>
+              <p className="section-label mb-2">Motivo <span className="text-zinc-600 font-normal normal-case">(opcional)</span></p>
+              <input
+                type="text"
+                placeholder="ej: gastos personales"
+                value={advanceReason}
+                onChange={(e) => setAdvanceReason(e.target.value)}
+                className="amount-input"
+                style={{ paddingLeft: '0.875rem' }}
+              />
+            </div>
+
+            {advanceError && <p className="text-red-400 text-sm">{advanceError}</p>}
+
+            <button
+              onClick={handleRequestAdvance}
+              disabled={advanceSubmitting || !advanceAmount}
+              className="btn-primary disabled:opacity-40"
+            >
+              {advanceSubmitting ? 'Enviando...' : 'Enviar solicitud'}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  )
 
   // ── EDIT TRANSACTION MODAL ───────────────────────────────────────────────
   const editModal = editingTx && (
@@ -393,7 +511,9 @@ export default function BarberMobileView() {
           </div>
           {lastRegistered.barber_already_collected > 0 && (
             <div className="flex justify-between text-sm">
-              <span className="text-zinc-400">Ya en tu cuenta</span>
+              <span className="text-zinc-400">
+                {lastRegistered.payment_method === 'cash' ? 'Te lo quedás en efectivo' : 'Ya en tu cuenta'}
+              </span>
               <span className="text-emerald-400">{formatARS(lastRegistered.barber_already_collected)}</span>
             </div>
           )}
@@ -413,6 +533,8 @@ export default function BarberMobileView() {
   if (view === 'register') {
     const isValid = selectedService && paymentMethod && resolvedAmount > 0
     return (
+      <>
+      {advanceModal}
       <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
         <header className="flex items-center gap-3 px-5 pt-safe pt-6 pb-4">
           <button onClick={() => setView('home')} className="icon-btn">
@@ -468,17 +590,19 @@ export default function BarberMobileView() {
 
           <section>
             <label className="section-label">Método de pago</label>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="grid grid-cols-2 gap-2">
               {(
                 [
                   { method: 'cash' as PaymentMethod, label: 'Efectivo', Icon: IconCash },
                   { method: 'transfer' as PaymentMethod, label: 'Transf.', Icon: IconTransfer },
-                  { method: 'card' as PaymentMethod, label: 'Tarjeta', Icon: IconCard },
                 ] as const
               ).map(({ method, label, Icon }) => (
                 <button
                   key={method}
-                  onClick={() => setPaymentMethod(method)}
+                  onClick={() => {
+                    setPaymentMethod(method)
+                    if (method !== 'cash') setKeepCash(false)
+                  }}
                   className={`payment-chip ${paymentMethod === method ? 'payment-chip--active' : ''}`}
                 >
                   <Icon />
@@ -490,6 +614,23 @@ export default function BarberMobileView() {
               ))}
             </div>
           </section>
+
+          {paymentMethod === 'cash' && resolvedAmount > 0 && (
+            <section className="animate-fadein">
+              <button
+                type="button"
+                onClick={() => setKeepCash((v) => !v)}
+                className={`keep-cash-toggle ${keepCash ? 'keep-cash-toggle--on' : ''}`}
+              >
+                <span className="keep-cash-toggle__track">
+                  <span className="keep-cash-toggle__thumb" />
+                </span>
+                <span className="keep-cash-toggle__label">
+                  {keepCash ? '✓ Me quedo con mi parte en efectivo' : '¿Te quedás con tu parte en efectivo?'}
+                </span>
+              </button>
+            </section>
+          )}
 
           {isValid && (
             <div className="card space-y-2 animate-fadein">
@@ -513,7 +654,7 @@ export default function BarberMobileView() {
               </div>
               {previewAlreadyCollected > 0 && (
                 <p className="text-xs text-emerald-400 text-right">
-                  Ya depositado en tu cuenta
+                  {paymentMethod === 'cash' ? 'Te quedás con tu parte en efectivo' : 'Ya depositado en tu cuenta'}
                 </p>
               )}
             </div>
@@ -530,6 +671,7 @@ export default function BarberMobileView() {
           </button>
         </div>
       </div>
+      </>
     )
   }
 
@@ -638,6 +780,7 @@ export default function BarberMobileView() {
   return (
     <>
     {editModal}
+    {advanceModal}
     <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
       <header className="px-5 pt-safe pt-8 pb-6">
         <div className="flex items-start justify-between">
@@ -683,16 +826,29 @@ export default function BarberMobileView() {
           </div>
         </button>
 
-        <button
-          onClick={goToSettlements}
-          className="w-full bg-zinc-900 border border-zinc-800 rounded-2xl px-5 py-4 flex items-center justify-between text-left"
-        >
-          <div>
-            <p className="text-white font-semibold text-sm">Mis liquidaciones</p>
-            <p className="text-zinc-500 text-xs mt-0.5">Historial de pagos semanales</p>
-          </div>
-          <span className="text-zinc-600 text-lg">›</span>
-        </button>
+        <div className="grid grid-cols-2 gap-3">
+          <button
+            onClick={goToSettlements}
+            className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4 flex items-center justify-between text-left"
+          >
+            <div>
+              <p className="text-white font-semibold text-sm">Liquidaciones</p>
+              <p className="text-zinc-500 text-xs mt-0.5">Historial de pagos</p>
+            </div>
+            <span className="text-zinc-600 text-lg">›</span>
+          </button>
+
+          <button
+            onClick={() => { setShowAdvanceModal(true); setAdvanceDone(false) }}
+            className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4 flex items-center justify-between text-left hover:border-violet-700 transition-colors"
+          >
+            <div>
+              <p className="text-violet-400 font-semibold text-sm">Pedir adelanto</p>
+              <p className="text-zinc-500 text-xs mt-0.5">Solicitud al admin</p>
+            </div>
+            <IconAdvance />
+          </button>
+        </div>
 
         <section>
           <h2 className="section-label mb-3">Cortes de hoy</h2>

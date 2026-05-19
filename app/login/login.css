@@ -22,6 +22,27 @@
   margin-bottom: 2rem;
 }
 
+.login-flowi-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.625rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: #52525b;
+  border: 1px solid #27272a;
+  border-radius: 999px;
+  padding: 4px 10px 4px 7px;
+  margin-bottom: 1.25rem;
+}
+
+.login-flowi-icon {
+  width: 12px;
+  height: 12px;
+  flex-shrink: 0;
+}
+
 .login-logo-text {
   font-size: 2rem;
   font-weight: 900;

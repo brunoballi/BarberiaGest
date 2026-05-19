@@ -1,0 +1,33 @@
+/* ── Admin shared layout — back navigation bar ────────────────── */
+
+.admin-back-bar {
+  background: #09090b;
+  border-bottom: 1px solid #1c1c1e;
+  padding: 0 1.25rem;
+}
+
+@media (min-width: 1024px) {
+  .admin-back-bar { padding: 0 2rem; }
+}
+
+.admin-back-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 0;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: #71717a;
+  text-decoration: none;
+  transition: color 0.15s;
+}
+
+.admin-back-btn:hover {
+  color: #e4e4e7;
+}
+
+.admin-back-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}

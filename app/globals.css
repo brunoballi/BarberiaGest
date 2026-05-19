@@ -24,3 +24,43 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* ── Flowi branding wrapper ──────────────────────────────────────── */
+.flowi-root {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;  /* evita overflow en flex */
+}
+
+.flowi-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  background: #09090b;
+  border-top: 1px solid #27272a;
+}
+
+.flowi-footer__logo {
+  display: flex;
+  align-items: center;
+  color: #52525b;
+  width: 14px;
+  height: 14px;
+}
+
+.flowi-footer__logo svg {
+  width: 100%;
+  height: 100%;
+}
+
+.flowi-footer__brand {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #52525b;
+  font-family: var(--font-geist-sans, Arial, sans-serif);
+}
