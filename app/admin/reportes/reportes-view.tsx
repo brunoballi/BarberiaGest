@@ -286,7 +286,7 @@ export default function ReportesView() {
                                 <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
                               ))}
                             </Pie>
-                            <Tooltip formatter={(v: number) => formatARS(v)} />
+                            <Tooltip formatter={(v) => formatARS(v as number)} />
                           </PieChart>
                         </ResponsiveContainer>
                         <div className="report-pie-legend">
