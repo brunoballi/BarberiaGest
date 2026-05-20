@@ -1,11 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { usePersistedBranch, resolveInitialBranch } from '@/lib/hooks/usePersistedBranch'
+import { useRouter } from 'next/navigation'
+import { usePersistedBranch, getStoredBranch } from '@/lib/hooks/usePersistedBranch'
 import type { Branch, Profile, ServiceCatalog, ServiceCatalogInsert } from '@/lib/supabase/database.types'
 import {
   getCurrentProfile,
-  getBranches,
+  getMyBranches,
   getServicesByBranch,
   createService,
   updateService,
@@ -20,6 +21,7 @@ function formatARS(n: number): string {
 }
 
 export default function ServicesView() {
+  const router = useRouter()
   const [profile, setProfile]               = useState<Profile | null>(null)
   const [branches, setBranches]             = useState<Branch[]>([])
   const [selectedBranch, setSelectedBranch] = usePersistedBranch()
@@ -52,19 +54,24 @@ export default function ServicesView() {
   const loadInitial = useCallback(async () => {
     try {
       setLoading(true)
-      const [p, bs] = await Promise.all([getCurrentProfile(), getBranches()])
+      const [p, bs] = await Promise.all([getCurrentProfile(), getMyBranches()])
       if (!p) { setError('No autenticado'); return }
+      if (bs.length === 0) { setError('No tenés sucursales asignadas.'); return }
       setProfile(p)
       setBranches(bs)
-      const initialBranch = resolveInitialBranch(bs)
-      setSelectedBranch(initialBranch)
-      await loadServices(initialBranch)
+
+      const stored = getStoredBranch()
+      const branch = stored && bs.some((b) => b.id === stored) ? stored : null
+      if (!branch) { router.replace('/admin/select-branch'); return }
+
+      setSelectedBranch(branch)
+      await loadServices(branch)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error inesperado')
     } finally {
       setLoading(false)
     }
-  }, [loadServices])
+  }, [loadServices, router, setSelectedBranch])
 
   useEffect(() => { loadInitial() }, [loadInitial])
 
@@ -178,19 +185,7 @@ export default function ServicesView() {
         )}
       </div>
 
-      {/* Branch selector */}
-      {branches.length > 1 && (
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-2">Sucursal</label>
-          <select
-            value={selectedBranch}
-            onChange={(e) => handleBranchChange(e.target.value)}
-            className="bg-zinc-900 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
-          >
-            {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-          </select>
-        </div>
-      )}
+      {/* Branch selector eliminado — la sucursal viene del contexto post-login */}
 
       {/* Create form */}
       {showForm && (

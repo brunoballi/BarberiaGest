@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { usePersistedBranch, resolveInitialBranch } from '@/lib/hooks/usePersistedBranch'
+import { usePersistedBranch, getStoredBranch } from '@/lib/hooks/usePersistedBranch'
+import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   type Branch,
@@ -19,6 +20,7 @@ import {
 } from '@/lib/supabase/database.types'
 import {
   getBranches,
+  getMyBranches,
   getMonthsWithWeeks,
   MONTH_NAMES,
   getBarbersByBranch,
@@ -34,6 +36,7 @@ import {
   createExpense,
   overrideTransactionSplit,
   getCurrentProfile,
+  todayLocal,
   supabase,
 } from '@/lib/supabase/supabase.client'
 import './admin-dashboard.css'
@@ -68,6 +71,7 @@ const TAB_LABELS: Record<Tab, string> = {
 // COMPONENTE PRINCIPAL
 // ─────────────────────────────────────────────────────────────────────────
 export default function AdminDashboard() {
+  const router = useRouter()
   const [branches, setBranches] = useState<Branch[]>([])
   const [selectedBranch, setSelectedBranch] = usePersistedBranch()
   const [months, setMonths] = useState<MonthWithWeeks[]>([])
@@ -136,17 +140,28 @@ export default function AdminDashboard() {
       try {
         const [profile, branchList] = await Promise.all([
           getCurrentProfile(),
-          getBranches(),
+          getMyBranches(),
         ])
         if (!profile || profile.role !== 'admin') {
           setError('Acceso denegado. Se requiere rol Admin.')
           return
         }
+        if (branchList.length === 0) {
+          setError('No tenés sucursales asignadas. Contactá al administrador.')
+          return
+        }
         setCurrentUserId(profile.id)
         setBranches(branchList)
-        if (branchList.length > 0) {
-          setSelectedBranch(resolveInitialBranch(branchList))
+
+        // Validar sucursal almacenada contra las sucursales asignadas
+        const stored = getStoredBranch()
+        const valid = stored && branchList.some((b) => b.id === stored)
+        if (!valid) {
+          // Forzar al admin a elegir sucursal
+          router.replace('/admin/select-branch')
+          return
         }
+        setSelectedBranch(stored)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error de inicialización')
       } finally {
@@ -154,6 +169,7 @@ export default function AdminDashboard() {
       }
     }
     init()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   // ─── Carga de meses/semanas al cambiar sucursal ────────────────────
@@ -338,21 +354,25 @@ export default function AdminDashboard() {
         <div className="admin-brand-bar">
           <span className="admin-logo">VALHALLA</span>
           <span className="admin-badge">Admin</span>
+          <span className="admin-brand-separator">·</span>
+          <span className="admin-brand-branch">
+            {branches.find((b) => b.id === selectedBranch)?.name ?? '—'}
+          </span>
+          {branches.length > 1 && (
+            <button
+              onClick={() => router.push('/admin/select-branch')}
+              className="admin-brand-switch"
+              title="Cambiar de sucursal"
+            >
+              cambiar
+            </button>
+          )}
         </div>
 
         {/* ── Barra de controles ── */}
         <header className="admin-topbar">
-          {/* Izquierda: sucursal + semana */}
+          {/* Izquierda: semana */}
           <div className="admin-topbar-left">
-            <select
-              value={selectedBranch}
-              onChange={(e) => setSelectedBranch(e.target.value)}
-              className="admin-select"
-            >
-              {branches.map((b) => (
-                <option key={b.id} value={b.id}>{b.name}</option>
-              ))}
-            </select>
             {months.length > 0 && (
               <div className="month-nav">
                 <button
@@ -959,7 +979,7 @@ function ExpenseFormModal({
 }) {
   const [form, setForm] = useState({
     concept: '',
-    expense_date: new Date().toISOString().split('T')[0],
+    expense_date: todayLocal(),
     amount: '',
     category: '',
     notes: '',
@@ -1179,7 +1199,7 @@ function LiveDashboard({
   transactions: TransactionWithRelations[]
   weekNumber: number
 }) {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocal()
 
   // Agrupar por barbero
   const byBarber = transactions.reduce<Record<string, {

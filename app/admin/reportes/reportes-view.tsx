@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   ResponsiveContainer,
   BarChart,
@@ -14,8 +15,9 @@ import {
   Cell,
 } from 'recharts'
 import type { BranchReport } from '@/lib/supabase/database.types'
-import { getBranches, getReportByPeriod } from '@/lib/supabase/supabase.client'
+import { getMyBranches, getReportByPeriod } from '@/lib/supabase/supabase.client'
 import { MONTH_NAMES } from '@/lib/supabase/supabase.client'
+import { getStoredBranch } from '@/lib/hooks/usePersistedBranch'
 import './reportes.css'
 
 // ── Utilidades ────────────────────────────────────────────────────
@@ -71,6 +73,7 @@ function CustomTooltip({ active, payload, label }: {
 
 // ── Componente principal ──────────────────────────────────────────
 export default function ReportesView() {
+  const router = useRouter()
   const today = new Date()
   const [year, setYear]   = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth() + 1)  // 1-12
@@ -86,16 +89,22 @@ export default function ReportesView() {
     try {
       setLoading(true)
       setError(null)
-      const branches = await getBranches()
-      if (!branches.length) { setReports([]); return }
-      const data = await getReportByPeriod(branches, startDate, endDate)
+      const myBranches = await getMyBranches()
+      if (myBranches.length === 0) { setReports([]); return }
+
+      // Filtrar al branch seleccionado (contexto post-login)
+      const stored = getStoredBranch()
+      const selected = stored && myBranches.find((b) => b.id === stored)
+      if (!selected) { router.replace('/admin/select-branch'); return }
+
+      const data = await getReportByPeriod([selected], startDate, endDate)
       setReports(data)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar reportes')
     } finally {
       setLoading(false)
     }
-  }, [startDate, endDate])
+  }, [startDate, endDate, router])
 
   useEffect(() => { load() }, [load])
 

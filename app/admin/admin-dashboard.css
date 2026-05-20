@@ -104,6 +104,41 @@
   padding: 0.5rem 1.25rem;
   background: #0d0d0d;
   border-bottom: 1px solid #1c1c1e;
+  flex-wrap: wrap;
+}
+
+.admin-brand-separator {
+  color: #3f3f46;
+  font-weight: 700;
+  margin: 0 0.15rem;
+}
+
+.admin-brand-branch {
+  font-size: 0.8125rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #e4e4e7;
+  text-transform: uppercase;
+}
+
+.admin-brand-switch {
+  font-size: 0.7rem;
+  background: transparent;
+  border: 1px solid #3f3f46;
+  color: #a1a1aa;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  margin-left: 0.5rem;
+  cursor: pointer;
+  text-transform: lowercase;
+  letter-spacing: 0.04em;
+  transition: all 0.15s;
+}
+
+.admin-brand-switch:hover {
+  background: #18181b;
+  border-color: #f59e0b;
+  color: #f59e0b;
 }
 
 /* ─── Controls bar ───────────────────────────────────────────── */

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase, getCurrentProfile } from '@/lib/supabase/supabase.client'
+import { clearStoredBranch } from '@/lib/hooks/usePersistedBranch'
 import './login.css'
 
 interface LoginFormProps {
@@ -50,11 +51,14 @@ export default function LoginForm({ redirectTo, authError }: LoginFormProps) {
         return
       }
 
+      // Limpiar sucursal previa para forzar al admin a elegir
+      if (profile.role === 'admin') clearStoredBranch()
+
       const destination =
         redirectTo && redirectTo.startsWith('/')
           ? redirectTo
           : profile.role === 'admin'
-            ? '/admin'
+            ? '/admin/select-branch'
             : '/barber'
 
       router.push(destination)

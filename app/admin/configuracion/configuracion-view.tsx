@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { useRouter } from 'next/navigation'
 import { getStoredBranch } from '@/lib/hooks/usePersistedBranch'
 import '../admin-dashboard.css'
 import {
@@ -12,6 +13,7 @@ import {
   getWeekTransactions,
   getSettlementsForWeek,
   getCurrentProfile,
+  getMyBranches,
   MONTH_NAMES,
 } from '@/lib/supabase/supabase.client'
 import type {
@@ -172,16 +174,29 @@ export default function ConfiguracionView() {
     }
   }, [])
 
+  const router = useRouter()
+
   useEffect(() => {
-    getCurrentProfile().then((profile) => {
+    async function init() {
+      const [profile, myBranches] = await Promise.all([getCurrentProfile(), getMyBranches()])
       if (!profile) return
+      if (myBranches.length === 0) {
+        setError('No tenés sucursales asignadas.')
+        setLoading(false)
+        return
+      }
       setCurrentUserId(profile.id)
-      // Usar sucursal guardada si existe, si no la del perfil
-      const bid = getStoredBranch() ?? profile.branch_id
+
+      // Validar sucursal almacenada contra las sucursales asignadas
+      const stored = getStoredBranch()
+      const bid = stored && myBranches.some((b) => b.id === stored) ? stored : null
+      if (!bid) { router.replace('/admin/select-branch'); return }
+
       setBranchId(bid)
       loadMonths(bid)
-    })
-  }, [loadMonths])
+    }
+    init()
+  }, [loadMonths, router])
 
   // Group months by year
   const byYear = months.reduce<Map<number, MonthWithWeeks[]>>((acc, m) => {

@@ -1,7 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { usePersistedBranch, resolveInitialBranch } from '@/lib/hooks/usePersistedBranch'
+import { useRouter } from 'next/navigation'
+import { usePersistedBranch, getStoredBranch } from '@/lib/hooks/usePersistedBranch'
 import type {
   Branch,
   Profile,
@@ -10,12 +11,13 @@ import type {
 } from '@/lib/supabase/database.types'
 import {
   getCurrentProfile,
-  getBranches,
+  getMyBranches,
   getBarbersByBranch,
   getPendingAdvancesByBranch,
   createAdvance,
   approveAdvance,
   cancelAdvance,
+  todayLocal,
 } from '@/lib/supabase/supabase.client'
 
 function formatARS(amount: number): string {
@@ -40,6 +42,7 @@ function isSelfRequested(advance: AdvanceWithBarber): boolean {
 }
 
 export default function AdvancesView() {
+  const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
   const [branches, setBranches] = useState<Branch[]>([])
   const [barbers, setBarbers] = useState<Profile[]>([])
@@ -52,7 +55,7 @@ export default function AdvancesView() {
   const [showForm, setShowForm] = useState(false)
   const [formBarberId, setFormBarberId] = useState<string>('')
   const [formAmount, setFormAmount] = useState<string>('')
-  const [formDate, setFormDate] = useState<string>(new Date().toISOString().split('T')[0])
+  const [formDate, setFormDate] = useState<string>(todayLocal())
   const [formReason, setFormReason] = useState<string>('')
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
@@ -65,15 +68,20 @@ export default function AdvancesView() {
     try {
       setLoading(true)
       setError(null)
-      const [p, bs] = await Promise.all([getCurrentProfile(), getBranches()])
+      const [p, bs] = await Promise.all([getCurrentProfile(), getMyBranches()])
       if (!p) { setError('No autenticado'); return }
+      if (bs.length === 0) { setError('No tenés sucursales asignadas.'); return }
       setProfile(p)
       setBranches(bs)
-      const initialBranch = resolveInitialBranch(bs)
-      setSelectedBranch(initialBranch)
+
+      const stored = getStoredBranch()
+      const branch = stored && bs.some((b) => b.id === stored) ? stored : null
+      if (!branch) { router.replace('/admin/select-branch'); return }
+
+      setSelectedBranch(branch)
       const [barbersData, advancesData] = await Promise.all([
-        getBarbersByBranch(initialBranch),
-        getPendingAdvancesByBranch(initialBranch),
+        getBarbersByBranch(branch),
+        getPendingAdvancesByBranch(branch),
       ])
       setBarbers(barbersData)
       setAdvances(advancesData)
@@ -82,7 +90,7 @@ export default function AdvancesView() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [router, setSelectedBranch])
 
   useEffect(() => { loadInitial() }, [loadInitial])
 
@@ -129,7 +137,7 @@ export default function AdvancesView() {
       setShowForm(false)
       setFormBarberId('')
       setFormAmount('')
-      setFormDate(new Date().toISOString().split('T')[0])
+      setFormDate(todayLocal())
       setFormReason('')
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Error al registrar adelanto')
@@ -204,23 +212,7 @@ export default function AdvancesView() {
         </button>
       </div>
 
-      {/* Branch selector */}
-      {branches.length > 1 && (
-        <div>
-          <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-2">
-            Sucursal
-          </label>
-          <select
-            value={selectedBranch}
-            onChange={(e) => handleBranchChange(e.target.value)}
-            className="bg-zinc-900 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
-          >
-            {branches.map((b) => (
-              <option key={b.id} value={b.id}>{b.name}</option>
-            ))}
-          </select>
-        </div>
-      )}
+      {/* Branch selector eliminado — la sucursal viene del contexto post-login */}
 
       {/* New advance form */}
       {showForm && (

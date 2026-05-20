@@ -21,6 +21,7 @@ import {
   registerCut,
   updateTransaction,
   createAdvance,
+  todayLocal,
   supabase,
 } from '@/lib/supabase/supabase.client'
 import './barber.css'
@@ -191,7 +192,7 @@ export default function BarberMobileView() {
     }
   }
 
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocal()
   const todayTxs = transactions.filter((t) => t.transaction_date === today)
   const todayTotal = todayTxs.reduce((s, t) => s + t.amount, 0)
   const todayBarber = todayTxs.reduce((s, t) => s + t.barber_share, 0)
@@ -214,7 +215,7 @@ export default function BarberMobileView() {
   async function handleSubmit() {
     if (!profile || !week || !selectedService || !paymentMethod || resolvedAmount <= 0) return
     // Validar que sigue siendo el mismo día (protege si el form quedó abierto hasta medianoche)
-    const nowDate = new Date().toISOString().split('T')[0]
+    const nowDate = todayLocal()
     if (nowDate !== today) {
       setError('El día cambió. Recargá la app para continuar.')
       return
@@ -253,7 +254,7 @@ export default function BarberMobileView() {
         branch_id: profile.branch_id,
         week_id: null,
         amount,
-        advance_date: new Date().toISOString().split('T')[0],
+        advance_date: todayLocal(),
         reason: advanceReason.trim() || null,
         registered_by: profile.id,
       })

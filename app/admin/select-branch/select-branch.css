@@ -1,0 +1,119 @@
+/* ── Selector de sucursal post-login ─────────────────────────── */
+.select-branch-app {
+  min-height: 100vh;
+  background: #0a0a0a;
+  color: #e5e5e5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.select-branch-card {
+  width: 100%;
+  max-width: 460px;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 16px;
+  padding: 2.5rem 2rem;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.select-branch-logo {
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  color: #f59e0b;
+  text-align: center;
+  margin: 0 0 1.75rem;
+}
+
+.select-branch-greeting {
+  font-size: 1rem;
+  color: #e4e4e7;
+  margin: 0 0 0.25rem;
+  text-align: center;
+}
+
+.select-branch-question {
+  font-size: 0.875rem;
+  color: #a1a1aa;
+  margin: 0 0 1.5rem;
+  text-align: center;
+}
+
+.select-branch-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  margin-bottom: 1.25rem;
+}
+
+.select-branch-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  border-radius: 10px;
+  padding: 1rem 1.25rem;
+  cursor: pointer;
+  color: #e4e4e7;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: all 0.15s;
+  text-align: left;
+}
+
+.select-branch-item:hover {
+  background: #3f3f46;
+  border-color: #f59e0b;
+  transform: translateX(2px);
+}
+
+.select-branch-name {
+  letter-spacing: 0.04em;
+}
+
+.select-branch-arrow {
+  color: #a1a1aa;
+  font-size: 1.1rem;
+  transition: color 0.15s;
+}
+
+.select-branch-item:hover .select-branch-arrow {
+  color: #f59e0b;
+}
+
+.select-branch-hint {
+  font-size: 0.75rem;
+  color: #52525b;
+  text-align: center;
+  margin: 0;
+}
+
+.select-branch-loader {
+  width: 32px;
+  height: 32px;
+  border: 3px solid #27272a;
+  border-top-color: #f59e0b;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.select-branch-error {
+  background: #18181b;
+  border: 1px solid #7f1d1d;
+  border-radius: 12px;
+  padding: 1.5rem 2rem;
+  color: #fca5a5;
+  font-size: 0.875rem;
+  max-width: 460px;
+  text-align: center;
+}

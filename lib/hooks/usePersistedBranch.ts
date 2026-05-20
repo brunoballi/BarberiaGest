@@ -22,6 +22,17 @@ export function storeBranch(branchId: string) {
   localStorage.setItem(STORAGE_KEY, branchId)
 }
 
+/** Alias semántico, mismo comportamiento que storeBranch */
+export function setStoredBranch(branchId: string) {
+  storeBranch(branchId)
+}
+
+/** Borra la sucursal almacenada (usar al hacer logout o forzar re-elección) */
+export function clearStoredBranch() {
+  if (typeof window === 'undefined') return
+  localStorage.removeItem(STORAGE_KEY)
+}
+
 /**
  * Dado un array de sucursales disponibles, devuelve la última
  * sucursal usada (si sigue siendo válida) o la primera de la lista.

@@ -75,6 +75,22 @@ export async function getBranches(): Promise<Branch[]> {
   return data
 }
 
+/**
+ * Devuelve solo las sucursales que el admin actual tiene asignadas vía admin_branches.
+ * Si el usuario no es admin o no tiene asignaciones, devuelve [].
+ */
+export async function getMyBranches(): Promise<Branch[]> {
+  const { data, error } = await supabase
+    .from('admin_branches')
+    .select('branches!inner(id, name, is_active, created_at)')
+    .eq('branches.is_active', true)
+    .order('branches(name)')
+
+  if (error) throw new Error(`[getMyBranches] ${error.message}`)
+  // @ts-expect-error supabase devuelve la relación como objeto
+  return (data ?? []).map((row) => row.branches as Branch)
+}
+
 // ============================================================
 // SERVICE CATALOG
 // ============================================================
@@ -194,6 +210,17 @@ export async function markWeekPaid(weekId: string): Promise<void> {
 const MONTH_NAMES = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
 export { MONTH_NAMES }
 
+// ─── Helpers de fecha local (evita bug de timezone con toISOString) ───
+/** Convierte una Date a YYYY-MM-DD usando la zona horaria LOCAL (no UTC) */
+export function dateToLocalString(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+/** Devuelve la fecha de hoy en formato YYYY-MM-DD usando la zona horaria LOCAL */
+export function todayLocal(): string {
+  return dateToLocalString(new Date())
+}
+
 /** Genera rangos lunes-domingo para todas las semanas que tocan el mes */
 function generateWeekRangesForMonth(year: number, month: number): Array<{ start_date: string; end_date: string }> {
   const firstDay = new Date(year, month - 1, 1)
@@ -212,8 +239,8 @@ function generateWeekRangesForMonth(year: number, month: number): Array<{ start_
     const end = new Date(cur)
     end.setDate(cur.getDate() + 6)
     ranges.push({
-      start_date: cur.toISOString().split('T')[0],
-      end_date:   end.toISOString().split('T')[0],
+      start_date: dateToLocalString(cur),
+      end_date:   dateToLocalString(end),
     })
     cur.setDate(cur.getDate() + 7)
   }
