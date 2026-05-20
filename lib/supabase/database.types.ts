@@ -173,6 +173,8 @@ export type ServiceCatalogInsert = Omit<ServiceCatalog, 'id' | 'created_at'>
 
 export type WeekInsert = Omit<Week, 'id' | 'created_at' | 'closed_at' | 'closed_by' | 'month_id'> & {
   month_id?: string | null
+  closed_at?: string | null
+  closed_by?: string | null
 }
 
 export type TransactionInsert = Omit<
@@ -217,7 +219,7 @@ export type SettlementUpdate = Partial<
   >
 >
 
-export type WeekUpdate = Partial<Pick<Week, 'status' | 'closed_at' | 'closed_by'>>
+export type WeekUpdate = Partial<Pick<Week, 'status' | 'closed_at' | 'closed_by' | 'start_date' | 'end_date'>>
 
 export type AdvanceUpdate = Partial<Pick<Advance, 'status' | 'deducted_in' | 'reason'>>
 

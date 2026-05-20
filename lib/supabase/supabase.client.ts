@@ -171,7 +171,8 @@ export async function closeWeek(
   weekId: string,
   closedBy: string
 ): Promise<void> {
-  const { error } = await supabase
+  // 1. Cerrar la semana
+  const { data: closed, error } = await supabase
     .from('weeks')
     .update({
       status: 'closed',
@@ -180,8 +181,100 @@ export async function closeWeek(
     } satisfies WeekUpdate)
     .eq('id', weekId)
     .eq('status', 'open')
+    .select('branch_id, end_date')
+    .single()
 
   if (error) throw new Error(`[closeWeek] ${error.message}`)
+
+  // 2. Asegurar que exista una semana abierta posterior
+  if (closed) {
+    try {
+      await ensureNextWeekOpen(closed.branch_id, closed.end_date)
+    } catch (e) {
+      // No bloquear el cierre si falla la auto-apertura — solo loguear
+      console.error('[closeWeek/ensureNextWeekOpen]', e)
+    }
+  }
+}
+
+/**
+ * Asegura que exista una semana abierta inmediatamente después de `afterEndDate`
+ * para la sucursal dada. Si la semana no existe, la crea (creando el mes también si hace falta).
+ * Si ya existe (en cualquier estado), no hace nada.
+ */
+export async function ensureNextWeekOpen(
+  branchId: string,
+  afterEndDate: string
+): Promise<void> {
+  // Calcular lunes siguiente (afterEndDate + 1 día) y domingo + 7
+  const [y, m, d] = afterEndDate.split('-').map(Number)
+  const start = new Date(y, m - 1, d + 1)  // local time, evita timezone bug
+  const end   = new Date(y, m - 1, d + 7)
+
+  const nextStart = dateToLocalString(start)
+  const nextEnd   = dateToLocalString(end)
+
+  // ¿Ya existe alguna semana que abarque esa fecha?
+  const { data: existing } = await supabase
+    .from('weeks')
+    .select('id, status')
+    .eq('branch_id', branchId)
+    .eq('start_date', nextStart)
+    .maybeSingle()
+
+  if (existing) return  // ya hay una semana ahí, no tocar
+
+  // Asegurar el mes (year/month del lunes de inicio)
+  const nextYear  = start.getFullYear()
+  const nextMonth = start.getMonth() + 1
+
+  let monthId: string | null = null
+  const { data: existingMonth } = await supabase
+    .from('months')
+    .select('id')
+    .eq('branch_id', branchId)
+    .eq('year', nextYear)
+    .eq('month', nextMonth)
+    .maybeSingle()
+
+  if (existingMonth) {
+    monthId = existingMonth.id
+  } else {
+    // Crear el mes sin sus semanas automáticas (las generamos en el manejo manual)
+    const { data: newMonth, error: monthErr } = await supabase
+      .from('months')
+      .insert({ branch_id: branchId, year: nextYear, month: nextMonth, status: 'active' } satisfies MonthInsert)
+      .select('id')
+      .single()
+    if (monthErr) throw new Error(`[ensureNextWeekOpen] ${monthErr.message}`)
+    monthId = newMonth.id
+  }
+
+  // Tomar el próximo week_number disponible para la sucursal en este mes
+  const { data: maxRow } = await supabase
+    .from('weeks')
+    .select('week_number')
+    .eq('branch_id', branchId)
+    .eq('month_id', monthId)
+    .order('week_number', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  const nextWeekNumber = (maxRow?.week_number ?? 0) + 1
+
+  // Crear la semana abierta
+  const { error: weekErr } = await supabase
+    .from('weeks')
+    .insert({
+      branch_id: branchId,
+      month_id: monthId,
+      week_number: nextWeekNumber,
+      start_date: nextStart,
+      end_date: nextEnd,
+      status: 'open',
+    } satisfies WeekInsert)
+
+  if (weekErr) throw new Error(`[ensureNextWeekOpen/insert] ${weekErr.message}`)
 }
 
 export async function reopenWeek(weekId: string): Promise<void> {
@@ -191,6 +284,99 @@ export async function reopenWeek(weekId: string): Promise<void> {
     .eq('id', weekId)
 
   if (error) throw new Error(`[reopenWeek] ${error.message}`)
+}
+
+/** Edita fechas de inicio/fin de una semana existente (modo carga manual del admin) */
+export async function updateWeekDates(
+  weekId: string,
+  startDate: string,
+  endDate: string
+): Promise<void> {
+  if (startDate > endDate) throw new Error('La fecha de inicio no puede ser mayor que la de fin')
+  const { error } = await supabase
+    .from('weeks')
+    .update({ start_date: startDate, end_date: endDate } satisfies WeekUpdate)
+    .eq('id', weekId)
+  if (error) throw new Error(`[updateWeekDates] ${error.message}`)
+}
+
+/**
+ * Crea una semana manualmente para una sucursal con fechas arbitrarias.
+ * Auto-detecta o crea el mes correspondiente al startDate.
+ */
+export async function createManualWeek(
+  branchId: string,
+  startDate: string,
+  endDate: string,
+  status: 'open' | 'closed' = 'open'
+): Promise<Week> {
+  if (startDate > endDate) throw new Error('La fecha de inicio no puede ser mayor que la de fin')
+
+  // Verificar que no exista una semana con esa fecha de inicio
+  const { data: existing } = await supabase
+    .from('weeks')
+    .select('id')
+    .eq('branch_id', branchId)
+    .eq('start_date', startDate)
+    .maybeSingle()
+  if (existing) throw new Error('Ya existe una semana con esa fecha de inicio para esta sucursal')
+
+  // Determinar mes a partir del startDate
+  const [y, m] = startDate.split('-').map(Number)
+
+  let monthId: string
+  const { data: existingMonth } = await supabase
+    .from('months')
+    .select('id')
+    .eq('branch_id', branchId)
+    .eq('year', y)
+    .eq('month', m)
+    .maybeSingle()
+
+  if (existingMonth) {
+    monthId = existingMonth.id
+  } else {
+    const { data: newMonth, error: mErr } = await supabase
+      .from('months')
+      .insert({ branch_id: branchId, year: y, month: m, status: 'active' } satisfies MonthInsert)
+      .select('id')
+      .single()
+    if (mErr) throw new Error(`[createManualWeek/month] ${mErr.message}`)
+    monthId = newMonth.id
+  }
+
+  // week_number: siguiente en ese mes
+  const { data: maxRow } = await supabase
+    .from('weeks')
+    .select('week_number')
+    .eq('branch_id', branchId)
+    .eq('month_id', monthId)
+    .order('week_number', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  const nextWeekNumber = (maxRow?.week_number ?? 0) + 1
+
+  const insertPayload: WeekInsert = {
+    branch_id: branchId,
+    month_id: monthId,
+    week_number: nextWeekNumber,
+    start_date: startDate,
+    end_date: endDate,
+    status,
+  }
+  // closed requiere closed_at por check constraint
+  if (status === 'closed') {
+    insertPayload.closed_at = new Date().toISOString()
+  }
+
+  const { data, error } = await supabase
+    .from('weeks')
+    .insert(insertPayload)
+    .select()
+    .single()
+
+  if (error) throw new Error(`[createManualWeek] ${error.message}`)
+  return data
 }
 
 export async function markWeekPaid(weekId: string): Promise<void> {
@@ -562,15 +748,31 @@ export async function confirmSettlement(settlementId: string): Promise<void> {
 }
 
 export async function markSettlementPaid(settlementId: string): Promise<void> {
-  const { error } = await supabase
+  // 1. Marcar settlement como pagado y obtener barber+branch para descontar adelantos
+  const { data: paid, error } = await supabase
     .from('settlements')
     .update({
       status: 'paid',
       paid_at: new Date().toISOString(),
     } satisfies SettlementUpdate)
     .eq('id', settlementId)
+    .select('barber_id, branch_id')
+    .single()
 
   if (error) throw new Error(`[markSettlementPaid] ${error.message}`)
+  if (!paid) return
+
+  // 2. Marcar adelantos pending/approved del barbero como deducted (evita doble descuento)
+  const { error: advErr } = await supabase
+    .from('advances')
+    .update({ status: 'deducted' } satisfies AdvanceUpdate)
+    .eq('barber_id', paid.barber_id)
+    .eq('branch_id', paid.branch_id)
+    .in('status', ['pending', 'approved'])
+
+  if (advErr) {
+    console.error('[markSettlementPaid/advances]', advErr.message)
+  }
 }
 
 // ============================================================

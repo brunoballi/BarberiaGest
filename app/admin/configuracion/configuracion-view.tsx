@@ -10,6 +10,9 @@ import {
   closeMonth,
   reopenMonth,
   closeWeek,
+  reopenWeek,
+  updateWeekDates,
+  createManualWeek,
   getWeekTransactions,
   getSettlementsForWeek,
   getCurrentProfile,
@@ -145,6 +148,8 @@ export default function ConfiguracionView() {
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set([currentYear]))
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set())
   const [showNewMonthModal, setShowNewMonthModal] = useState(false)
+  const [showManualWeekModal, setShowManualWeekModal] = useState(false)
+  const [editingWeek, setEditingWeek] = useState<Week | null>(null)
   const [detailWeek, setDetailWeek] = useState<Week | null>(null)
   const [detailWeekMonth, setDetailWeekMonth] = useState<Month | null>(null)
   const [detailData, setDetailData] = useState<WeekDetailData | null>(null)
@@ -237,6 +242,18 @@ export default function ConfiguracionView() {
       if (branchId) await loadMonths(branchId)
     } catch (e) {
       alert(e instanceof Error ? e.message : 'Error cerrando semana')
+    }
+  }
+
+  // Reopen week
+  async function handleReopenWeek(week: Week) {
+    if (!confirm(`¿Reabrir Semana ${week.week_number}? Volverá a estado abierto y se podrán cargar más transacciones.`))
+      return
+    try {
+      await reopenWeek(week.id)
+      if (branchId) await loadMonths(branchId)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error reabriendo semana')
     }
   }
 
@@ -336,12 +353,20 @@ export default function ConfiguracionView() {
             Meses y Semanas
           </p>
         </div>
-        <button
-          className="admin-btn admin-btn--primary"
-          onClick={() => setShowNewMonthModal(true)}
-        >
-          + Nuevo mes
-        </button>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          <button
+            className="admin-btn admin-btn--ghost"
+            onClick={() => setShowManualWeekModal(true)}
+          >
+            + Semana manual
+          </button>
+          <button
+            className="admin-btn admin-btn--primary"
+            onClick={() => setShowNewMonthModal(true)}
+          >
+            + Nuevo mes
+          </button>
+        </div>
       </div>
 
       {/* Content */}
@@ -397,6 +422,8 @@ export default function ConfiguracionView() {
                       onCloseMonth={() => handleCloseMonth(m)}
                       onReopenMonth={() => handleReopenMonth(m)}
                       onCloseWeek={handleCloseWeek}
+                      onReopenWeek={handleReopenWeek}
+                      onEditWeek={(w) => setEditingWeek(w)}
                       onViewDetail={handleViewDetail}
                     />
                   ))}
@@ -429,6 +456,30 @@ export default function ConfiguracionView() {
           onClose={closeDetail}
         />
       )}
+
+      {/* Manual Week Modal */}
+      {showManualWeekModal && branchId && (
+        <ManualWeekModal
+          branchId={branchId}
+          onClose={() => setShowManualWeekModal(false)}
+          onCreated={() => {
+            setShowManualWeekModal(false)
+            if (branchId) loadMonths(branchId)
+          }}
+        />
+      )}
+
+      {/* Edit Week Modal */}
+      {editingWeek && (
+        <EditWeekModal
+          week={editingWeek}
+          onClose={() => setEditingWeek(null)}
+          onSaved={() => {
+            setEditingWeek(null)
+            if (branchId) loadMonths(branchId)
+          }}
+        />
+      )}
       </div>{/* end max-width wrapper */}
     </div>
   )
@@ -444,6 +495,8 @@ interface MonthRowProps {
   onCloseMonth: () => void
   onReopenMonth: () => void
   onCloseWeek: (week: Week) => void
+  onReopenWeek: (week: Week) => void
+  onEditWeek: (week: Week) => void
   onViewDetail: (week: Week, month: Month) => void
 }
 
@@ -454,6 +507,8 @@ function MonthRow({
   onCloseMonth,
   onReopenMonth,
   onCloseWeek,
+  onReopenWeek,
+  onEditWeek,
   onViewDetail,
 }: MonthRowProps) {
   const name = MONTH_NAMES[month.month - 1]
@@ -535,6 +590,8 @@ function MonthRow({
               week={week}
               month={month}
               onCloseWeek={onCloseWeek}
+              onReopenWeek={onReopenWeek}
+              onEditWeek={onEditWeek}
               onViewDetail={onViewDetail}
             />
           ))}
@@ -551,10 +608,12 @@ interface WeekRowProps {
   week: Week
   month: MonthWithWeeks
   onCloseWeek: (week: Week) => void
+  onReopenWeek: (week: Week) => void
+  onEditWeek: (week: Week) => void
   onViewDetail: (week: Week, month: Month) => void
 }
 
-function WeekRow({ week, month, onCloseWeek, onViewDetail }: WeekRowProps) {
+function WeekRow({ week, month, onCloseWeek, onReopenWeek, onEditWeek, onViewDetail }: WeekRowProps) {
   const { activeFrom, activeTo, clampedStart, clampedEnd } = getWeekActiveRange(
     week,
     month.year,
@@ -601,6 +660,23 @@ function WeekRow({ week, month, onCloseWeek, onViewDetail }: WeekRowProps) {
             Cerrar
           </button>
         )}
+        {!isOpen && (
+          <button
+            className="action-btn"
+            style={{ background: 'rgba(245,158,11,0.12)', color: '#f59e0b' }}
+            onClick={() => onReopenWeek(week)}
+          >
+            ↩ Reabrir
+          </button>
+        )}
+        <button
+          className="action-btn"
+          style={{ background: 'rgba(161,161,170,0.12)', color: '#d4d4d8' }}
+          onClick={() => onEditWeek(week)}
+          title="Editar fechas manualmente"
+        >
+          ✎ Editar
+        </button>
         <button
           className="action-btn action-btn--pay"
           style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8' }}
@@ -1001,6 +1077,156 @@ function KpiMini({
       <p style={{ fontSize: '1rem', fontWeight: 700, color: color ?? '#e5e5e5', margin: 0 }}>
         {value}
       </p>
+    </div>
+  )
+}
+
+// ============================================================
+// MANUAL WEEK MODAL — crear semana con fechas arbitrarias
+// ============================================================
+interface ManualWeekModalProps {
+  branchId: string
+  onClose: () => void
+  onCreated: () => void
+}
+
+function ManualWeekModal({ branchId, onClose, onCreated }: ManualWeekModalProps) {
+  const [start, setStart] = useState('')
+  const [end, setEnd] = useState('')
+  const [status, setStatus] = useState<'open' | 'closed'>('open')
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleCreate() {
+    if (!start || !end) { setError('Completá las dos fechas'); return }
+    setCreating(true)
+    setError(null)
+    try {
+      await createManualWeek(branchId, start, end, status)
+      onCreated()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error creando semana')
+    } finally {
+      setCreating(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ maxWidth: '480px' }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>+ Semana manual</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+
+        <div className="modal-body">
+          <p style={{ fontSize: '0.8rem', color: '#71717a', margin: '0 0 0.75rem' }}>
+            Creá una semana con fechas arbitrarias (útil para cargar datos retroactivos).
+          </p>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Desde</label>
+              <input
+                type="date"
+                className="form-input"
+                value={start}
+                onChange={(e) => setStart(e.target.value)}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Hasta</label>
+              <input
+                type="date"
+                className="form-input"
+                value={end}
+                onChange={(e) => setEnd(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">Estado inicial</label>
+            <select
+              className="form-input admin-select"
+              value={status}
+              onChange={(e) => setStatus(e.target.value as 'open' | 'closed')}
+            >
+              <option value="open">Abierta</option>
+              <option value="closed">Cerrada</option>
+            </select>
+          </div>
+          {error && <p className="form-error">{error}</p>}
+        </div>
+
+        <div className="modal-footer">
+          <button className="admin-btn admin-btn--ghost" onClick={onClose}>Cancelar</button>
+          <button className="admin-btn admin-btn--primary" disabled={creating} onClick={handleCreate}>
+            {creating ? 'Creando...' : 'Crear semana'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ============================================================
+// EDIT WEEK MODAL — editar fechas de una semana existente
+// ============================================================
+interface EditWeekModalProps {
+  week: Week
+  onClose: () => void
+  onSaved: () => void
+}
+
+function EditWeekModal({ week, onClose, onSaved }: EditWeekModalProps) {
+  const [start, setStart] = useState(week.start_date)
+  const [end, setEnd] = useState(week.end_date)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSave() {
+    if (!start || !end) { setError('Las dos fechas son obligatorias'); return }
+    setSaving(true)
+    setError(null)
+    try {
+      await updateWeekDates(week.id, start, end)
+      onSaved()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ maxWidth: '440px' }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>Editar Semana {week.week_number}</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body">
+          <p style={{ fontSize: '0.8rem', color: '#a1a1aa', margin: '0 0 0.75rem' }}>
+            Cambiá las fechas de inicio y fin de la semana. El estado actual ({week.status}) se mantiene.
+          </p>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">Desde</label>
+              <input type="date" className="form-input" value={start} onChange={(e) => setStart(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label className="form-label">Hasta</label>
+              <input type="date" className="form-input" value={end} onChange={(e) => setEnd(e.target.value)} />
+            </div>
+          </div>
+          {error && <p className="form-error">{error}</p>}
+        </div>
+        <div className="modal-footer">
+          <button className="admin-btn admin-btn--ghost" onClick={onClose}>Cancelar</button>
+          <button className="admin-btn admin-btn--primary" disabled={saving} onClick={handleSave}>
+            {saving ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
