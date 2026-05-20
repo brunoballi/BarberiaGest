@@ -1,5 +1,142 @@
 /* Valhalla — Barber mobile view styles */
 
+/* ─── Filtro de fechas + grilla de cortes en home ─────────── */
+.date-filter {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 0.75rem;
+  margin-bottom: 0.75rem;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: end;
+}
+.date-filter__inputs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+.date-filter__label {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: block;
+  margin-bottom: 0.2rem;
+}
+.date-filter__input {
+  width: 100%;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  color: #fafafa;
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  font-size: 0.8125rem;
+  outline: none;
+}
+.date-filter__input:focus { border-color: #f59e0b; }
+.date-filter__apply {
+  background: #f59e0b;
+  color: #18181b;
+  font-weight: 700;
+  font-size: 0.75rem;
+  padding: 0 0.85rem;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+  height: 38px;
+  transition: opacity 0.15s;
+}
+.date-filter__apply:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.filter-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  padding: 0.6rem 0.75rem;
+}
+.filter-summary > div { display: flex; flex-direction: column; gap: 2px; }
+.filter-summary__label {
+  font-size: 0.65rem;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.filter-summary__value {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: #e4e4e7;
+}
+
+.tx-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+@media (min-width: 640px) {
+  .tx-grid { grid-template-columns: repeat(3, 1fr); }
+}
+
+.tx-card {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.tx-card__top {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.tx-card__date {
+  font-size: 0.7rem;
+  color: #a1a1aa;
+  flex: 1;
+}
+.tx-card__edit {
+  background: transparent;
+  color: #71717a;
+  border: 1px solid #3f3f46;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.tx-card__edit:hover { color: #f59e0b; border-color: #f59e0b; }
+.tx-card__amount {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffffff;
+  margin-top: 0.15rem;
+}
+.tx-card__share {
+  font-size: 0.75rem;
+  color: #f59e0b;
+  font-weight: 600;
+}
+.tx-card__client {
+  font-size: 0.7rem;
+  color: #a1a1aa;
+  margin-top: 0.15rem;
+}
+.tx-card__discount {
+  font-size: 0.7rem;
+  color: #f87171;
+}
+
 /* ─── Nuevos campos: cliente, descuento, split payment ─────── */
 .client-name-input {
   width: 100%;

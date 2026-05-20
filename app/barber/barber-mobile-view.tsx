@@ -16,6 +16,7 @@ import {
   getCurrentProfile,
   getOpenWeek,
   getBarberTransactionsForWeek,
+  getBarberTransactionsByDateRange,
   getBarberSettlements,
   getServicesByBranch,
   registerCut,
@@ -136,6 +137,13 @@ export default function BarberMobileView() {
   const [clientName, setClientName] = useState<string>('')
   const [discountAmount, setDiscountAmount] = useState<string>('')
   const [discountReason, setDiscountReason] = useState<string>('')
+
+  // Filtro de fecha en home (vista cortes)
+  const [filterFrom, setFilterFrom] = useState<string>('')  // YYYY-MM-DD
+  const [filterTo, setFilterTo]     = useState<string>('')  // YYYY-MM-DD
+  const [filteredTxs, setFilteredTxs] = useState<Transaction[] | null>(null)
+  const [filterLoading, setFilterLoading] = useState(false)
+  const [filterMode, setFilterMode] = useState<'today' | 'range'>('today')
 
   // Advance request
   const [showAdvanceModal, setShowAdvanceModal] = useState(false)
@@ -277,6 +285,32 @@ export default function BarberMobileView() {
     } finally {
       setSubmitting(false)
     }
+  }
+
+  // Aplicar filtro de fechas (carga del servidor)
+  async function applyDateFilter() {
+    if (!profile || !filterFrom || !filterTo) return
+    if (filterFrom > filterTo) {
+      setError('La fecha "desde" no puede ser mayor que "hasta"')
+      return
+    }
+    try {
+      setFilterLoading(true)
+      const data = await getBarberTransactionsByDateRange(profile.id, filterFrom, filterTo)
+      setFilteredTxs(data)
+      setFilterMode('range')
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al filtrar')
+    } finally {
+      setFilterLoading(false)
+    }
+  }
+
+  function resetFilter() {
+    setFilteredTxs(null)
+    setFilterFrom('')
+    setFilterTo('')
+    setFilterMode('today')
   }
 
   async function handleRequestAdvance() {
@@ -991,46 +1025,113 @@ export default function BarberMobileView() {
         </div>
 
         <section>
-          <h2 className="section-label mb-3">Cortes de hoy</h2>
-          {todayTxs.length === 0 ? (
-            <div className="card text-center py-8">
-              <p className="text-zinc-500 text-sm">Todavía no registraste cortes hoy</p>
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="section-label mb-0">
+              {filterMode === 'range' ? 'Cortes filtrados' : 'Cortes de hoy'}
+            </h2>
+            {filterMode === 'range' && (
+              <button onClick={resetFilter} className="text-xs text-amber-400 hover:text-amber-300">
+                ✕ Limpiar
+              </button>
+            )}
+          </div>
+
+          {/* Filtro de fechas */}
+          <div className="date-filter">
+            <div className="date-filter__inputs">
+              <div>
+                <label className="date-filter__label">Desde</label>
+                <input
+                  type="date"
+                  value={filterFrom}
+                  onChange={(e) => setFilterFrom(e.target.value)}
+                  className="date-filter__input"
+                />
+              </div>
+              <div>
+                <label className="date-filter__label">Hasta</label>
+                <input
+                  type="date"
+                  value={filterTo}
+                  onChange={(e) => setFilterTo(e.target.value)}
+                  className="date-filter__input"
+                />
+              </div>
             </div>
-          ) : (
-            <div className="space-y-2">
-              {todayTxs.map((tx) => (
-                <div key={tx.id} className="tx-row">
-                  <div className="flex items-center gap-3">
-                    <div className={`payment-dot payment-dot--${tx.payment_method}`} />
-                    <div>
-                      <p className="text-white text-sm font-medium">
-                        {PAYMENT_METHOD_LABELS[tx.payment_method]}
-                      </p>
-                      <p className="text-zinc-500 text-xs">
-                        {new Date(tx.created_at).toLocaleTimeString('es-AR', {
-                          hour: '2-digit',
-                          minute: '2-digit',
-                        })}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="text-right">
-                      <p className="text-white text-sm font-semibold">{formatARS(tx.amount)}</p>
-                      <p className="text-amber-400 text-xs">{formatARS(tx.barber_share)}</p>
-                    </div>
-                    <button onClick={() => openEditTx(tx)}
-                      className="icon-btn flex-shrink-0" title="Editar">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
-                        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                      </svg>
-                    </button>
-                  </div>
+            <button
+              onClick={applyDateFilter}
+              disabled={!filterFrom || !filterTo || filterLoading}
+              className="date-filter__apply"
+            >
+              {filterLoading ? '...' : 'Buscar'}
+            </button>
+          </div>
+
+          {(() => {
+            const list = filterMode === 'range' ? (filteredTxs ?? []) : todayTxs
+            if (list.length === 0) {
+              return (
+                <div className="card text-center py-8">
+                  <p className="text-zinc-500 text-sm">
+                    {filterMode === 'range' ? 'Sin cortes en ese rango' : 'Todavía no registraste cortes hoy'}
+                  </p>
                 </div>
-              ))}
-            </div>
-          )}
+              )
+            }
+
+            // Calcular totales del rango filtrado
+            const totalAmount = list.reduce((s, t) => s + t.amount, 0)
+            const totalBarber = list.reduce((s, t) => s + t.barber_share, 0)
+
+            return (
+              <>
+                {filterMode === 'range' && (
+                  <div className="filter-summary">
+                    <div>
+                      <span className="filter-summary__label">Total</span>
+                      <span className="filter-summary__value">{formatARS(totalAmount)}</span>
+                    </div>
+                    <div>
+                      <span className="filter-summary__label">Tu parte</span>
+                      <span className="filter-summary__value text-amber-400">{formatARS(totalBarber)}</span>
+                    </div>
+                    <div>
+                      <span className="filter-summary__label">Cortes</span>
+                      <span className="filter-summary__value">{list.length}</span>
+                    </div>
+                  </div>
+                )}
+
+                <div className="tx-grid">
+                  {list.map((tx) => (
+                    <div key={tx.id} className="tx-card">
+                      <div className="tx-card__top">
+                        <div className={`payment-dot payment-dot--${tx.payment_method}`} />
+                        <span className="tx-card__date">
+                          {filterMode === 'range'
+                            ? new Date(tx.transaction_date + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+                            : new Date(tx.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+                          }
+                        </span>
+                        <button onClick={() => openEditTx(tx)} className="tx-card__edit" title="Editar">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
+                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                          </svg>
+                        </button>
+                      </div>
+                      <div className="tx-card__amount">{formatARS(tx.amount)}</div>
+                      <div className="tx-card__share">{formatARS(tx.barber_share)} <span className="text-zinc-600 text-xs">tuya</span></div>
+                      {tx.client_name && <div className="tx-card__client">👤 {tx.client_name}</div>}
+                      {tx.discount_amount > 0 && (
+                        <div className="tx-card__discount">-{formatARS(tx.discount_amount)} desc.</div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </>
+            )
+          })()}
         </section>
       </div>
     </div>

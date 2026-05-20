@@ -76,6 +76,26 @@ export async function getBranches(): Promise<Branch[]> {
 }
 
 /**
+ * Devuelve los adelantos que están actualmente "a descontar" para un barbero
+ * (status = pending o approved). Útil para mostrarlos en la fila de liquidación.
+ */
+export async function getAdvancesPendingForBarber(
+  barberId: string,
+  branchId: string
+): Promise<Advance[]> {
+  const { data, error } = await supabase
+    .from('advances')
+    .select('*')
+    .eq('barber_id', barberId)
+    .eq('branch_id', branchId)
+    .in('status', ['pending', 'approved'])
+    .order('advance_date', { ascending: false })
+
+  if (error) throw new Error(`[getAdvancesPendingForBarber] ${error.message}`)
+  return data
+}
+
+/**
  * Devuelve solo las sucursales que el admin actual tiene asignadas vía admin_branches.
  * Si el usuario no es admin o no tiene asignaciones, devuelve [].
  */
@@ -600,6 +620,28 @@ export async function registerCut(
     .single()
 
   if (error) throw new Error(`[registerCut] ${error.message}`)
+  return data
+}
+
+/**
+ * Devuelve transacciones del barbero en un rango de fechas (cruza semanas).
+ * Útil para el home con filtro desde-hasta.
+ */
+export async function getBarberTransactionsByDateRange(
+  barberId: string,
+  startDate: string,
+  endDate: string
+): Promise<Transaction[]> {
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, discount_amount, discount_reason')
+    .eq('barber_id', barberId)
+    .gte('transaction_date', startDate)
+    .lte('transaction_date', endDate)
+    .order('transaction_date', { ascending: false })
+    .order('created_at', { ascending: false })
+
+  if (error) throw new Error(`[getBarberTransactionsByDateRange] ${error.message}`)
   return data
 }
 
