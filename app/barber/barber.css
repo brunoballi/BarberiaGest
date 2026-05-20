@@ -1,5 +1,75 @@
 /* Valhalla — Barber mobile view styles */
 
+/* ─── Nuevos campos: cliente, descuento, split payment ─────── */
+.client-name-input {
+  width: 100%;
+  background: #18181b;
+  border: 1px solid #27272a;
+  color: #fafafa;
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.client-name-input:focus { border-color: #f59e0b; }
+.client-name-input:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.discount-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr;
+  gap: 0.5rem;
+}
+
+.discount-hint {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: #a1a1aa;
+  text-align: right;
+}
+
+.split-toggle {
+  margin-top: 0.75rem;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  padding: 0.75rem;
+}
+.split-toggle__row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8125rem;
+  color: #d4d4d8;
+  cursor: pointer;
+  user-select: none;
+}
+.split-toggle__row input { width: 16px; height: 16px; accent-color: #f59e0b; }
+
+.split-inputs {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.split-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: block;
+  margin-bottom: 0.25rem;
+}
+.split-sum {
+  font-size: 0.75rem;
+  text-align: right;
+  margin: 0.25rem 0 0;
+  font-weight: 600;
+}
+.split-sum--ok { color: #34d399; }
+.split-sum--err { color: #fbbf24; }
+
 .valhalla-app {
   background-color: #09090b;
   color: #f4f4f5;

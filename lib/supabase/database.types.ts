@@ -100,6 +100,13 @@ export interface Transaction {
   created_by: string
   created_at: string
   updated_at: string
+  // ── NEW: split payment + descuento + cliente ──
+  cash_amount: number
+  transfer_amount: number
+  card_amount: number
+  client_name: string | null
+  discount_amount: number
+  discount_reason: string | null
 }
 
 export interface Advance {
@@ -293,6 +300,14 @@ export interface RegisterCutPayload {
   // Opcional: override manual de barber_already_collected.
   // Si se omite, se calcula automáticamente (0 para cash, barber_share para transfer/card).
   barber_already_collected_override?: number
+  // ── NEW: split payment (opcional, si se omiten todo va al payment_method principal) ──
+  cash_amount?: number
+  transfer_amount?: number
+  card_amount?: number
+  // ── NEW: descuento + cliente ──
+  client_name?: string | null
+  discount_amount?: number
+  discount_reason?: string | null
 }
 
 /** Resultado del cálculo de un settlement para mostrar en UI */

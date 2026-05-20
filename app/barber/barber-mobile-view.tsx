@@ -129,6 +129,14 @@ export default function BarberMobileView() {
   const [lastRegistered, setLastRegistered] = useState<Transaction | null>(null)
   const [keepCash, setKeepCash] = useState(false)
 
+  // NEW: split payment + cliente + descuento
+  const [splitMode, setSplitMode] = useState(false)
+  const [splitCash, setSplitCash] = useState<string>('')      // monto en efectivo cuando hay split
+  const [splitTransfer, setSplitTransfer] = useState<string>('') // monto transferencia cuando hay split
+  const [clientName, setClientName] = useState<string>('')
+  const [discountAmount, setDiscountAmount] = useState<string>('')
+  const [discountReason, setDiscountReason] = useState<string>('')
+
   // Advance request
   const [showAdvanceModal, setShowAdvanceModal] = useState(false)
   const [advanceAmount, setAdvanceAmount] = useState('')
@@ -206,14 +214,29 @@ export default function BarberMobileView() {
     : selectedServiceData?.base_price ?? 0
 
   const commissionRate = profile?.commission_rate ?? 0.5
-  const previewBarberShare = Math.round(resolvedAmount * commissionRate)
+  // Aplicar descuento al amount efectivo
+  const discountNum = parseFloat(discountAmount) || 0
+  const effectiveAmount = Math.max(0, resolvedAmount - discountNum)
+  const previewBarberShare = Math.round(effectiveAmount * commissionRate)
+  // Split parsing
+  const splitCashNum     = parseFloat(splitCash)     || 0
+  const splitTransferNum = parseFloat(splitTransfer) || 0
+  const splitSum         = splitCashNum + splitTransferNum
+  const splitValid       = !splitMode || Math.abs(splitSum - effectiveAmount) < 0.01
+  // Cash portion del corte: si es split usamos lo escrito, si no es split y método es cash → todo va a cash
+  const previewCashPortion = splitMode ? splitCashNum : (paymentMethod === 'cash' ? effectiveAmount : 0)
+  // already_collected en preview: si keepCash y hay cash, barber se queda con SU parte de la porción cash
   const previewAlreadyCollected =
-    paymentMethod !== 'cash'
-      ? previewBarberShare
-      : keepCash ? previewBarberShare : 0
+    keepCash && previewCashPortion > 0
+      ? Math.round(previewCashPortion * commissionRate)
+      : 0
 
   async function handleSubmit() {
-    if (!profile || !week || !selectedService || !paymentMethod || resolvedAmount <= 0) return
+    if (!profile || !week || !selectedService || !paymentMethod || effectiveAmount <= 0) return
+    if (splitMode && !splitValid) {
+      setError(`La suma del split (${splitSum}) no coincide con el total (${effectiveAmount})`)
+      return
+    }
     // Validar que sigue siendo el mismo día (protege si el form quedó abierto hasta medianoche)
     const nowDate = todayLocal()
     if (nowDate !== today) {
@@ -222,13 +245,27 @@ export default function BarberMobileView() {
     }
     try {
       setSubmitting(true)
+      // Calcular cash/transfer/card según modo
+      const cashAmt     = splitMode ? splitCashNum     : (paymentMethod === 'cash'     ? effectiveAmount : 0)
+      const transferAmt = splitMode ? splitTransferNum : (paymentMethod === 'transfer' ? effectiveAmount : 0)
+      const cardAmt     = !splitMode && paymentMethod === 'card' ? effectiveAmount : 0
+
+      // barber_already_collected: el barbero se queda con SU parte de la porción cash si activó el toggle
+      const cashShareForBarber = Math.round(cashAmt * commissionRate)
+
       const payload: RegisterCutPayload = {
         service_id: selectedServiceData?.id ?? null,
-        amount: resolvedAmount,
+        amount: effectiveAmount,
         payment_method: paymentMethod,
         transaction_date: today,
-        ...(paymentMethod === 'cash' && keepCash
-          ? { barber_already_collected_override: previewBarberShare }
+        cash_amount: cashAmt,
+        transfer_amount: transferAmt,
+        card_amount: cardAmt,
+        client_name: clientName.trim() || null,
+        discount_amount: discountNum > 0 ? discountNum : 0,
+        discount_reason: discountReason.trim() || null,
+        ...(keepCash && cashAmt > 0
+          ? { barber_already_collected_override: cashShareForBarber }
           : {}),
       }
       const tx = await registerCut(payload, profile, week.id)
@@ -581,11 +618,56 @@ export default function BarberMobileView() {
                 className="amount-input"
               />
             </div>
-            {resolvedAmount > 0 && (
+            {effectiveAmount > 0 && (
               <div className="preview-row mt-3">
                 <span className="text-zinc-400 text-sm">Tu parte ({Math.round(commissionRate * 100)}%)</span>
                 <span className="text-amber-400 font-bold text-lg">{formatARS(previewBarberShare)}</span>
               </div>
+            )}
+          </section>
+
+          {/* ── Nombre del cliente (opcional) ── */}
+          <section>
+            <label className="section-label">Cliente (opcional)</label>
+            <input
+              type="text"
+              placeholder="Nombre del cliente"
+              value={clientName}
+              onChange={(e) => setClientName(e.target.value)}
+              className="client-name-input"
+              maxLength={60}
+            />
+          </section>
+
+          {/* ── Descuento (opcional) ── */}
+          <section>
+            <label className="section-label">Descuento (opcional)</label>
+            <div className="discount-grid">
+              <div className="amount-input-wrapper">
+                <span className="amount-prefix">$</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  placeholder="0"
+                  value={discountAmount}
+                  onChange={(e) => setDiscountAmount(e.target.value)}
+                  className="amount-input"
+                />
+              </div>
+              <input
+                type="text"
+                placeholder="Razón (opcional)"
+                value={discountReason}
+                onChange={(e) => setDiscountReason(e.target.value)}
+                className="client-name-input"
+                maxLength={80}
+                disabled={discountNum <= 0}
+              />
+            </div>
+            {discountNum > 0 && resolvedAmount > 0 && (
+              <p className="discount-hint">
+                Subtotal {formatARS(resolvedAmount)} − descuento {formatARS(discountNum)} = <strong>{formatARS(effectiveAmount)}</strong>
+              </p>
             )}
           </section>
 
@@ -608,12 +690,69 @@ export default function BarberMobileView() {
                 >
                   <Icon />
                   <span className="text-xs mt-1">{label}</span>
-                  {paymentMethod === method && method !== 'cash' && resolvedAmount > 0 && (
+                  {paymentMethod === method && method !== 'cash' && !splitMode && resolvedAmount > 0 && (
                     <span className="text-xs text-emerald-400 mt-0.5">Ya en tu cuenta</span>
                   )}
                 </button>
               ))}
             </div>
+
+            {/* Toggle split payment */}
+            {effectiveAmount > 0 && (
+              <div className="split-toggle">
+                <label className="split-toggle__row">
+                  <input
+                    type="checkbox"
+                    checked={splitMode}
+                    onChange={(e) => {
+                      setSplitMode(e.target.checked)
+                      if (!e.target.checked) {
+                        setSplitCash('')
+                        setSplitTransfer('')
+                      }
+                    }}
+                  />
+                  <span>Pago combinado (efectivo + transferencia)</span>
+                </label>
+                {splitMode && (
+                  <div className="split-inputs">
+                    <div>
+                      <label className="split-label">Efectivo</label>
+                      <div className="amount-input-wrapper">
+                        <span className="amount-prefix">$</span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          placeholder="0"
+                          value={splitCash}
+                          onChange={(e) => setSplitCash(e.target.value)}
+                          className="amount-input"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="split-label">Transferencia</label>
+                      <div className="amount-input-wrapper">
+                        <span className="amount-prefix">$</span>
+                        <input
+                          type="number"
+                          inputMode="numeric"
+                          placeholder="0"
+                          value={splitTransfer}
+                          onChange={(e) => setSplitTransfer(e.target.value)}
+                          className="amount-input"
+                        />
+                      </div>
+                    </div>
+                    <p className={`split-sum ${splitValid ? 'split-sum--ok' : 'split-sum--err'}`}>
+                      {splitValid
+                        ? `✓ ${formatARS(splitSum)} = total ${formatARS(effectiveAmount)}`
+                        : `⚠ ${formatARS(splitSum)} ≠ ${formatARS(effectiveAmount)}`}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           {paymentMethod === 'cash' && resolvedAmount > 0 && (

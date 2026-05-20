@@ -551,10 +551,25 @@ export async function registerCut(
   const barberShare = Number((payload.amount * commissionRate).toFixed(2))
   const branchShare = Number((payload.amount - barberShare).toFixed(2))
 
+  // ── Split payment: si vienen montos parciales, los usamos.
+  // Si no, cae todo al payment_method principal.
+  const cashAmount     = payload.cash_amount     ?? (payload.payment_method === 'cash'     ? payload.amount : 0)
+  const transferAmount = payload.transfer_amount ?? (payload.payment_method === 'transfer' ? payload.amount : 0)
+  const cardAmount     = payload.card_amount     ?? (payload.payment_method === 'card'     ? payload.amount : 0)
+
+  // Validar que la suma coincida con el total
+  const splitSum = cashAmount + transferAmount + cardAmount
+  if (Math.abs(splitSum - payload.amount) > 0.01) {
+    throw new Error(`La suma de los métodos (${splitSum}) no coincide con el total (${payload.amount})`)
+  }
+
+  // barber_already_collected:
+  // - Si admin lo pasa explícito, usar eso.
+  // - Si no, el barbero se queda automáticamente con la porción cash (efectivo en mano).
   const barberAlreadyCollected: number =
     payload.barber_already_collected_override !== undefined
       ? payload.barber_already_collected_override
-      : payload.payment_method === 'cash' ? 0 : barberShare
+      : 0  // Por defecto: cash queda en caja, barber cobra todo en settlement
 
   const insert: TransactionInsert = {
     branch_id: barber.branch_id,
@@ -569,6 +584,13 @@ export async function registerCut(
     commission_rate_snapshot: commissionRate,
     barber_already_collected: barberAlreadyCollected,
     created_by: barber.id,
+    // NEW
+    cash_amount: cashAmount,
+    transfer_amount: transferAmount,
+    card_amount: cardAmount,
+    client_name: payload.client_name ?? null,
+    discount_amount: payload.discount_amount ?? 0,
+    discount_reason: payload.discount_reason ?? null,
   }
 
   const { data, error } = await supabase
@@ -587,7 +609,7 @@ export async function getBarberTransactionsForWeek(
 ): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
-    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at')
+    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, discount_amount, discount_reason')
     .eq('barber_id', barberId)
     .eq('week_id', weekId)
     .order('transaction_date', { ascending: false })
