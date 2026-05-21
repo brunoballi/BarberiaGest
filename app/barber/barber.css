@@ -403,6 +403,18 @@
   flex-direction: column;
   gap: 0.5rem;
 }
+
+.split-target {
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8125rem;
+  color: #fbbf24;
+  margin: 0 0 0.25rem;
+}
+.split-target strong { color: #f59e0b; font-weight: 700; }
+.split-target__hint { color: #a16207; font-size: 0.75rem; margin-left: 0.25rem; }
 .split-label {
   font-size: 0.7rem;
   font-weight: 600;

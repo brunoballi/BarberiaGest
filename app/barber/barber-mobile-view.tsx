@@ -286,7 +286,10 @@ export default function BarberMobileView() {
   async function handleSubmit() {
     if (!profile || !week || !selectedService || !paymentMethod || effectiveAmount <= 0) return
     if (splitMode && !splitValid) {
-      setError(`La suma del split (${splitSum}) no coincide con el total (${effectiveAmount})`)
+      setError(
+        `La suma del split (${formatARS(splitSum)}) no coincide con el total a cobrar (${formatARS(effectiveAmount)}).\n` +
+        `Servicio: ${formatARS(resolvedAmount)} − Descuento: ${formatARS(discountNum)} = Total: ${formatARS(effectiveAmount)}`
+      )
       return
     }
     // Validar que sigue siendo el mismo día (protege si el form quedó abierto hasta medianoche)
@@ -795,6 +798,12 @@ export default function BarberMobileView() {
                 </label>
                 {splitMode && (
                   <div className="split-inputs">
+                    <p className="split-target">
+                      Total a cobrar: <strong>{formatARS(effectiveAmount)}</strong>
+                      {discountNum > 0 && (
+                        <span className="split-target__hint"> ({formatARS(resolvedAmount)} − {formatARS(discountNum)} desc.)</span>
+                      )}
+                    </p>
                     <div>
                       <label className="split-label">Efectivo</label>
                       <div className="amount-input-wrapper">
@@ -804,13 +813,20 @@ export default function BarberMobileView() {
                           inputMode="numeric"
                           placeholder="0"
                           value={splitCash}
-                          onChange={(e) => setSplitCash(e.target.value)}
+                          onChange={(e) => {
+                            const v = e.target.value
+                            setSplitCash(v)
+                            // Auto-completar transferencia con el resto
+                            const cashN = parseFloat(v) || 0
+                            const remain = effectiveAmount - cashN
+                            setSplitTransfer(remain > 0 ? String(remain) : '0')
+                          }}
                           className="amount-input"
                         />
                       </div>
                     </div>
                     <div>
-                      <label className="split-label">Transferencia</label>
+                      <label className="split-label">Transferencia (auto)</label>
                       <div className="amount-input-wrapper">
                         <span className="amount-prefix">$</span>
                         <input
@@ -825,8 +841,8 @@ export default function BarberMobileView() {
                     </div>
                     <p className={`split-sum ${splitValid ? 'split-sum--ok' : 'split-sum--err'}`}>
                       {splitValid
-                        ? `✓ ${formatARS(splitSum)} = total ${formatARS(effectiveAmount)}`
-                        : `⚠ ${formatARS(splitSum)} ≠ ${formatARS(effectiveAmount)}`}
+                        ? `✓ Suma OK: ${formatARS(splitSum)}`
+                        : `⚠ Suma ${formatARS(splitSum)} ≠ Total ${formatARS(effectiveAmount)}`}
                     </p>
                   </div>
                 )}
