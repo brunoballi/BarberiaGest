@@ -75,13 +75,6 @@ export default function ServicesView() {
 
   useEffect(() => { loadInitial() }, [loadInitial])
 
-  async function handleBranchChange(branchId: string) {
-    setSelectedBranch(branchId)
-    setEditingId(null)
-    try { await loadServices(branchId) }
-    catch (e) { setError(e instanceof Error ? e.message : 'Error') }
-  }
-
   // ── Create ─────────────────────────────────────────────────────────────
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault()

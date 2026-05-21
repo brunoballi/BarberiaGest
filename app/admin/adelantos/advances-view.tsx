@@ -94,21 +94,6 @@ export default function AdvancesView() {
 
   useEffect(() => { loadInitial() }, [loadInitial])
 
-  async function handleBranchChange(branchId: string) {
-    setSelectedBranch(branchId)
-    setFormBarberId('')
-    try {
-      const [barbersData, advancesData] = await Promise.all([
-        getBarbersByBranch(branchId),
-        getPendingAdvancesByBranch(branchId),
-      ])
-      setBarbers(barbersData)
-      setAdvances(advancesData)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al cambiar sucursal')
-    }
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!profile || !formBarberId || !formAmount || !selectedBranch) return

@@ -98,17 +98,31 @@ export async function getAdvancesPendingForBarber(
 /**
  * Devuelve solo las sucursales que el admin actual tiene asignadas vía admin_branches.
  * Si el usuario no es admin o no tiene asignaciones, devuelve [].
+ *
+ * Implementación robusta: dos queries simples en vez de un join (evita ambigüedades
+ * de PostgREST que devuelve la relación a veces como objeto, a veces como array).
  */
 export async function getMyBranches(): Promise<Branch[]> {
-  const { data, error } = await supabase
+  // 1. IDs de sucursales que tiene asignadas el usuario actual
+  const { data: rows, error: errAB } = await supabase
     .from('admin_branches')
-    .select('branches!inner(id, name, is_active, created_at)')
-    .eq('branches.is_active', true)
-    .order('branches(name)')
+    .select('branch_id')
 
-  if (error) throw new Error(`[getMyBranches] ${error.message}`)
-  // @ts-expect-error supabase devuelve la relación como objeto
-  return (data ?? []).map((row) => row.branches as Branch)
+  if (errAB) throw new Error(`[getMyBranches/admin_branches] ${errAB.message}`)
+
+  const ids = (rows ?? []).map((r) => r.branch_id)
+  if (ids.length === 0) return []
+
+  // 2. Cargar las sucursales completas
+  const { data: branches, error: errB } = await supabase
+    .from('branches')
+    .select('*')
+    .in('id', ids)
+    .eq('is_active', true)
+    .order('name')
+
+  if (errB) throw new Error(`[getMyBranches/branches] ${errB.message}`)
+  return branches ?? []
 }
 
 // ============================================================

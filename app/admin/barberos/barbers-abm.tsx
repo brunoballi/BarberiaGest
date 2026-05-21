@@ -202,16 +202,6 @@ export default function BarbersAbm() {
 
   useEffect(() => { loadInitial() }, [loadInitial])
 
-  async function handleBranchChange(branchId: string) {
-    setSelectedBranch(branchId)
-    setInviteForm((f) => ({ ...f, branch_id: branchId }))
-    try {
-      await loadBarbers(branchId)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al cambiar sucursal')
-    }
-  }
-
   // ── Invite ──────────────────────────────────────────────────────────────
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
