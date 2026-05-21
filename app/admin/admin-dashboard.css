@@ -113,6 +113,88 @@
   color: #e4e4e7;
 }
 
+/* ─── Botón en celda Adelantos + modal detalle ──────────────── */
+.td-advance--btn {
+  background: transparent;
+  border: 1px dashed rgba(245, 158, 11, 0.35);
+  color: #f59e0b;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.15s;
+}
+.td-advance--btn:hover {
+  background: rgba(245, 158, 11, 0.12);
+  border-style: solid;
+  border-color: #f59e0b;
+}
+.td-advance__icon { font-size: 0.85rem; opacity: 0.7; }
+
+.advances-detail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.advances-detail-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  background: #0f0f0f;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 0.5rem 0.75rem;
+}
+
+.advances-detail-row__left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.advances-detail-row__date {
+  font-family: monospace;
+  font-size: 0.75rem;
+  color: #a1a1aa;
+  min-width: 56px;
+}
+
+.advances-detail-row__reason {
+  font-size: 0.75rem;
+  color: #71717a;
+  font-style: italic;
+}
+
+.advances-detail-row__amount {
+  font-weight: 700;
+  color: #f59e0b;
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
+.advances-detail-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.65rem 0.75rem;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 8px;
+  font-size: 0.875rem;
+  color: #fbbf24;
+}
+.advances-detail-total strong { color: #f59e0b; font-weight: 700; font-size: 0.95rem; }
+
 /* ─── Marca de agua Flowi (fija en el centro del viewport) ──── */
 .admin-watermark {
   position: fixed;

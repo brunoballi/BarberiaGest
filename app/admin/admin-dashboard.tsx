@@ -11,6 +11,7 @@ import {
   type SettlementWithBarber,
   type TransactionWithRelations,
   type AdvanceWithBarber,
+  type Advance,
   type Expense,
   type ExpenseInsert,
   PAYMENT_METHOD_LABELS,
@@ -37,6 +38,7 @@ import {
   createExpense,
   overrideTransactionSplit,
   getCurrentProfile,
+  getAdvancesPendingForBarber,
   todayLocal,
   supabase,
 } from '@/lib/supabase/supabase.client'
@@ -97,6 +99,24 @@ export default function AdminDashboard() {
 
   // Live view
   const [liveTransactions, setLiveTransactions] = useState<TransactionWithRelations[]>([])
+
+  // Detalle de adelantos en liquidación
+  const [advancesDetail, setAdvancesDetail] = useState<{
+    barberName: string
+    advances: Advance[]
+    loading: boolean
+  } | null>(null)
+
+  async function openAdvancesDetail(barberId: string, branchIdParam: string, barberName: string) {
+    setAdvancesDetail({ barberName, advances: [], loading: true })
+    try {
+      const list = await getAdvancesPendingForBarber(barberId, branchIdParam)
+      setAdvancesDetail({ barberName, advances: list, loading: false })
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error cargando adelantos')
+      setAdvancesDetail(null)
+    }
+  }
 
   // Banner: año próximo no cargado (cuando estamos en Nov/Dic)
   const [showYearBanner, setShowYearBanner] = useState(false)
@@ -628,9 +648,16 @@ export default function AdminDashboard() {
                             : '—'}
                         </td>
                         <td className="td-muted">
-                          {s.advances_deducted > 0
-                            ? <span className="td-advance">{formatARS(s.advances_deducted)}</span>
-                            : '—'}
+                          {s.advances_deducted > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => openAdvancesDetail(s.barber_id, s.branch_id, s.barber.full_name)}
+                              className="td-advance td-advance--btn"
+                              title="Ver detalle de adelantos aplicados"
+                            >
+                              {formatARS(s.advances_deducted)} <span className="td-advance__icon">›</span>
+                            </button>
+                          ) : '—'}
                         </td>
                         <td>
                           <span className={`net-payable ${isPositive ? 'net-payable--pos' : 'net-payable--neg'}`}>
@@ -934,6 +961,57 @@ export default function AdminDashboard() {
       )}
 
       {/* ── Marca de agua Flowi (fija en el centro) ── */}
+      {/* ── Modal detalle de adelantos ── */}
+      {advancesDetail && (
+        <div className="modal-overlay" onClick={() => setAdvancesDetail(null)}>
+          <div className="modal-box" style={{ maxWidth: '520px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Adelantos · {advancesDetail.barberName}</h3>
+              <button className="modal-close" onClick={() => setAdvancesDetail(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {advancesDetail.loading ? (
+                <div className="flex-center" style={{ padding: '2rem' }}>
+                  <div className="admin-loader" />
+                </div>
+              ) : advancesDetail.advances.length === 0 ? (
+                <div className="empty-state"><p>Sin adelantos pendientes/autorizados.</p></div>
+              ) : (
+                <>
+                  <p style={{ fontSize: '0.8rem', color: '#a1a1aa', margin: '0 0 0.75rem' }}>
+                    Estos {advancesDetail.advances.length} adelantos se restan del neto a pagar.
+                    Al marcar la liquidación como <strong>pagada</strong>, pasan a estado <code>deducted</code>.
+                  </p>
+                  <div className="advances-detail-list">
+                    {advancesDetail.advances.map((a) => (
+                      <div key={a.id} className="advances-detail-row">
+                        <div className="advances-detail-row__left">
+                          <span className="advances-detail-row__date">
+                            {new Date(a.advance_date + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}
+                          </span>
+                          <span className={`badge badge--${a.status === 'approved' ? 'green' : 'violet'}`}>
+                            {a.status === 'approved' ? 'Autorizado' : 'Pendiente'}
+                          </span>
+                          {a.reason && <span className="advances-detail-row__reason">{a.reason}</span>}
+                        </div>
+                        <span className="advances-detail-row__amount">{formatARS(a.amount)}</span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="advances-detail-total">
+                    <span>Total descontado</span>
+                    <strong>{formatARS(advancesDetail.advances.reduce((s, a) => s + a.amount, 0))}</strong>
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="admin-btn admin-btn--ghost" onClick={() => setAdvancesDetail(null)}>Cerrar</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="admin-watermark" aria-hidden="true">
         <svg viewBox="0 0 16 16" fill="none" className="admin-watermark__icon">
           <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/>
