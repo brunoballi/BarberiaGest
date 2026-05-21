@@ -7,6 +7,7 @@ import '../admin-dashboard.css'
 import {
   getMonthsWithWeeks,
   createMonth,
+  createYear,
   closeMonth,
   reopenMonth,
   closeWeek,
@@ -148,6 +149,7 @@ export default function ConfiguracionView() {
   const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set([currentYear]))
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set())
   const [showNewMonthModal, setShowNewMonthModal] = useState(false)
+  const [showNewYearModal, setShowNewYearModal] = useState(false)
   const [showManualWeekModal, setShowManualWeekModal] = useState(false)
   const [editingWeek, setEditingWeek] = useState<Week | null>(null)
   const [detailWeek, setDetailWeek] = useState<Week | null>(null)
@@ -357,14 +359,22 @@ export default function ConfiguracionView() {
           <button
             className="admin-btn admin-btn--ghost"
             onClick={() => setShowManualWeekModal(true)}
+            title="Crear una semana suelta con fechas arbitrarias"
           >
             + Semana manual
           </button>
           <button
-            className="admin-btn admin-btn--primary"
+            className="admin-btn admin-btn--ghost"
             onClick={() => setShowNewMonthModal(true)}
+            title="Crear solo un mes (uso avanzado)"
           >
             + Nuevo mes
+          </button>
+          <button
+            className="admin-btn admin-btn--primary"
+            onClick={() => setShowNewYearModal(true)}
+          >
+            + Crear año
           </button>
         </div>
       </div>
@@ -454,6 +464,18 @@ export default function ConfiguracionView() {
           data={detailData}
           loading={detailLoading}
           onClose={closeDetail}
+        />
+      )}
+
+      {/* New Year Modal */}
+      {showNewYearModal && branchId && (
+        <NewYearModal
+          branchId={branchId}
+          onClose={() => setShowNewYearModal(false)}
+          onCreated={() => {
+            setShowNewYearModal(false)
+            if (branchId) loadMonths(branchId)
+          }}
         />
       )}
 
@@ -1077,6 +1099,93 @@ function KpiMini({
       <p style={{ fontSize: '1rem', fontWeight: 700, color: color ?? '#e5e5e5', margin: 0 }}>
         {value}
       </p>
+    </div>
+  )
+}
+
+// ============================================================
+// NEW YEAR MODAL — crear los 12 meses + todas sus semanas
+// ============================================================
+interface NewYearModalProps {
+  branchId: string
+  onClose: () => void
+  onCreated: () => void
+}
+
+function NewYearModal({ branchId, onClose, onCreated }: NewYearModalProps) {
+  const currentYear = new Date().getFullYear()
+  const [year, setYear] = useState(currentYear + 1) // default: año próximo
+  const [creating, setCreating] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [result, setResult] = useState<{ months: number; weeks: number } | null>(null)
+
+  async function handleCreate() {
+    setCreating(true)
+    setError(null)
+    try {
+      const res = await createYear(branchId, year)
+      setResult({ months: res.months_created, weeks: res.weeks_created })
+      // Esperar 1.5s mostrando resultado y cerrar
+      setTimeout(onCreated, 1500)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error creando año')
+      setCreating(false)
+    }
+  }
+
+  return (
+    <div className="modal-overlay" onClick={creating ? undefined : onClose}>
+      <div className="modal-box" style={{ maxWidth: '480px' }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>+ Crear año completo</h3>
+          {!creating && <button className="modal-close" onClick={onClose}>✕</button>}
+        </div>
+
+        <div className="modal-body">
+          {result ? (
+            <div style={{ textAlign: 'center', padding: '1rem 0' }}>
+              <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>✓</div>
+              <p style={{ color: '#34d399', fontWeight: 700, marginBottom: '0.5rem' }}>
+                Año {year} creado
+              </p>
+              <p style={{ color: '#a1a1aa', fontSize: '0.875rem' }}>
+                {result.months} meses · {result.weeks} semanas
+              </p>
+            </div>
+          ) : (
+            <>
+              <p style={{ fontSize: '0.85rem', color: '#a1a1aa', margin: '0 0 0.75rem' }}>
+                Crea automáticamente los <strong>12 meses</strong> del año seleccionado con <strong>todas sus semanas</strong> Lun–Dom (aprox 52).
+                Si algún mes o semana ya existe, se respeta y solo se crea lo faltante.
+              </p>
+              <div className="form-group">
+                <label className="form-label">Año</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  value={year}
+                  min={currentYear}
+                  max={currentYear + 5}
+                  onChange={(e) => setYear(Number(e.target.value))}
+                  disabled={creating}
+                />
+              </div>
+              {error && <p className="form-error">{error}</p>}
+            </>
+          )}
+        </div>
+
+        {!result && (
+          <div className="modal-footer">
+            <button className="admin-btn admin-btn--ghost" onClick={onClose} disabled={creating}>
+              Cancelar
+            </button>
+            <button className="admin-btn admin-btn--primary" disabled={creating} onClick={handleCreate}>
+              {creating ? 'Creando...' : `Crear año ${year}`}
+            </button>
+          </div>
+        )}
+      </div>
     </div>
   )
 }

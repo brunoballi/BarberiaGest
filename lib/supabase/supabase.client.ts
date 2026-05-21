@@ -311,6 +311,37 @@ export async function ensureNextWeekOpen(
   if (weekErr) throw new Error(`[ensureNextWeekOpen/insert] ${weekErr.message}`)
 }
 
+/**
+ * Crea atómicamente los 12 meses + todas sus semanas Mon-Sun de un año entero.
+ * Idempotente: si ya existen meses/semanas, las respeta y solo crea lo faltante.
+ * Devuelve { months_created, weeks_created, year }.
+ */
+export async function createYear(
+  branchId: string,
+  year: number
+): Promise<{ months_created: number; weeks_created: number; year: number }> {
+  const { data, error } = await supabase.rpc('create_year', {
+    p_branch_id: branchId,
+    p_year: year,
+  })
+  if (error) throw new Error(`[createYear] ${error.message}`)
+  return data as { months_created: number; weeks_created: number; year: number }
+}
+
+/**
+ * ¿Existe al menos un mes cargado para esta sucursal y este año?
+ * Útil para mostrar banner "El año X no está cargado".
+ */
+export async function yearHasMonths(branchId: string, year: number): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('months')
+    .select('id', { count: 'exact', head: true })
+    .eq('branch_id', branchId)
+    .eq('year', year)
+  if (error) throw new Error(`[yearHasMonths] ${error.message}`)
+  return (count ?? 0) > 0
+}
+
 export async function reopenWeek(weekId: string): Promise<void> {
   const { error } = await supabase
     .from('weeks')

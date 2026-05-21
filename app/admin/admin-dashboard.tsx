@@ -22,6 +22,7 @@ import {
   getBranches,
   getMyBranches,
   getMonthsWithWeeks,
+  yearHasMonths,
   MONTH_NAMES,
   getBarbersByBranch,
   getSettlementsForWeek,
@@ -96,6 +97,22 @@ export default function AdminDashboard() {
 
   // Live view
   const [liveTransactions, setLiveTransactions] = useState<TransactionWithRelations[]>([])
+
+  // Banner: año próximo no cargado (cuando estamos en Nov/Dic)
+  const [showYearBanner, setShowYearBanner] = useState(false)
+  const [bannerDismissed, setBannerDismissed] = useState(false)
+
+  useEffect(() => {
+    if (!selectedBranch || bannerDismissed) return
+    const now = new Date()
+    const currentMonth = now.getMonth() + 1
+    const nextYear = now.getFullYear() + 1
+    // Solo mostrar en noviembre o diciembre
+    if (currentMonth < 11) { setShowYearBanner(false); return }
+    yearHasMonths(selectedBranch, nextYear)
+      .then((hasIt) => setShowYearBanner(!hasIt))
+      .catch(() => {})
+  }, [selectedBranch, bannerDismissed])
 
   // Dropdown configuración
   const [showConfigMenu, setShowConfigMenu] = useState(false)
@@ -478,6 +495,25 @@ export default function AdminDashboard() {
         </header>
 
       </div>
+
+      {/* ── Banner: alerta de año próximo no cargado ── */}
+      {showYearBanner && (
+        <div className="year-banner">
+          <div className="year-banner__msg">
+            <span className="year-banner__icon">⚠</span>
+            <span>
+              El año <strong>{new Date().getFullYear() + 1}</strong> todavía no está cargado en esta sucursal.
+              Creá el calendario antes de fin de año para no perder continuidad.
+            </span>
+          </div>
+          <div className="year-banner__actions">
+            <Link href="/admin/configuracion" className="year-banner__btn">
+              Ir a Configuración
+            </Link>
+            <button onClick={() => setBannerDismissed(true)} className="year-banner__dismiss" title="Ocultar">✕</button>
+          </div>
+        </div>
+      )}
 
       {/* ── TABS ── */}
       <div className="admin-tabs">

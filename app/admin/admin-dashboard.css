@@ -14,6 +14,61 @@
 }
 
 
+/* ─── Banner: alerta de año próximo no cargado ──────────────── */
+.year-banner {
+  background: linear-gradient(90deg, rgba(245, 158, 11, 0.18), rgba(245, 158, 11, 0.08));
+  border-bottom: 1px solid rgba(245, 158, 11, 0.35);
+  padding: 0.75rem 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.year-banner__msg {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  color: #fbbf24;
+  font-size: 0.875rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.year-banner__icon {
+  font-size: 1.1rem;
+  flex-shrink: 0;
+}
+
+.year-banner__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.year-banner__btn {
+  background: #f59e0b;
+  color: #18181b;
+  font-weight: 700;
+  font-size: 0.8125rem;
+  padding: 0.4rem 0.85rem;
+  border-radius: 8px;
+  text-decoration: none;
+  transition: background 0.15s;
+}
+.year-banner__btn:hover { background: #fbbf24; }
+
+.year-banner__dismiss {
+  background: transparent;
+  border: none;
+  color: #a16207;
+  cursor: pointer;
+  font-size: 1rem;
+  padding: 0.25rem 0.5rem;
+}
+.year-banner__dismiss:hover { color: #f59e0b; }
+
 /* ─── Dropdown de navegación ─────────────────────────────────── */
 
 .admin-dropdown-trigger {
