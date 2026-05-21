@@ -7,7 +7,7 @@
 // para que persista entre navegaciones y recargas.
 // ============================================================
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import type { Branch } from '@/lib/supabase/database.types'
 
 const STORAGE_KEY = 'valhalla_branch'
@@ -54,10 +54,12 @@ export function resolveInitialBranch(branches: Branch[]): string {
 export function usePersistedBranch(): [string, (id: string) => void] {
   const [selectedBranch, _setSelectedBranch] = useState<string>('')
 
-  function setSelectedBranch(id: string) {
+  // useCallback para que la referencia sea estable entre renders
+  // (si no, romper useEffect deps en componentes que la consumen)
+  const setSelectedBranch = useCallback((id: string) => {
     if (id) storeBranch(id)
     _setSelectedBranch(id)
-  }
+  }, [])
 
   return [selectedBranch, setSelectedBranch]
 }

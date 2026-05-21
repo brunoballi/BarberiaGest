@@ -328,6 +328,39 @@ export async function createYear(
   return data as { months_created: number; weeks_created: number; year: number }
 }
 
+/** Resultado genérico de operaciones de borrado seguro */
+export interface SafeDeleteResult {
+  deleted: boolean
+  reason?: string
+  transactions?: number
+  settlements?: number
+  expenses?: number
+  advances?: number
+  weeks_deleted?: number
+  months_deleted?: number
+}
+
+/** Borra una semana si no tiene datos asociados */
+export async function deleteWeekSafe(weekId: string): Promise<SafeDeleteResult> {
+  const { data, error } = await supabase.rpc('delete_week_safe', { p_week_id: weekId })
+  if (error) throw new Error(`[deleteWeekSafe] ${error.message}`)
+  return data as SafeDeleteResult
+}
+
+/** Borra un mes y todas sus semanas si ninguna tiene datos */
+export async function deleteMonthSafe(monthId: string): Promise<SafeDeleteResult> {
+  const { data, error } = await supabase.rpc('delete_month_safe', { p_month_id: monthId })
+  if (error) throw new Error(`[deleteMonthSafe] ${error.message}`)
+  return data as SafeDeleteResult
+}
+
+/** Borra todos los meses + semanas de un año si nada tiene datos */
+export async function deleteYearSafe(branchId: string, year: number): Promise<SafeDeleteResult> {
+  const { data, error } = await supabase.rpc('delete_year_safe', { p_branch_id: branchId, p_year: year })
+  if (error) throw new Error(`[deleteYearSafe] ${error.message}`)
+  return data as SafeDeleteResult
+}
+
 /**
  * ¿Existe al menos un mes cargado para esta sucursal y este año?
  * Útil para mostrar banner "El año X no está cargado".

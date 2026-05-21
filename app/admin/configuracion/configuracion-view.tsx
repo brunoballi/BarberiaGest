@@ -14,6 +14,9 @@ import {
   reopenWeek,
   updateWeekDates,
   createManualWeek,
+  deleteWeekSafe,
+  deleteMonthSafe,
+  deleteYearSafe,
   getWeekTransactions,
   getSettlementsForWeek,
   getCurrentProfile,
@@ -247,6 +250,52 @@ export default function ConfiguracionView() {
     }
   }
 
+  // Delete week
+  async function handleDeleteWeek(week: Week) {
+    if (!confirm(`¿Eliminar Semana ${week.week_number} (${formatDate(week.start_date)} – ${formatDate(week.end_date)})? Esta acción no se puede deshacer.`)) return
+    try {
+      const res = await deleteWeekSafe(week.id)
+      if (!res.deleted) {
+        alert(`No se puede eliminar: ${res.reason}\n• ${res.transactions ?? 0} transacciones\n• ${res.settlements ?? 0} liquidaciones\n• ${res.expenses ?? 0} gastos\n• ${res.advances ?? 0} adelantos`)
+        return
+      }
+      if (branchId) await loadMonths(branchId)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error eliminando semana')
+    }
+  }
+
+  // Delete month
+  async function handleDeleteMonth(m: MonthWithWeeks) {
+    if (!confirm(`¿Eliminar ${MONTH_NAMES[m.month - 1]} ${m.year} y sus ${m.weeks.length} semanas? No se puede deshacer.`)) return
+    try {
+      const res = await deleteMonthSafe(m.id)
+      if (!res.deleted) {
+        alert(`No se puede eliminar: ${res.reason}\n• ${res.transactions ?? 0} transacciones\n• ${res.settlements ?? 0} liquidaciones\n• ${res.expenses ?? 0} gastos\n• ${res.advances ?? 0} adelantos`)
+        return
+      }
+      if (branchId) await loadMonths(branchId)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error eliminando mes')
+    }
+  }
+
+  // Delete year
+  async function handleDeleteYear(year: number) {
+    if (!branchId) return
+    if (!confirm(`¿Eliminar TODO el año ${year} (12 meses + ~52 semanas)? Esta acción no se puede deshacer.`)) return
+    try {
+      const res = await deleteYearSafe(branchId, year)
+      if (!res.deleted) {
+        alert(`No se puede eliminar: ${res.reason}\n• ${res.transactions ?? 0} transacciones\n• ${res.settlements ?? 0} liquidaciones\n• ${res.expenses ?? 0} gastos\n• ${res.advances ?? 0} adelantos`)
+        return
+      }
+      await loadMonths(branchId)
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error eliminando año')
+    }
+  }
+
   // Reopen week
   async function handleReopenWeek(week: Week) {
     if (!confirm(`¿Reabrir Semana ${week.week_number}? Volverá a estado abierto y se podrán cargar más transacciones.`))
@@ -398,28 +447,38 @@ export default function ConfiguracionView() {
           return (
             <div key={year} style={{ marginBottom: '1rem' }}>
               {/* Year row */}
-              <button
-                onClick={() => toggleYear(year)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '0.5rem',
-                  background: 'none',
-                  border: 'none',
-                  cursor: 'pointer',
-                  color: '#a1a1aa',
-                  fontSize: '0.8125rem',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.1em',
-                  padding: '0.5rem 0',
-                  width: '100%',
-                  textAlign: 'left',
-                }}
-              >
-                <span style={{ color: '#52525b' }}>{yearExpanded ? '▼' : '▶'}</span>
-                {year}
-              </button>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <button
+                  onClick={() => toggleYear(year)}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: '#a1a1aa',
+                    fontSize: '0.8125rem',
+                    fontWeight: 600,
+                    textTransform: 'uppercase',
+                    letterSpacing: '0.1em',
+                    padding: '0.5rem 0',
+                    flex: 1,
+                    textAlign: 'left',
+                  }}
+                >
+                  <span style={{ color: '#52525b' }}>{yearExpanded ? '▼' : '▶'}</span>
+                  {year}
+                </button>
+                <button
+                  className="action-btn"
+                  style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171', fontSize: '0.7rem', padding: '0.25rem 0.6rem' }}
+                  onClick={() => handleDeleteYear(year)}
+                  title="Eliminar todo el año (solo si no tiene datos)"
+                >
+                  🗑 Eliminar año
+                </button>
+              </div>
 
               {yearExpanded && (
                 <div style={{ paddingLeft: '1rem' }}>
@@ -431,8 +490,10 @@ export default function ConfiguracionView() {
                       onToggle={() => toggleMonth(m.id)}
                       onCloseMonth={() => handleCloseMonth(m)}
                       onReopenMonth={() => handleReopenMonth(m)}
+                      onDeleteMonth={() => handleDeleteMonth(m)}
                       onCloseWeek={handleCloseWeek}
                       onReopenWeek={handleReopenWeek}
+                      onDeleteWeek={handleDeleteWeek}
                       onEditWeek={(w) => setEditingWeek(w)}
                       onViewDetail={handleViewDetail}
                     />
@@ -516,8 +577,10 @@ interface MonthRowProps {
   onToggle: () => void
   onCloseMonth: () => void
   onReopenMonth: () => void
+  onDeleteMonth: () => void
   onCloseWeek: (week: Week) => void
   onReopenWeek: (week: Week) => void
+  onDeleteWeek: (week: Week) => void
   onEditWeek: (week: Week) => void
   onViewDetail: (week: Week, month: Month) => void
 }
@@ -528,8 +591,10 @@ function MonthRow({
   onToggle,
   onCloseMonth,
   onReopenMonth,
+  onDeleteMonth,
   onCloseWeek,
   onReopenWeek,
+  onDeleteWeek,
   onEditWeek,
   onViewDetail,
 }: MonthRowProps) {
@@ -593,6 +658,14 @@ function MonthRow({
               ↩ Reabrir mes
             </button>
           )}
+          <button
+            className="admin-btn admin-btn--ghost"
+            style={{ fontSize: '0.75rem', padding: '0.25rem 0.6rem', borderColor: 'rgba(239,68,68,0.4)', color: '#f87171' }}
+            onClick={onDeleteMonth}
+            title="Eliminar mes (solo si no tiene datos)"
+          >
+            🗑
+          </button>
         </div>
       </div>
 
@@ -613,6 +686,7 @@ function MonthRow({
               month={month}
               onCloseWeek={onCloseWeek}
               onReopenWeek={onReopenWeek}
+              onDeleteWeek={onDeleteWeek}
               onEditWeek={onEditWeek}
               onViewDetail={onViewDetail}
             />
@@ -631,11 +705,12 @@ interface WeekRowProps {
   month: MonthWithWeeks
   onCloseWeek: (week: Week) => void
   onReopenWeek: (week: Week) => void
+  onDeleteWeek: (week: Week) => void
   onEditWeek: (week: Week) => void
   onViewDetail: (week: Week, month: Month) => void
 }
 
-function WeekRow({ week, month, onCloseWeek, onReopenWeek, onEditWeek, onViewDetail }: WeekRowProps) {
+function WeekRow({ week, month, onCloseWeek, onReopenWeek, onDeleteWeek, onEditWeek, onViewDetail }: WeekRowProps) {
   const { activeFrom, activeTo, clampedStart, clampedEnd } = getWeekActiveRange(
     week,
     month.year,
@@ -698,6 +773,14 @@ function WeekRow({ week, month, onCloseWeek, onReopenWeek, onEditWeek, onViewDet
           title="Editar fechas manualmente"
         >
           ✎ Editar
+        </button>
+        <button
+          className="action-btn"
+          style={{ background: 'rgba(239,68,68,0.10)', color: '#f87171' }}
+          onClick={() => onDeleteWeek(week)}
+          title="Eliminar semana (solo si no tiene datos)"
+        >
+          🗑
         </button>
         <button
           className="action-btn action-btn--pay"
