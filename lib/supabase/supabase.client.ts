@@ -684,7 +684,12 @@ export async function registerCut(
   weekId: string
 ): Promise<Transaction> {
   const commissionRate = barber.commission_rate ?? 0.5
-  const barberShare = Number((payload.amount * commissionRate).toFixed(2))
+  // Parte del barbero: SOBRE EL PRECIO ORIGINAL (antes del descuento).
+  // El descuento lo absorbe la barbería, no el barbero.
+  const discountAmt = payload.discount_amount ?? 0
+  const fullPrice   = payload.amount + discountAmt
+  const barberShare = Number((fullPrice * commissionRate).toFixed(2))
+  // La parte del negocio queda con lo que cobró el cliente menos lo del barbero (puede ser menor por el descuento)
   const branchShare = Number((payload.amount - barberShare).toFixed(2))
 
   // ── Split payment: si vienen montos parciales, los usamos.

@@ -1,5 +1,142 @@
 /* Valhalla — Barber mobile view styles */
 
+/* ─── Header del barbero ────────────────────────────────────── */
+.barber-header {
+  padding: 1.25rem 1.25rem 1.5rem;
+  background: linear-gradient(180deg, #0a0a0a 0%, transparent 100%);
+}
+
+.barber-header__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.875rem;
+}
+
+.barber-header__logo {
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: #f59e0b;
+}
+
+.barber-header__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.barber-header__user {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.barber-avatar-circle {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #f59e0b, #d97706);
+  color: #18181b;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.95rem;
+  flex-shrink: 0;
+  box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+}
+
+.barber-header__name {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0;
+  line-height: 1.1;
+}
+
+.barber-header__sub {
+  font-size: 0.8125rem;
+  color: #a1a1aa;
+  margin: 0.15rem 0 0;
+  text-transform: capitalize;
+}
+
+/* ─── Grupos por fecha en cortes filtrados ──────────────────── */
+.tx-day-group {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  margin-bottom: 0.5rem;
+  overflow: hidden;
+}
+
+.tx-day-group__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  border: none;
+  width: 100%;
+  cursor: pointer;
+  color: #e4e4e7;
+  text-align: left;
+  transition: background 0.15s;
+}
+.tx-day-group__header:hover { background: rgba(255,255,255,0.03); }
+
+.tx-day-group__left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.tx-day-group__arrow {
+  color: #71717a;
+  font-size: 0.7rem;
+  transition: transform 0.2s;
+}
+.tx-day-group--open .tx-day-group__arrow {
+  transform: rotate(90deg);
+}
+.tx-day-group__date {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: #e4e4e7;
+  text-transform: capitalize;
+}
+.tx-day-group__count {
+  font-size: 0.7rem;
+  color: #71717a;
+  background: #27272a;
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.tx-day-group__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+.tx-day-group__total {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #ffffff;
+}
+.tx-day-group__share {
+  font-size: 0.75rem;
+  color: #f59e0b;
+}
+
+.tx-day-group__body {
+  padding: 0.5rem;
+  background: #0d0d0d;
+  border-top: 1px solid #27272a;
+}
+
 /* ─── Bloques de días de la semana ──────────────────────────── */
 .day-blocks {
   display: grid;

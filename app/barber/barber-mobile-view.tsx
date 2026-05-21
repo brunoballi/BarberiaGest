@@ -140,6 +140,8 @@ export default function BarberMobileView() {
 
   // Día seleccionado en la grilla de la semana (default: hoy)
   const [selectedDay, setSelectedDay] = useState<string>('')  // YYYY-MM-DD
+  // Días expandidos en la vista de rango (cortes filtrados)
+  const [expandedDates, setExpandedDates] = useState<Set<string>>(new Set())
 
   // Filtro avanzado por rango (opcional)
   const [showRangeFilter, setShowRangeFilter] = useState(false)
@@ -263,10 +265,11 @@ export default function BarberMobileView() {
     : selectedServiceData?.base_price ?? 0
 
   const commissionRate = profile?.commission_rate ?? 0.5
-  // Aplicar descuento al amount efectivo
+  // Aplicar descuento al amount efectivo (lo que paga el cliente)
   const discountNum = parseFloat(discountAmount) || 0
   const effectiveAmount = Math.max(0, resolvedAmount - discountNum)
-  const previewBarberShare = Math.round(effectiveAmount * commissionRate)
+  // Parte del barbero: SIEMPRE sobre el precio original (el descuento lo absorbe la barbería)
+  const previewBarberShare = Math.round(resolvedAmount * commissionRate)
   // Split parsing
   const splitCashNum     = parseFloat(splitCash)     || 0
   const splitTransferNum = parseFloat(splitTransfer) || 0
@@ -998,18 +1001,23 @@ export default function BarberMobileView() {
     {editModal}
     {advanceModal}
     <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
-      <header className="px-5 pt-safe pt-8 pb-6">
-        <div className="flex items-start justify-between">
-          <div>
-            <p className="text-zinc-500 text-xs uppercase tracking-widest mb-1">Valhalla</p>
-            <h1 className="text-2xl font-bold text-white leading-tight">
-              {profile?.full_name.split(' ')[0]}
-            </h1>
-            <p className="text-zinc-400 text-sm mt-0.5 capitalize">
-              {week ? `Semana ${week.week_number} · ${formatDate(today)}` : ''}
-            </p>
+      <header className="barber-header">
+        <div className="barber-header__brand">
+          <span className="barber-header__logo">VALHALLA</span>
+        </div>
+        <div className="barber-header__row">
+          <div className="barber-header__user">
+            <div className="barber-avatar-circle">
+              {(profile?.full_name ?? 'U').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()}
+            </div>
+            <div>
+              <h1 className="barber-header__name">{profile?.full_name.split(' ')[0]}</h1>
+              <p className="barber-header__sub">
+                {week ? `Semana ${week.week_number} · ${formatDate(today)}` : ''}
+              </p>
+            </div>
           </div>
-          <button onClick={handleLogout} className="icon-btn mt-1">
+          <button onClick={handleLogout} className="icon-btn" aria-label="Salir">
             <IconLogout />
           </button>
         </div>
@@ -1161,17 +1169,88 @@ export default function BarberMobileView() {
                         : 'Sin cortes ese día'}
                     </p>
                   </div>
+                ) : filterMode === 'range' ? (
+                  // ── Modo rango: agrupado por fecha, expandible ──
+                  (() => {
+                    const byDate: Record<string, Transaction[]> = {}
+                    list.forEach((tx) => { (byDate[tx.transaction_date] ||= []).push(tx) })
+                    const sortedDates = Object.keys(byDate).sort((a, b) => b.localeCompare(a))
+                    return (
+                      <div>
+                        {sortedDates.map((date) => {
+                          const dayList = byDate[date]
+                          const dayTotal = dayList.reduce((s, t) => s + t.amount, 0)
+                          const dayShare = dayList.reduce((s, t) => s + t.barber_share, 0)
+                          const isOpen = expandedDates.has(date)
+                          const label = new Date(date + 'T12:00:00').toLocaleDateString('es-AR', {
+                            weekday: 'short', day: '2-digit', month: 'short',
+                          })
+                          return (
+                            <div key={date} className={`tx-day-group ${isOpen ? 'tx-day-group--open' : ''}`}>
+                              <button
+                                onClick={() => {
+                                  setExpandedDates((prev) => {
+                                    const next = new Set(prev)
+                                    if (next.has(date)) next.delete(date)
+                                    else next.add(date)
+                                    return next
+                                  })
+                                }}
+                                className="tx-day-group__header"
+                              >
+                                <div className="tx-day-group__left">
+                                  <span className="tx-day-group__arrow">▶</span>
+                                  <span className="tx-day-group__date">{label}</span>
+                                  <span className="tx-day-group__count">{dayList.length} {dayList.length === 1 ? 'corte' : 'cortes'}</span>
+                                </div>
+                                <div className="tx-day-group__right">
+                                  <span className="tx-day-group__total">{formatARS(dayTotal)}</span>
+                                  <span className="tx-day-group__share">tuya {formatARS(dayShare)}</span>
+                                </div>
+                              </button>
+                              {isOpen && (
+                                <div className="tx-day-group__body">
+                                  <div className="tx-grid">
+                                    {dayList.map((tx) => (
+                                      <div key={tx.id} className="tx-card">
+                                        <div className="tx-card__top">
+                                          <div className={`payment-dot payment-dot--${tx.payment_method}`} />
+                                          <span className="tx-card__date">
+                                            {new Date(tx.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
+                                          </span>
+                                          <button onClick={() => openEditTx(tx)} className="tx-card__edit" title="Editar">
+                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
+                                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                            </svg>
+                                          </button>
+                                        </div>
+                                        <div className="tx-card__amount">{formatARS(tx.amount)}</div>
+                                        <div className="tx-card__share">{formatARS(tx.barber_share)} <span className="text-zinc-600 text-xs">tuya</span></div>
+                                        {tx.client_name && <div className="tx-card__client">👤 {tx.client_name}</div>}
+                                        {tx.discount_amount > 0 && (
+                                          <div className="tx-card__discount">-{formatARS(tx.discount_amount)} desc.</div>
+                                        )}
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )
+                  })()
                 ) : (
+                  // ── Modo semana: grilla normal del día seleccionado ──
                   <div className="tx-grid">
                     {list.map((tx) => (
                       <div key={tx.id} className="tx-card">
                         <div className="tx-card__top">
                           <div className={`payment-dot payment-dot--${tx.payment_method}`} />
                           <span className="tx-card__date">
-                            {filterMode === 'range'
-                              ? new Date(tx.transaction_date + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
-                              : new Date(tx.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
-                            }
+                            {new Date(tx.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
                           </span>
                           <button onClick={() => openEditTx(tx)} className="tx-card__edit" title="Editar">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
