@@ -263,16 +263,24 @@ export default function ConfiguracionView() {
     ].join('\n')
   }
 
-  // Delete week (safe → si bloquea ofrece force)
+  // Requiere escribir "BORRAR" para confirmar acción destructiva
+  function confirmDestructive(message: string): boolean {
+    const input = prompt(
+      `🚨 ATENCIÓN — BORRADO DESTRUCTIVO\n\n${message}\n\nEsta acción NO se puede deshacer.\nEscribí la palabra BORRAR (en mayúsculas) para confirmar:`
+    )
+    return input?.trim() === 'BORRAR'
+  }
+
+  // Delete week (safe → si bloquea ofrece force con confirm estricto)
   async function handleDeleteWeek(week: Week) {
     if (!confirm(`¿Eliminar Semana ${week.week_number} (${formatDate(week.start_date)} – ${formatDate(week.end_date)})?`)) return
     try {
       const res = await deleteWeekSafe(week.id)
       if (!res.deleted) {
-        const force = confirm(
-          `⚠ La semana tiene datos:\n${blockSummary(res)}\n\n¿BORRAR IGUALMENTE TODO ESTO? Esta acción NO se puede deshacer.`
+        const ok = confirmDestructive(
+          `La semana tiene datos asociados:\n${blockSummary(res)}\n\nSe van a BORRAR PERMANENTEMENTE todos estos registros.`
         )
-        if (!force) return
+        if (!ok) return
         await deleteWeekForce(week.id)
       }
       if (branchId) await loadMonths(branchId)
@@ -281,16 +289,16 @@ export default function ConfiguracionView() {
     }
   }
 
-  // Delete month (safe → force si bloquea)
+  // Delete month (safe → force con confirm estricto)
   async function handleDeleteMonth(m: MonthWithWeeks) {
     if (!confirm(`¿Eliminar ${MONTH_NAMES[m.month - 1]} ${m.year} y sus ${m.weeks.length} semanas?`)) return
     try {
       const res = await deleteMonthSafe(m.id)
       if (!res.deleted) {
-        const force = confirm(
-          `⚠ El mes tiene datos:\n${blockSummary(res)}\n\n¿BORRAR IGUALMENTE el mes y todos sus datos? Esta acción NO se puede deshacer.`
+        const ok = confirmDestructive(
+          `El mes ${MONTH_NAMES[m.month - 1]} ${m.year} tiene datos asociados:\n${blockSummary(res)}\n\nSe van a BORRAR PERMANENTEMENTE todos estos registros.`
         )
-        if (!force) return
+        if (!ok) return
         await deleteMonthForce(m.id)
       }
       if (branchId) await loadMonths(branchId)
@@ -299,17 +307,17 @@ export default function ConfiguracionView() {
     }
   }
 
-  // Delete year (safe → force si bloquea)
+  // Delete year (safe → force con confirm estricto)
   async function handleDeleteYear(year: number) {
     if (!branchId) return
     if (!confirm(`¿Eliminar TODO el año ${year} (12 meses + ~52 semanas)?`)) return
     try {
       const res = await deleteYearSafe(branchId, year)
       if (!res.deleted) {
-        const force = confirm(
-          `⚠ El año ${year} tiene datos:\n${blockSummary(res)}\n\n¿BORRAR IGUALMENTE TODO EL AÑO y sus datos asociados? Esta acción NO se puede deshacer.`
+        const ok = confirmDestructive(
+          `El año ${year} tiene datos asociados en muchas semanas:\n${blockSummary(res)}\n\nSe van a BORRAR PERMANENTEMENTE todos estos registros del año completo.`
         )
-        if (!force) return
+        if (!ok) return
         await deleteYearForce(branchId, year)
       }
       await loadMonths(branchId)

@@ -1,0 +1,219 @@
+/* ── Auditoría ──────────────────────────────────────────────── */
+.audit-page {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 1.5rem 1.25rem 4rem;
+  background: #0f0f0f;
+  min-height: 100vh;
+  color: #e5e5e5;
+  font-family: system-ui, -apple-system, sans-serif;
+}
+
+.audit-header {
+  margin-bottom: 1.5rem;
+}
+
+.audit-title {
+  font-size: 1.5rem;
+  font-weight: 800;
+  color: #ffffff;
+  margin: 0;
+}
+
+.audit-subtitle {
+  font-size: 0.875rem;
+  color: #71717a;
+  margin: 0.25rem 0 0;
+}
+
+.audit-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 1rem;
+}
+
+.audit-filter__label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #71717a;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 0.3rem;
+}
+
+.audit-filter__input {
+  width: 100%;
+  background: #27272a;
+  border: 1px solid #3f3f46;
+  color: #e4e4e7;
+  border-radius: 8px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.875rem;
+  outline: none;
+}
+.audit-filter__input:focus { border-color: #f59e0b; }
+
+.audit-empty, .audit-error {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 12px;
+  padding: 3rem 1rem;
+  text-align: center;
+  color: #71717a;
+  font-size: 0.875rem;
+}
+.audit-error { color: #f87171; border-color: #7f1d1d; }
+
+.audit-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.audit-row {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.audit-row__header {
+  display: grid;
+  grid-template-columns: 16px 80px 110px 1fr 150px 120px;
+  gap: 0.75rem;
+  align-items: center;
+  width: 100%;
+  background: transparent;
+  border: none;
+  padding: 0.65rem 0.85rem;
+  cursor: pointer;
+  color: #e4e4e7;
+  text-align: left;
+  font-size: 0.8125rem;
+  transition: background 0.15s;
+}
+.audit-row__header:hover { background: rgba(255,255,255,0.03); }
+
+.audit-row__arrow {
+  color: #71717a;
+  font-size: 0.7rem;
+  transition: transform 0.2s;
+}
+.audit-row--open .audit-row__arrow { transform: rotate(90deg); }
+
+.audit-row__action {
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-align: center;
+}
+
+.audit-row__table {
+  font-size: 0.8rem;
+  color: #a1a1aa;
+  font-weight: 600;
+}
+
+.audit-row__summary {
+  color: #d4d4d8;
+  font-size: 0.8125rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-row__user {
+  font-size: 0.75rem;
+  color: #a1a1aa;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.audit-row__date {
+  font-size: 0.75rem;
+  color: #71717a;
+  font-family: monospace;
+  text-align: right;
+}
+
+.audit-row__body {
+  background: #0d0d0d;
+  border-top: 1px solid #27272a;
+  padding: 0.85rem 1rem;
+}
+
+.audit-row__id {
+  font-size: 0.7rem;
+  color: #71717a;
+  margin: 0 0 0.6rem;
+}
+.audit-row__id code {
+  background: #27272a;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: monospace;
+  color: #a1a1aa;
+}
+
+.audit-diff {
+  width: 100%;
+  font-size: 0.8125rem;
+  border-collapse: collapse;
+}
+.audit-diff th {
+  text-align: left;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #71717a;
+  font-weight: 600;
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid #27272a;
+}
+.audit-diff td {
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px solid #1c1c1e;
+  color: #d4d4d8;
+}
+.audit-diff__old { color: #f87171; text-decoration: line-through; }
+.audit-diff__new { color: #34d399; font-weight: 600; }
+.audit-diff__arrow { color: #52525b; text-align: center; width: 20px; }
+
+.audit-row__json {
+  background: #0a0a0a;
+  border: 1px solid #27272a;
+  border-radius: 8px;
+  padding: 0.75rem;
+  margin: 0;
+  font-size: 0.7rem;
+  color: #a1a1aa;
+  max-height: 300px;
+  overflow: auto;
+  font-family: monospace;
+}
+
+/* Mobile: header colapsa */
+@media (max-width: 767px) {
+  .audit-row__header {
+    grid-template-columns: 14px 70px 1fr;
+    grid-template-rows: auto auto;
+    gap: 0.4rem;
+  }
+  .audit-row__table { display: none; }
+  .audit-row__summary { grid-column: 1 / -1; padding-left: 28px; }
+  .audit-row__user, .audit-row__date {
+    grid-column: 1 / -1;
+    padding-left: 28px;
+    font-size: 0.7rem;
+  }
+}

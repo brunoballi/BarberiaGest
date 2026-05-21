@@ -485,6 +485,9 @@ export default function AdminDashboard() {
                 <Link href="/admin/servicios" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
                   Servicios
                 </Link>
+                <Link href="/admin/auditoria" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
+                  Auditoría
+                </Link>
               </div>
             )}
 

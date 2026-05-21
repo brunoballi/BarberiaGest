@@ -356,6 +356,67 @@ export async function createYear(
   return data as { months_created: number; weeks_created: number; year: number }
 }
 
+// ============================================================
+// AUDIT LOG
+// ============================================================
+export interface AuditLogEntry {
+  id: string
+  table_name: string
+  record_id: string
+  action: 'INSERT' | 'UPDATE' | 'DELETE'
+  changed_by: string | null
+  changed_at: string
+  old_data: Record<string, unknown> | null
+  new_data: Record<string, unknown> | null
+  diff: Record<string, { old: unknown; new: unknown }> | null
+}
+
+export interface AuditLogWithUser extends AuditLogEntry {
+  changed_by_name: string | null
+}
+
+export interface AuditFilters {
+  table?: 'transactions' | 'settlements' | 'expenses' | null
+  action?: 'INSERT' | 'UPDATE' | 'DELETE' | null
+  from?: string  // ISO date YYYY-MM-DD
+  to?: string
+  limit?: number
+}
+
+/** Trae entries del audit_log con nombre del usuario que hizo el cambio */
+export async function getAuditLog(filters: AuditFilters = {}): Promise<AuditLogWithUser[]> {
+  let query = supabase
+    .from('audit_log')
+    .select('*')
+    .order('changed_at', { ascending: false })
+    .limit(filters.limit ?? 100)
+
+  if (filters.table)  query = query.eq('table_name', filters.table)
+  if (filters.action) query = query.eq('action', filters.action)
+  if (filters.from)   query = query.gte('changed_at', filters.from)
+  if (filters.to)     query = query.lte('changed_at', filters.to + 'T23:59:59')
+
+  const { data: rows, error } = await query
+  if (error) throw new Error(`[getAuditLog] ${error.message}`)
+  if (!rows || rows.length === 0) return []
+
+  // Cargar perfiles para mostrar nombres
+  const userIds = [...new Set(rows.map((r) => r.changed_by).filter((id): id is string => !!id))]
+  let userMap: Record<string, string> = {}
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .in('id', userIds)
+    userMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p.full_name]))
+  }
+
+  return rows.map((r) => ({
+    ...r,
+    changed_by_name: r.changed_by ? (userMap[r.changed_by] ?? null) : null,
+  }))
+}
+
 /** Resultado genérico de operaciones de borrado seguro */
 export interface SafeDeleteResult {
   deleted: boolean
