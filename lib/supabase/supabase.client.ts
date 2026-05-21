@@ -361,6 +361,27 @@ export async function deleteYearSafe(branchId: string, year: number): Promise<Sa
   return data as SafeDeleteResult
 }
 
+/** ⚠ Borra una semana Y todos sus datos asociados (cascada controlada) */
+export async function deleteWeekForce(weekId: string): Promise<SafeDeleteResult> {
+  const { data, error } = await supabase.rpc('delete_week_force', { p_week_id: weekId })
+  if (error) throw new Error(`[deleteWeekForce] ${error.message}`)
+  return data as SafeDeleteResult
+}
+
+/** ⚠ Borra un mes Y todos sus datos asociados (cascada controlada) */
+export async function deleteMonthForce(monthId: string): Promise<SafeDeleteResult> {
+  const { data, error } = await supabase.rpc('delete_month_force', { p_month_id: monthId })
+  if (error) throw new Error(`[deleteMonthForce] ${error.message}`)
+  return data as SafeDeleteResult
+}
+
+/** ⚠ Borra un año entero Y todos sus datos asociados (cascada controlada) */
+export async function deleteYearForce(branchId: string, year: number): Promise<SafeDeleteResult> {
+  const { data, error } = await supabase.rpc('delete_year_force', { p_branch_id: branchId, p_year: year })
+  if (error) throw new Error(`[deleteYearForce] ${error.message}`)
+  return data as SafeDeleteResult
+}
+
 /**
  * ¿Existe al menos un mes cargado para esta sucursal y este año?
  * Útil para mostrar banner "El año X no está cargado".

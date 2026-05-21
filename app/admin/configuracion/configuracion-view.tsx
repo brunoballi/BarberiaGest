@@ -17,6 +17,9 @@ import {
   deleteWeekSafe,
   deleteMonthSafe,
   deleteYearSafe,
+  deleteWeekForce,
+  deleteMonthForce,
+  deleteYearForce,
   getWeekTransactions,
   getSettlementsForWeek,
   getCurrentProfile,
@@ -250,14 +253,27 @@ export default function ConfiguracionView() {
     }
   }
 
-  // Delete week
+  // Helper para mostrar el resumen de datos bloqueantes
+  function blockSummary(res: { transactions?: number; settlements?: number; expenses?: number; advances?: number }) {
+    return [
+      `• ${res.transactions ?? 0} transacciones`,
+      `• ${res.settlements ?? 0} liquidaciones`,
+      `• ${res.expenses ?? 0} gastos`,
+      `• ${res.advances ?? 0} adelantos`,
+    ].join('\n')
+  }
+
+  // Delete week (safe → si bloquea ofrece force)
   async function handleDeleteWeek(week: Week) {
-    if (!confirm(`¿Eliminar Semana ${week.week_number} (${formatDate(week.start_date)} – ${formatDate(week.end_date)})? Esta acción no se puede deshacer.`)) return
+    if (!confirm(`¿Eliminar Semana ${week.week_number} (${formatDate(week.start_date)} – ${formatDate(week.end_date)})?`)) return
     try {
       const res = await deleteWeekSafe(week.id)
       if (!res.deleted) {
-        alert(`No se puede eliminar: ${res.reason}\n• ${res.transactions ?? 0} transacciones\n• ${res.settlements ?? 0} liquidaciones\n• ${res.expenses ?? 0} gastos\n• ${res.advances ?? 0} adelantos`)
-        return
+        const force = confirm(
+          `⚠ La semana tiene datos:\n${blockSummary(res)}\n\n¿BORRAR IGUALMENTE TODO ESTO? Esta acción NO se puede deshacer.`
+        )
+        if (!force) return
+        await deleteWeekForce(week.id)
       }
       if (branchId) await loadMonths(branchId)
     } catch (e) {
@@ -265,14 +281,17 @@ export default function ConfiguracionView() {
     }
   }
 
-  // Delete month
+  // Delete month (safe → force si bloquea)
   async function handleDeleteMonth(m: MonthWithWeeks) {
-    if (!confirm(`¿Eliminar ${MONTH_NAMES[m.month - 1]} ${m.year} y sus ${m.weeks.length} semanas? No se puede deshacer.`)) return
+    if (!confirm(`¿Eliminar ${MONTH_NAMES[m.month - 1]} ${m.year} y sus ${m.weeks.length} semanas?`)) return
     try {
       const res = await deleteMonthSafe(m.id)
       if (!res.deleted) {
-        alert(`No se puede eliminar: ${res.reason}\n• ${res.transactions ?? 0} transacciones\n• ${res.settlements ?? 0} liquidaciones\n• ${res.expenses ?? 0} gastos\n• ${res.advances ?? 0} adelantos`)
-        return
+        const force = confirm(
+          `⚠ El mes tiene datos:\n${blockSummary(res)}\n\n¿BORRAR IGUALMENTE el mes y todos sus datos? Esta acción NO se puede deshacer.`
+        )
+        if (!force) return
+        await deleteMonthForce(m.id)
       }
       if (branchId) await loadMonths(branchId)
     } catch (e) {
@@ -280,15 +299,18 @@ export default function ConfiguracionView() {
     }
   }
 
-  // Delete year
+  // Delete year (safe → force si bloquea)
   async function handleDeleteYear(year: number) {
     if (!branchId) return
-    if (!confirm(`¿Eliminar TODO el año ${year} (12 meses + ~52 semanas)? Esta acción no se puede deshacer.`)) return
+    if (!confirm(`¿Eliminar TODO el año ${year} (12 meses + ~52 semanas)?`)) return
     try {
       const res = await deleteYearSafe(branchId, year)
       if (!res.deleted) {
-        alert(`No se puede eliminar: ${res.reason}\n• ${res.transactions ?? 0} transacciones\n• ${res.settlements ?? 0} liquidaciones\n• ${res.expenses ?? 0} gastos\n• ${res.advances ?? 0} adelantos`)
-        return
+        const force = confirm(
+          `⚠ El año ${year} tiene datos:\n${blockSummary(res)}\n\n¿BORRAR IGUALMENTE TODO EL AÑO y sus datos asociados? Esta acción NO se puede deshacer.`
+        )
+        if (!force) return
+        await deleteYearForce(branchId, year)
       }
       await loadMonths(branchId)
     } catch (e) {
