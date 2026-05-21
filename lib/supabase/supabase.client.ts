@@ -597,23 +597,12 @@ export async function createMonth(
 
   if (monthErr) throw new Error(`[createMonth] ${monthErr.message}`)
 
-  // 3. Obtener el máximo week_number actual para numerar correlativamente
-  const { data: maxRow } = await supabase
-    .from('weeks')
-    .select('week_number')
-    .eq('branch_id', branchId)
-    .order('week_number', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  const baseNumber = (maxRow?.week_number ?? 0)
-
-  // 4. Generar e insertar semanas
+  // 3. Generar e insertar semanas — numeración 1..N por mes (nueva unique constraint per-month)
   const ranges = generateWeekRangesForMonth(year, month)
   const weekInserts: WeekInsert[] = ranges.map((r, i) => ({
     branch_id:   branchId,
     month_id:    monthData.id,
-    week_number: baseNumber + i + 1,
+    week_number: i + 1,
     start_date:  r.start_date,
     end_date:    r.end_date,
     status:      'open' as const,   // todas arrancan abiertas; el admin las cierra manualmente
