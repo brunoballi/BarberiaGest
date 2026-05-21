@@ -166,17 +166,45 @@ export async function updateService(
 // WEEKS
 // ============================================================
 export async function getOpenWeek(branchId: string): Promise<Week | null> {
-  const { data, error } = await supabase
+  const today = todayLocal()
+  // 1. Prioridad: la semana ABIERTA que contiene la fecha de hoy
+  const { data: containsToday, error: err1 } = await supabase
     .from('weeks')
     .select('*')
     .eq('branch_id', branchId)
     .eq('status', 'open')
-    .order('week_number', { ascending: false })
+    .lte('start_date', today)
+    .gte('end_date', today)
     .limit(1)
     .maybeSingle()
+  if (err1) throw new Error(`[getOpenWeek] ${err1.message}`)
+  if (containsToday) return containsToday
 
-  if (error) throw new Error(`[getOpenWeek] ${error.message}`)
-  return data
+  // 2. Fallback: la próxima semana abierta (start_date > hoy) más cercana
+  const { data: nextOpen, error: err2 } = await supabase
+    .from('weeks')
+    .select('*')
+    .eq('branch_id', branchId)
+    .eq('status', 'open')
+    .gt('start_date', today)
+    .order('start_date', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+  if (err2) throw new Error(`[getOpenWeek] ${err2.message}`)
+  if (nextOpen) return nextOpen
+
+  // 3. Fallback: la última semana abierta del pasado (más reciente)
+  const { data: lastOpen, error: err3 } = await supabase
+    .from('weeks')
+    .select('*')
+    .eq('branch_id', branchId)
+    .eq('status', 'open')
+    .lt('start_date', today)
+    .order('start_date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (err3) throw new Error(`[getOpenWeek] ${err3.message}`)
+  return lastOpen
 }
 
 export async function getWeeksByBranch(branchId: string): Promise<Week[]> {
