@@ -138,12 +138,16 @@ export default function BarberMobileView() {
   const [discountAmount, setDiscountAmount] = useState<string>('')
   const [discountReason, setDiscountReason] = useState<string>('')
 
-  // Filtro de fecha en home (vista cortes)
+  // Día seleccionado en la grilla de la semana (default: hoy)
+  const [selectedDay, setSelectedDay] = useState<string>('')  // YYYY-MM-DD
+
+  // Filtro avanzado por rango (opcional)
+  const [showRangeFilter, setShowRangeFilter] = useState(false)
   const [filterFrom, setFilterFrom] = useState<string>('')  // YYYY-MM-DD
   const [filterTo, setFilterTo]     = useState<string>('')  // YYYY-MM-DD
   const [filteredTxs, setFilteredTxs] = useState<Transaction[] | null>(null)
   const [filterLoading, setFilterLoading] = useState(false)
-  const [filterMode, setFilterMode] = useState<'today' | 'range'>('today')
+  const [filterMode, setFilterMode] = useState<'week' | 'range'>('week')
 
   // Advance request
   const [showAdvanceModal, setShowAdvanceModal] = useState(false)
@@ -212,6 +216,43 @@ export default function BarberMobileView() {
   const todayTxs = transactions.filter((t) => t.transaction_date === today)
   const todayTotal = todayTxs.reduce((s, t) => s + t.amount, 0)
   const todayBarber = todayTxs.reduce((s, t) => s + t.barber_share, 0)
+
+  // ── Días de la semana (Lun a Dom) según week.start_date ───────────
+  const DAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+  const weekDays: { date: string; label: string; dayNum: number; isToday: boolean }[] = (() => {
+    if (!week) return []
+    const [y, m, d] = week.start_date.split('-').map(Number)
+    return Array.from({ length: 7 }, (_, i) => {
+      const date = new Date(y, m - 1, d + i)
+      const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+      return {
+        date: dateStr,
+        label: DAY_LABELS[i],
+        dayNum: date.getDate(),
+        isToday: dateStr === today,
+      }
+    })
+  })()
+
+  // Asegurar selectedDay inicial = hoy (o el primer día de la semana si hoy no cae)
+  useEffect(() => {
+    if (!selectedDay && weekDays.length > 0) {
+      const todayInWeek = weekDays.find((d) => d.isToday)
+      setSelectedDay(todayInWeek ? todayInWeek.date : weekDays[0].date)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [week?.id])
+
+  // Transacciones agrupadas por día (de la semana actual)
+  const txsByDay: Record<string, Transaction[]> = transactions.reduce<Record<string, Transaction[]>>((acc, t) => {
+    (acc[t.transaction_date] ||= []).push(t)
+    return acc
+  }, {})
+
+  // Cortes del día seleccionado
+  const dayTxs = txsByDay[selectedDay] ?? []
+  const dayTotal = dayTxs.reduce((s, t) => s + t.amount, 0)
+  const dayBarber = dayTxs.reduce((s, t) => s + t.barber_share, 0)
   const weekTotal = transactions.reduce((s, t) => s + t.amount, 0)
   const weekBarber = transactions.reduce((s, t) => s + t.barber_share, 0)
   const weekCuts = transactions.length
@@ -310,7 +351,8 @@ export default function BarberMobileView() {
     setFilteredTxs(null)
     setFilterFrom('')
     setFilterTo('')
-    setFilterMode('today')
+    setFilterMode('week')
+    setShowRangeFilter(false)
   }
 
   async function handleRequestAdvance() {
@@ -1027,65 +1069,72 @@ export default function BarberMobileView() {
         <section>
           <div className="flex items-center justify-between mb-3">
             <h2 className="section-label mb-0">
-              {filterMode === 'range' ? 'Cortes filtrados' : 'Cortes de hoy'}
+              {filterMode === 'range' ? 'Cortes filtrados' : 'Cortes de la semana'}
             </h2>
-            {filterMode === 'range' && (
-              <button onClick={resetFilter} className="text-xs text-amber-400 hover:text-amber-300">
-                ✕ Limpiar
-              </button>
-            )}
-          </div>
-
-          {/* Filtro de fechas */}
-          <div className="date-filter">
-            <div className="date-filter__inputs">
-              <div>
-                <label className="date-filter__label">Desde</label>
-                <input
-                  type="date"
-                  value={filterFrom}
-                  onChange={(e) => setFilterFrom(e.target.value)}
-                  className="date-filter__input"
-                />
-              </div>
-              <div>
-                <label className="date-filter__label">Hasta</label>
-                <input
-                  type="date"
-                  value={filterTo}
-                  onChange={(e) => setFilterTo(e.target.value)}
-                  className="date-filter__input"
-                />
-              </div>
-            </div>
             <button
-              onClick={applyDateFilter}
-              disabled={!filterFrom || !filterTo || filterLoading}
-              className="date-filter__apply"
+              onClick={() => {
+                if (filterMode === 'range') resetFilter()
+                setShowRangeFilter((v) => !v)
+              }}
+              className="text-xs text-zinc-400 hover:text-amber-400"
             >
-              {filterLoading ? '...' : 'Buscar'}
+              {showRangeFilter || filterMode === 'range' ? '✕ Cerrar' : '🔍 Filtrar por fecha'}
             </button>
           </div>
 
-          {(() => {
-            const list = filterMode === 'range' ? (filteredTxs ?? []) : todayTxs
-            if (list.length === 0) {
-              return (
-                <div className="card text-center py-8">
-                  <p className="text-zinc-500 text-sm">
-                    {filterMode === 'range' ? 'Sin cortes en ese rango' : 'Todavía no registraste cortes hoy'}
-                  </p>
-                </div>
-              )
-            }
+          {/* Bloques de días de la semana (modo semana) */}
+          {filterMode === 'week' && weekDays.length > 0 && (
+            <div className="day-blocks">
+              {weekDays.map((d) => {
+                const count = (txsByDay[d.date] ?? []).length
+                const isActive = selectedDay === d.date
+                return (
+                  <button
+                    key={d.date}
+                    onClick={() => setSelectedDay(d.date)}
+                    className={`day-block ${isActive ? 'day-block--active' : ''} ${d.isToday ? 'day-block--today' : ''}`}
+                  >
+                    <span className="day-block__label">{d.label}</span>
+                    <span className="day-block__num">{d.dayNum}</span>
+                    {count > 0 && <span className="day-block__count">{count}</span>}
+                  </button>
+                )
+              })}
+            </div>
+          )}
 
-            // Calcular totales del rango filtrado
+          {/* Filtro avanzado por rango (colapsable) */}
+          {(showRangeFilter || filterMode === 'range') && (
+            <div className="date-filter">
+              <div className="date-filter__inputs">
+                <div>
+                  <label className="date-filter__label">Desde</label>
+                  <input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} className="date-filter__input" />
+                </div>
+                <div>
+                  <label className="date-filter__label">Hasta</label>
+                  <input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} className="date-filter__input" />
+                </div>
+              </div>
+              <button
+                onClick={applyDateFilter}
+                disabled={!filterFrom || !filterTo || filterLoading}
+                className="date-filter__apply"
+              >
+                {filterLoading ? '...' : 'Buscar'}
+              </button>
+            </div>
+          )}
+
+          {(() => {
+            const list = filterMode === 'range' ? (filteredTxs ?? []) : dayTxs
             const totalAmount = list.reduce((s, t) => s + t.amount, 0)
             const totalBarber = list.reduce((s, t) => s + t.barber_share, 0)
 
             return (
               <>
-                {filterMode === 'range' && (
+                {/* Resumen del día / rango */}
+                {list.length > 0 && (
                   <div className="filter-summary">
                     <div>
                       <span className="filter-summary__label">Total</span>
@@ -1102,33 +1151,45 @@ export default function BarberMobileView() {
                   </div>
                 )}
 
-                <div className="tx-grid">
-                  {list.map((tx) => (
-                    <div key={tx.id} className="tx-card">
-                      <div className="tx-card__top">
-                        <div className={`payment-dot payment-dot--${tx.payment_method}`} />
-                        <span className="tx-card__date">
-                          {filterMode === 'range'
-                            ? new Date(tx.transaction_date + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
-                            : new Date(tx.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
-                          }
-                        </span>
-                        <button onClick={() => openEditTx(tx)} className="tx-card__edit" title="Editar">
-                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
-                            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                          </svg>
-                        </button>
+                {list.length === 0 ? (
+                  <div className="card text-center py-8">
+                    <p className="text-zinc-500 text-sm">
+                      {filterMode === 'range'
+                        ? 'Sin cortes en ese rango'
+                        : selectedDay === today
+                        ? 'Todavía no registraste cortes hoy'
+                        : 'Sin cortes ese día'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="tx-grid">
+                    {list.map((tx) => (
+                      <div key={tx.id} className="tx-card">
+                        <div className="tx-card__top">
+                          <div className={`payment-dot payment-dot--${tx.payment_method}`} />
+                          <span className="tx-card__date">
+                            {filterMode === 'range'
+                              ? new Date(tx.transaction_date + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
+                              : new Date(tx.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })
+                            }
+                          </span>
+                          <button onClick={() => openEditTx(tx)} className="tx-card__edit" title="Editar">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
+                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                            </svg>
+                          </button>
+                        </div>
+                        <div className="tx-card__amount">{formatARS(tx.amount)}</div>
+                        <div className="tx-card__share">{formatARS(tx.barber_share)} <span className="text-zinc-600 text-xs">tuya</span></div>
+                        {tx.client_name && <div className="tx-card__client">👤 {tx.client_name}</div>}
+                        {tx.discount_amount > 0 && (
+                          <div className="tx-card__discount">-{formatARS(tx.discount_amount)} desc.</div>
+                        )}
                       </div>
-                      <div className="tx-card__amount">{formatARS(tx.amount)}</div>
-                      <div className="tx-card__share">{formatARS(tx.barber_share)} <span className="text-zinc-600 text-xs">tuya</span></div>
-                      {tx.client_name && <div className="tx-card__client">👤 {tx.client_name}</div>}
-                      {tx.discount_amount > 0 && (
-                        <div className="tx-card__discount">-{formatARS(tx.discount_amount)} desc.</div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                )}
               </>
             )
           })()}
