@@ -3,12 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePersistedBranch, getStoredBranch } from '@/lib/hooks/usePersistedBranch'
-import type {
-  Branch,
-  Profile,
-  AdvanceWithBarber,
-  AdvanceInsert,
-} from '@/lib/supabase/database.types'
+import type { Profile, AdvanceWithBarber, AdvanceInsert } from '@/lib/supabase/database.types'
 import {
   getCurrentProfile,
   getMyBranches,
@@ -19,6 +14,7 @@ import {
   cancelAdvance,
   todayLocal,
 } from '@/lib/supabase/supabase.client'
+import '../admin-dashboard.css'
 
 function formatARS(amount: number): string {
   return new Intl.NumberFormat('es-AR', {
@@ -30,37 +26,45 @@ function formatARS(amount: number): string {
 
 function formatDate(dateStr: string): string {
   return new Date(dateStr + 'T12:00:00').toLocaleDateString('es-AR', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
+    day: '2-digit',
+    month: '2-digit',
+    year: '2-digit',
   })
 }
 
-/** True si el adelanto fue solicitado por el propio barbero (no por un admin) */
 function isSelfRequested(advance: AdvanceWithBarber): boolean {
   return advance.registered_by === advance.barber_id
+}
+
+function EmptyState({ message }: { message: string }) {
+  return <div className="empty-state"><p>{message}</p></div>
 }
 
 export default function AdvancesView() {
   const router = useRouter()
   const [profile, setProfile] = useState<Profile | null>(null)
-  const [branches, setBranches] = useState<Branch[]>([])
   const [barbers, setBarbers] = useState<Profile[]>([])
   const [advances, setAdvances] = useState<AdvanceWithBarber[]>([])
   const [selectedBranch, setSelectedBranch] = usePersistedBranch()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
+  // Filtros
+  const [filterBarber, setFilterBarber] = useState('')
+  const [filterStatus, setFilterStatus] = useState('')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
+
   // Form state
   const [showForm, setShowForm] = useState(false)
-  const [formBarberId, setFormBarberId] = useState<string>('')
-  const [formAmount, setFormAmount] = useState<string>('')
-  const [formDate, setFormDate] = useState<string>(todayLocal())
-  const [formReason, setFormReason] = useState<string>('')
+  const [formBarberId, setFormBarberId] = useState('')
+  const [formAmount, setFormAmount] = useState('')
+  const [formDate, setFormDate] = useState(todayLocal())
+  const [formReason, setFormReason] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
-  // Actions state
+  // Actions
   const [cancelingId, setCancelingId] = useState<string | null>(null)
   const [approvingId, setApprovingId] = useState<string | null>(null)
 
@@ -72,7 +76,6 @@ export default function AdvancesView() {
       if (!p) { setError('No autenticado'); return }
       if (bs.length === 0) { setError('No tenés sucursales asignadas.'); return }
       setProfile(p)
-      setBranches(bs)
 
       const stored = getStoredBranch()
       const branch = stored && bs.some((b) => b.id === stored) ? stored : null
@@ -94,16 +97,10 @@ export default function AdvancesView() {
 
   useEffect(() => { loadInitial() }, [loadInitial])
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault()
+  async function handleSubmitModal() {
     if (!profile || !formBarberId || !formAmount || !selectedBranch) return
-
     const amount = parseFloat(formAmount)
-    if (isNaN(amount) || amount <= 0) {
-      setFormError('Ingresá un monto válido')
-      return
-    }
-
+    if (isNaN(amount) || amount <= 0) { setFormError('Ingresá un monto válido'); return }
     try {
       setSubmitting(true)
       setFormError(null)
@@ -135,9 +132,7 @@ export default function AdvancesView() {
     setApprovingId(advanceId)
     try {
       await approveAdvance(advanceId)
-      setAdvances((prev) =>
-        prev.map((a) => a.id === advanceId ? { ...a, status: 'approved' } : a)
-      )
+      setAdvances((prev) => prev.map((a) => a.id === advanceId ? { ...a, status: 'approved' as const } : a))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al autorizar')
     } finally {
@@ -146,10 +141,7 @@ export default function AdvancesView() {
   }
 
   async function handleCancel(advanceId: string) {
-    if (cancelingId !== advanceId) {
-      setCancelingId(advanceId)
-      return
-    }
+    if (cancelingId !== advanceId) { setCancelingId(advanceId); return }
     try {
       await cancelAdvance(advanceId)
       setAdvances((prev) => prev.filter((a) => a.id !== advanceId))
@@ -160,258 +152,270 @@ export default function AdvancesView() {
     }
   }
 
-  // Separar solicitudes pendientes de autorizar vs autorizados
-  const pendingApproval = advances.filter((a) => a.status === 'pending' && isSelfRequested(a))
-  const authorized      = advances.filter((a) => a.status === 'approved' || (a.status === 'pending' && !isSelfRequested(a)))
-  const totalAuthorized = authorized.reduce((s, a) => s + a.amount, 0)
+  // Filtrado
+  const hasFilters = !!(filterBarber || filterStatus || filterDateFrom || filterDateTo)
+  const filteredAdvances = advances.filter((a) => {
+    if (filterBarber && a.barber_id !== filterBarber) return false
+    if (filterStatus && a.status !== filterStatus) return false
+    if (filterDateFrom && a.advance_date < filterDateFrom) return false
+    if (filterDateTo && a.advance_date > filterDateTo) return false
+    return true
+  })
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64 text-zinc-400">
-        Cargando adelantos...
+  const pendingCount = advances.filter((a) => a.status === 'pending' && isSelfRequested(a)).length
+  const filteredTotal = filteredAdvances.reduce((s, a) => s + a.amount, 0)
+
+  if (loading) return (
+    <div className="admin-app flex-center">
+      <div className="admin-loader" />
+    </div>
+  )
+
+  if (error) return (
+    <div className="admin-app flex-center">
+      <div className="error-box">
+        <p className="error-msg">{error}</p>
+        <button onClick={() => { setError(null); loadInitial() }} className="admin-btn admin-btn--primary">Reintentar</button>
       </div>
-    )
-  }
-
-  if (error) {
-    return <div className="p-6 text-red-400">{error}</div>
-  }
+    </div>
+  )
 
   return (
-    <div className="max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto px-4 py-8 space-y-6">
-
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Adelantos</h1>
-          <p className="text-zinc-400 text-sm mt-1">
-            Solicitudes de barberos y adelantos registrados
-          </p>
+    <div className="admin-app">
+      <div className="admin-header-wrapper">
+        <div className="admin-brand-bar">
+          <span className="admin-logo">VALHALLA</span>
+          <span className="admin-badge">Admin</span>
+          <span className="admin-brand-separator">·</span>
+          <span className="admin-brand-branch">Adelantos</span>
         </div>
-        <button
-          onClick={() => { setShowForm(true); setFormError(null) }}
-          className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold px-4 py-2.5 rounded-lg text-sm transition-colors"
-        >
-          <span className="text-lg leading-none">+</span>
-          Nuevo adelanto
-        </button>
+        <header className="admin-topbar">
+          <div className="admin-topbar-left">
+            <button onClick={() => router.push('/admin')} className="admin-btn admin-btn--ghost">
+              ← Volver
+            </button>
+            {pendingCount > 0 && (
+              <span className="badge badge--violet">
+                {pendingCount} solicitud{pendingCount !== 1 ? 'es' : ''} pendiente{pendingCount !== 1 ? 's' : ''}
+              </span>
+            )}
+          </div>
+          <div className="admin-topbar-right">
+            <button
+              onClick={() => { setShowForm(true); setFormError(null) }}
+              className="admin-btn admin-btn--primary"
+            >
+              + Nuevo adelanto
+            </button>
+          </div>
+        </header>
       </div>
 
-      {/* Branch selector eliminado — la sucursal viene del contexto post-login */}
+      <main className="admin-content">
+        <div className="filter-bar">
+          <select value={filterBarber} onChange={(e) => setFilterBarber(e.target.value)} className="filter-input">
+            <option value="">Todos los barberos</option>
+            {barbers.map((b) => <option key={b.id} value={b.id}>{b.full_name}</option>)}
+          </select>
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)} className="filter-input">
+            <option value="">Todos los estados</option>
+            <option value="pending">Pendiente</option>
+            <option value="approved">Autorizado</option>
+          </select>
+          <input
+            type="date"
+            value={filterDateFrom}
+            onChange={(e) => setFilterDateFrom(e.target.value)}
+            className="filter-input"
+            title="Desde"
+          />
+          <input
+            type="date"
+            value={filterDateTo}
+            onChange={(e) => setFilterDateTo(e.target.value)}
+            className="filter-input"
+            title="Hasta"
+          />
+          {hasFilters && (
+            <button
+              onClick={() => { setFilterBarber(''); setFilterStatus(''); setFilterDateFrom(''); setFilterDateTo('') }}
+              className="filter-clear"
+            >
+              ✕ Limpiar
+            </button>
+          )}
+          <span className="filter-count">{filteredAdvances.length} resultado{filteredAdvances.length !== 1 ? 's' : ''}</span>
+        </div>
 
-      {/* New advance form */}
+        <div className="admin-table-wrap">
+          <div className="table-toolbar">
+            <span className="toolbar-total">
+              Total: <strong>{formatARS(filteredTotal)}</strong>
+              {hasFilters && advances.length !== filteredAdvances.length && (
+                <span style={{ color: '#a1a1aa', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                  ({filteredAdvances.length} de {advances.length})
+                </span>
+              )}
+            </span>
+          </div>
+
+          {advances.length === 0 ? (
+            <EmptyState message="No hay adelantos pendientes registrados." />
+          ) : filteredAdvances.length === 0 ? (
+            <EmptyState message="Sin resultados para los filtros aplicados." />
+          ) : (
+            <table className="admin-table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Barbero</th>
+                  <th>Monto</th>
+                  <th>Motivo</th>
+                  <th>Estado</th>
+                  <th>Origen</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredAdvances.map((a) => {
+                  const isPendingSelf = a.status === 'pending' && isSelfRequested(a)
+                  return (
+                    <tr key={a.id} className={isPendingSelf ? 'tr-override' : ''}>
+                      <td className="td-date">{formatDate(a.advance_date)}</td>
+                      <td>
+                        <div className="barber-cell">
+                          <div className="barber-avatar">
+                            {a.barber.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
+                          </div>
+                          <p className="barber-name">{a.barber.full_name}</p>
+                        </div>
+                      </td>
+                      <td className="td-bold td-amber">{formatARS(a.amount)}</td>
+                      <td className="td-muted">{a.reason ?? '—'}</td>
+                      <td>
+                        <span className={`badge ${a.status === 'approved' ? 'badge--green' : 'badge--violet'}`}>
+                          {a.status === 'approved' ? 'Autorizado' : 'Pendiente'}
+                        </span>
+                      </td>
+                      <td className="td-muted">{isSelfRequested(a) ? 'Barbero' : 'Admin'}</td>
+                      <td>
+                        <div className="action-group">
+                          {a.status === 'pending' && (
+                            <button
+                              onClick={() => handleApprove(a.id)}
+                              disabled={approvingId === a.id}
+                              className="action-btn action-btn--confirm"
+                            >
+                              {approvingId === a.id ? '...' : 'Autorizar'}
+                            </button>
+                          )}
+                          {cancelingId === a.id ? (
+                            <>
+                              <button
+                                onClick={() => handleCancel(a.id)}
+                                className="action-btn action-btn--pay"
+                                style={{ background: '#dc2626', borderColor: '#dc2626' }}
+                              >
+                                Sí, cancelar
+                              </button>
+                              <button onClick={() => setCancelingId(null)} className="action-btn">
+                                No
+                              </button>
+                            </>
+                          ) : (
+                            <button
+                              onClick={() => setCancelingId(a.id)}
+                              className="action-btn"
+                              style={{ color: '#ef4444' }}
+                            >
+                              Cancelar
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+              <tfoot>
+                <tr className="tfoot-row">
+                  <td colSpan={2}><strong>{filteredAdvances.length} adelanto{filteredAdvances.length !== 1 ? 's' : ''}</strong></td>
+                  <td><strong className="td-amber">{formatARS(filteredTotal)}</strong></td>
+                  <td colSpan={4}></td>
+                </tr>
+              </tfoot>
+            </table>
+          )}
+        </div>
+      </main>
+
+      {/* Modal: Nuevo adelanto */}
       {showForm && (
-        <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-5 space-y-4">
-          <h2 className="text-base font-bold text-white">Registrar adelanto</h2>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
-                  Barbero
-                </label>
-                <select
-                  required
-                  value={formBarberId}
-                  onChange={(e) => setFormBarberId(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
-                >
-                  <option value="">Seleccioná un barbero</option>
-                  {barbers.map((b) => (
-                    <option key={b.id} value={b.id}>{b.full_name}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
-                  Monto
-                </label>
-                <div className="flex items-center bg-zinc-800 border border-zinc-700 rounded-lg px-3 focus-within:border-amber-500 transition-colors">
-                  <span className="text-zinc-500 font-semibold mr-1">$</span>
+        <div className="modal-overlay">
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Registrar adelanto</h3>
+              <button className="modal-close" onClick={() => setShowForm(false)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {formError && <p className="form-error">{formError}</p>}
+              <label className="form-label">Barbero *</label>
+              <select
+                className="form-input"
+                value={formBarberId}
+                onChange={(e) => setFormBarberId(e.target.value)}
+              >
+                <option value="">Seleccioná un barbero</option>
+                {barbers.map((b) => <option key={b.id} value={b.id}>{b.full_name}</option>)}
+              </select>
+              <div className="form-row">
+                <div className="form-group">
+                  <label className="form-label">Monto *</label>
                   <input
-                    required
                     type="number"
-                    inputMode="numeric"
-                    min="1"
-                    placeholder="0"
+                    className="form-input"
                     value={formAmount}
                     onChange={(e) => setFormAmount(e.target.value)}
-                    className="flex-1 bg-transparent outline-none text-white py-2.5 text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                    placeholder="0"
+                    min="1"
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Fecha *</label>
+                  <input
+                    type="date"
+                    className="form-input"
+                    value={formDate}
+                    onChange={(e) => setFormDate(e.target.value)}
                   />
                 </div>
               </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
-                  Fecha
-                </label>
-                <input
-                  required
-                  type="date"
-                  value={formDate}
-                  onChange={(e) => setFormDate(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
-                />
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
-                  Motivo <span className="text-zinc-600 normal-case">(opcional)</span>
-                </label>
-                <input
-                  type="text"
-                  placeholder="Ej: anticipo quincena"
-                  value={formReason}
-                  onChange={(e) => setFormReason(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-600 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
-                />
-              </div>
+              <label className="form-label">Motivo</label>
+              <input
+                type="text"
+                className="form-input"
+                value={formReason}
+                onChange={(e) => setFormReason(e.target.value)}
+                placeholder="Ej: anticipo quincena"
+              />
             </div>
-
-            {formError && <p className="text-red-400 text-sm">{formError}</p>}
-
-            <div className="flex gap-3 pt-1">
-              <button
-                type="submit"
-                disabled={submitting}
-                className="bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-zinc-950 font-bold px-5 py-2.5 rounded-lg text-sm transition-colors"
-              >
+            <div className="modal-footer">
+              <button onClick={() => setShowForm(false)} className="admin-btn admin-btn--ghost">Cancelar</button>
+              <button onClick={handleSubmitModal} disabled={submitting} className="admin-btn admin-btn--primary">
                 {submitting ? 'Guardando...' : 'Guardar adelanto'}
               </button>
-              <button
-                type="button"
-                onClick={() => { setShowForm(false); setFormError(null) }}
-                className="text-zinc-400 hover:text-white px-5 py-2.5 rounded-lg text-sm border border-zinc-700 hover:border-zinc-500 transition-colors"
-              >
-                Cancelar
-              </button>
             </div>
-          </form>
-        </div>
-      )}
-
-      {/* ── Solicitudes pendientes de autorizar ─────────────────── */}
-      {pendingApproval.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-violet-400 flex items-center gap-2">
-            <span className="inline-block w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
-            Solicitudes pendientes ({pendingApproval.length})
-          </h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {pendingApproval.map((advance) => (
-            <div
-              key={advance.id}
-              className="bg-zinc-900 border border-violet-800/50 rounded-xl px-5 py-4 flex items-start justify-between gap-4"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-white font-semibold text-sm">{advance.barber.full_name}</p>
-                  <span className="text-xs px-2 py-0.5 rounded-full bg-violet-900/50 text-violet-400 border border-violet-700/50">
-                    Solicitado por barbero
-                  </span>
-                </div>
-                <p className="text-violet-300 font-bold text-lg mt-0.5">{formatARS(advance.amount)}</p>
-                <p className="text-zinc-500 text-xs mt-1">
-                  {formatDate(advance.advance_date)}
-                  {advance.reason && <> · <span className="text-zinc-400">{advance.reason}</span></>}
-                </p>
-              </div>
-
-              <div className="flex items-center gap-3 flex-shrink-0">
-                <button
-                  onClick={() => handleApprove(advance.id)}
-                  disabled={approvingId === advance.id}
-                  className="text-xs font-semibold bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white px-3 py-1.5 rounded-lg transition-colors"
-                >
-                  {approvingId === advance.id ? '...' : 'Autorizar'}
-                </button>
-
-                {cancelingId === advance.id ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-zinc-400">¿Cancelar?</span>
-                    <button onClick={() => handleCancel(advance.id)} className="text-xs text-red-400 hover:text-red-300 font-semibold">Sí</button>
-                    <button onClick={() => setCancelingId(null)} className="text-xs text-zinc-500 hover:text-zinc-300">No</button>
-                  </div>
-                ) : (
-                  <button onClick={() => handleCancel(advance.id)} className="text-xs text-zinc-500 hover:text-red-400 transition-colors">
-                    Rechazar
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
           </div>
         </div>
       )}
 
-      {/* ── Adelantos autorizados / registrados ─────────────────── */}
-      {authorized.length > 0 && (
-        <div className="space-y-3">
-          <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
-            Autorizados — pendientes de descuento
-          </h2>
-
-          {/* Summary strip */}
-          <div className="bg-amber-950/40 border border-amber-800/40 rounded-xl px-5 py-4 flex items-center justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-widest text-amber-600">Total a descontar</p>
-              <p className="text-2xl font-bold text-amber-400 mt-0.5">{formatARS(totalAuthorized)}</p>
-            </div>
-            <p className="text-zinc-400 text-sm">{authorized.length} adelanto{authorized.length !== 1 ? 's' : ''}</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {authorized.map((advance) => (
-            <div
-              key={advance.id}
-              className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-4 flex items-start justify-between gap-4"
-            >
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <p className="text-white font-semibold text-sm">{advance.barber.full_name}</p>
-                  <span className={`text-xs px-2 py-0.5 rounded-full border ${
-                    advance.status === 'approved'
-                      ? 'bg-emerald-900/40 text-emerald-400 border-emerald-800/50'
-                      : 'bg-amber-900/40 text-amber-400 border-amber-800/50'
-                  }`}>
-                    {advance.status === 'approved' ? 'Autorizado' : 'Pendiente'}
-                  </span>
-                  {!isSelfRequested(advance) && (
-                    <span className="text-xs text-zinc-600">Registrado por admin</span>
-                  )}
-                </div>
-                <p className="text-amber-400 font-bold text-lg mt-0.5">{formatARS(advance.amount)}</p>
-                <p className="text-zinc-500 text-xs mt-1">
-                  {formatDate(advance.advance_date)}
-                  {advance.reason && <> · <span className="text-zinc-400">{advance.reason}</span></>}
-                </p>
-              </div>
-
-              <div className="flex-shrink-0">
-                {cancelingId === advance.id ? (
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs text-zinc-400">¿Confirmar?</span>
-                    <button onClick={() => handleCancel(advance.id)} className="text-xs text-red-400 hover:text-red-300 font-semibold">Sí</button>
-                    <button onClick={() => setCancelingId(null)} className="text-xs text-zinc-500 hover:text-zinc-300">No</button>
-                  </div>
-                ) : (
-                  <button onClick={() => handleCancel(advance.id)} className="text-xs text-zinc-500 hover:text-red-400 transition-colors">
-                    Cancelar
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
-          </div>
-        </div>
-      )}
-
-      {/* Empty state */}
-      {advances.length === 0 && (
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-12 text-center">
-          <p className="text-zinc-500 text-sm">No hay adelantos registrados</p>
-        </div>
-      )}
+      <div className="admin-watermark" aria-hidden="true">
+        <svg viewBox="0 0 16 16" fill="none" className="admin-watermark__icon">
+          <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5"/>
+          <path d="M5 8.5h3.5M5 6h6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+        </svg>
+        <span className="admin-watermark__text">Flowi Management</span>
+      </div>
     </div>
   )
 }

@@ -36,6 +36,8 @@ function formatARS(n: number | null): string {
 interface InviteForm {
   email: string
   full_name: string
+  dni: string
+  birth_date: string
   branch_id: string
   compensation_type: CompensationType
   commission_rate: string
@@ -49,6 +51,8 @@ interface InviteForm {
 const EMPTY_INVITE: InviteForm = {
   email: '',
   full_name: '',
+  dni: '',
+  birth_date: '',
   branch_id: '',
   compensation_type: 'percentage',
   commission_rate: '50',
@@ -62,6 +66,8 @@ const EMPTY_INVITE: InviteForm = {
 // ─── Edit form state ───────────────────────────────────────────────────────
 interface EditForm {
   full_name: string
+  dni: string
+  birth_date: string
   compensation_type: CompensationType
   commission_rate: string
   base_salary_rate: string
@@ -74,11 +80,13 @@ interface EditForm {
 function profileToEditForm(p: Profile): EditForm {
   return {
     full_name: p.full_name,
+    dni: p.dni ?? '',
+    birth_date: p.birth_date ?? '',
     compensation_type: p.compensation_type,
     commission_rate: p.commission_rate != null ? String(p.commission_rate * 100) : '',
     base_salary_rate: p.base_salary_rate != null ? String(p.base_salary_rate) : '',
-    presentismo_rate: p.presentismo_rate != null ? String(p.presentismo_rate) : '',
-    objetivo_rate: p.objetivo_rate != null ? String(p.objetivo_rate) : '',
+    presentismo_rate: p.presentismo_rate != null ? String(p.presentismo_rate * 100) : '',
+    objetivo_rate: p.objetivo_rate != null ? String(p.objetivo_rate * 100) : '',
     objetivo_min_cuts: p.objetivo_min_cuts != null ? String(p.objetivo_min_cuts) : '',
     box_rental_amount: p.box_rental_amount != null ? String(p.box_rental_amount) : '',
   }
@@ -126,8 +134,8 @@ function CompensationFields({
     return (
       <div className="grid grid-cols-2 gap-3">
         {input('Sueldo base ($)', 'base_salary_rate', form.base_salary_rate)}
-        {input('Presentismo ($)', 'presentismo_rate', form.presentismo_rate)}
-        {input('Objetivo ($)', 'objetivo_rate', form.objetivo_rate)}
+        {input('Presentismo (% del total)', 'presentismo_rate', form.presentismo_rate, '5')}
+        {input('Objetivo (% del total)', 'objetivo_rate', form.objetivo_rate, '5')}
         {input('Cortes p/objetivo', 'objetivo_min_cuts', form.objetivo_min_cuts)}
       </div>
     )
@@ -159,11 +167,14 @@ export default function BarbersAbm() {
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
 
-  // Invite existing barber
+  // Invite existing barber (sin cuenta auth)
   const [invitingExisting, setInvitingExisting] = useState<Profile | null>(null)
   const [inviteExistingEmail, setInviteExistingEmail] = useState('')
   const [inviteExistingError, setInviteExistingError] = useState<string | null>(null)
   const [sendingExistingInvite, setSendingExistingInvite] = useState(false)
+
+  // Credenciales (reset password para barbero con cuenta)
+  const [credentialsLoadingId, setCredentialsLoadingId] = useState<string | null>(null)
 
   // Delete confirmation
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -212,6 +223,8 @@ export default function BarbersAbm() {
       const payload = {
         email: inviteForm.email.trim(),
         full_name: inviteForm.full_name.trim(),
+        dni: inviteForm.dni.trim() || null,
+        birth_date: inviteForm.birth_date || null,
         branch_id: inviteForm.branch_id,
         compensation_type: inviteForm.compensation_type,
         commission_rate:
@@ -221,9 +234,9 @@ export default function BarbersAbm() {
         base_salary_rate:
           inviteForm.base_salary_rate ? parseFloat(inviteForm.base_salary_rate) : null,
         presentismo_rate:
-          inviteForm.presentismo_rate ? parseFloat(inviteForm.presentismo_rate) : null,
+          inviteForm.presentismo_rate ? parseFloat(inviteForm.presentismo_rate) / 100 : null,
         objetivo_rate:
-          inviteForm.objetivo_rate ? parseFloat(inviteForm.objetivo_rate) : null,
+          inviteForm.objetivo_rate ? parseFloat(inviteForm.objetivo_rate) / 100 : null,
         objetivo_min_cuts:
           inviteForm.objetivo_min_cuts ? parseInt(inviteForm.objetivo_min_cuts, 10) : null,
         box_rental_amount:
@@ -270,14 +283,16 @@ export default function BarbersAbm() {
     try {
       const updates: ProfileUpdate = {
         full_name: editForm.full_name.trim(),
+        dni: editForm.dni.trim() || null,
+        birth_date: editForm.birth_date || null,
         compensation_type: editForm.compensation_type,
         commission_rate:
           editForm.compensation_type === 'percentage' && editForm.commission_rate
             ? parseFloat(editForm.commission_rate) / 100
             : null,
         base_salary_rate: editForm.base_salary_rate ? parseFloat(editForm.base_salary_rate) : null,
-        presentismo_rate: editForm.presentismo_rate ? parseFloat(editForm.presentismo_rate) : null,
-        objetivo_rate: editForm.objetivo_rate ? parseFloat(editForm.objetivo_rate) : null,
+        presentismo_rate: editForm.presentismo_rate ? parseFloat(editForm.presentismo_rate) / 100 : null,
+        objetivo_rate: editForm.objetivo_rate ? parseFloat(editForm.objetivo_rate) / 100 : null,
         objetivo_min_cuts: editForm.objetivo_min_cuts ? parseInt(editForm.objetivo_min_cuts, 10) : null,
         box_rental_amount: editForm.box_rental_amount ? parseFloat(editForm.box_rental_amount) : null,
       }
@@ -336,6 +351,35 @@ export default function BarbersAbm() {
       setInviteExistingError(e instanceof Error ? e.message : 'Error al invitar')
     } finally {
       setSendingExistingInvite(false)
+    }
+  }
+
+  // ── Credenciales (reset password o primer acceso) ───────────────────────
+  async function handleCredentials(barber: Profile) {
+    setCredentialsLoadingId(barber.id)
+    try {
+      const res = await fetch('/api/reset-barber-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profileId: barber.id }),
+      })
+      const json = await res.json()
+      if (!res.ok) {
+        if (json.error === 'no-auth') {
+          // No tiene cuenta → abrir flujo de invitación por email
+          setInvitingExisting(barber)
+          setInviteExistingEmail('')
+          setInviteExistingError(null)
+        } else {
+          setError(json.error ?? 'Error al obtener credenciales')
+        }
+        return
+      }
+      setNewCredentials(json.credentials)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error inesperado')
+    } finally {
+      setCredentialsLoadingId(null)
     }
   }
 
@@ -417,6 +461,29 @@ export default function BarbersAbm() {
                   type="email"
                   value={inviteForm.email}
                   onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))}
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
+                  DNI
+                </label>
+                <input
+                  type="text"
+                  value={inviteForm.dni}
+                  onChange={(e) => setInviteForm((f) => ({ ...f, dni: e.target.value }))}
+                  placeholder="Ej: 30123456"
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
+                  Fecha de nacimiento
+                </label>
+                <input
+                  type="date"
+                  value={inviteForm.birth_date}
+                  onChange={(e) => setInviteForm((f) => ({ ...f, birth_date: e.target.value }))}
                   className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
@@ -515,6 +582,32 @@ export default function BarbersAbm() {
                 />
               </div>
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
+                    DNI
+                  </label>
+                  <input
+                    type="text"
+                    value={editForm.dni}
+                    onChange={(e) => patchEditForm('dni', e.target.value)}
+                    placeholder="Ej: 30123456"
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
+                    Fecha de nacimiento
+                  </label>
+                  <input
+                    type="date"
+                    value={editForm.birth_date}
+                    onChange={(e) => patchEditForm('birth_date', e.target.value)}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+                  />
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
                   Modelo de compensación
@@ -577,8 +670,9 @@ export default function BarbersAbm() {
                 key={barber.id}
                 barber={barber}
                 deletingId={deletingId}
+                credentialsLoadingId={credentialsLoadingId}
                 onEdit={openEdit}
-                onInvite={(b) => { setInvitingExisting(b); setInviteExistingEmail(''); setInviteExistingError(null) }}
+                onCredentials={handleCredentials}
                 onDelete={handleDelete}
                 onCancelDelete={() => setDeletingId(null)}
               />
@@ -599,8 +693,9 @@ export default function BarbersAbm() {
                 key={barber.id}
                 barber={barber}
                 deletingId={deletingId}
+                credentialsLoadingId={credentialsLoadingId}
                 onEdit={openEdit}
-                onInvite={(b) => { setInvitingExisting(b); setInviteExistingEmail(''); setInviteExistingError(null) }}
+                onCredentials={handleCredentials}
                 onDelete={handleDelete}
                 onCancelDelete={() => setDeletingId(null)}
               />
@@ -673,7 +768,7 @@ function CredentialsModal({
   const appLink = typeof window !== 'undefined' ? `${window.location.origin}/barber` : '/barber'
 
   function copyAll() {
-    const text = `🪒 Acceso a Valhalla Barbershop\n\nUsuario: ${credentials.email}\nContraseña: ${editablePassword}\nLink directo: ${appLink}`
+    const text = `🪒 Acceso a Valhalla Gestor\n\nUsuario: ${credentials.email}\nContraseña: ${editablePassword}\nLink directo: ${appLink}`
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2500)
@@ -738,15 +833,17 @@ function CredentialsModal({
 function BarberRow({
   barber,
   deletingId,
+  credentialsLoadingId,
   onEdit,
-  onInvite,
+  onCredentials,
   onDelete,
   onCancelDelete,
 }: {
   barber: Profile
   deletingId: string | null
+  credentialsLoadingId: string | null
   onEdit: (b: Profile) => void
-  onInvite: (b: Profile) => void
+  onCredentials: (b: Profile) => void
   onDelete: (b: Profile) => void
   onCancelDelete: () => void
 }) {
@@ -787,17 +884,22 @@ function BarberRow({
           Editar
         </button>
 
-        {/* Invitar */}
+        {/* Credenciales */}
         {barber.is_active && (
           <button
-            onClick={() => onInvite(barber)}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-emerald-400 border border-zinc-700 hover:border-emerald-500/50 bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors"
+            onClick={() => onCredentials(barber)}
+            disabled={credentialsLoadingId === barber.id}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-emerald-400 border border-zinc-700 hover:border-emerald-500/50 bg-zinc-800 hover:bg-zinc-700 disabled:opacity-50 px-3 py-1.5 rounded-lg transition-colors"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
-              <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
-              <polyline points="22,6 12,13 2,6"/>
-            </svg>
-            Invitar
+            {credentialsLoadingId === barber.id ? (
+              <span className="w-3.5 h-3.5 border border-zinc-500 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
+            )}
+            Credenciales
           </button>
         )}
 

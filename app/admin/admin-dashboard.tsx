@@ -43,6 +43,7 @@ import {
   supabase,
 } from '@/lib/supabase/supabase.client'
 import './admin-dashboard.css'
+import ManualCutModal from './manual-cut-modal'
 
 // ─── Utilidades ────────────────────────────────────────────────────────────
 function formatARS(n: number): string {
@@ -84,6 +85,8 @@ export default function AdminDashboard() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string>('')
+  const [adminName, setAdminName]         = useState<string>('')
+  const [showManualCut, setShowManualCut] = useState(false)
 
   // Semanas del mes seleccionado (derivado)
   const weeks: Week[] = months[selectedMonthIdx]?.weeks ?? []
@@ -166,10 +169,24 @@ export default function AdminDashboard() {
   }, [])
 
   // Filtros tab transacciones
-  const [filterDate, setFilterDate] = useState('')
+  const [filterDateFrom, setFilterDateFrom] = useState('')
+  const [filterDateTo, setFilterDateTo] = useState('')
   const [filterBarber, setFilterBarber] = useState('')
   const [filterMethod, setFilterMethod] = useState('')
   const [filterService, setFilterService] = useState('')
+
+  // Filtros tab liquidaciones
+  const [settlFilterBarber, setSettlFilterBarber] = useState('')
+  const [settlFilterObjetivo, setSettlFilterObjetivo] = useState('')
+  const [settlFilterPresentismo, setSettlFilterPresentismo] = useState('')
+  const [settlFilterAdelantos, setSettlFilterAdelantos] = useState('')
+  const [settlFilterAPagar, setSettlFilterAPagar] = useState('')
+  const [settlFilterEstado, setSettlFilterEstado] = useState('')
+
+  // Filtros tab gastos
+  const [expFilterDateFrom, setExpFilterDateFrom] = useState('')
+  const [expFilterDateTo, setExpFilterDateTo] = useState('')
+  const [expFilterCategory, setExpFilterCategory] = useState('')
 
   // ─── Carga inicial ─────────────────────────────────────────────────
   useEffect(() => {
@@ -188,6 +205,7 @@ export default function AdminDashboard() {
           return
         }
         setCurrentUserId(profile.id)
+        setAdminName(profile.full_name ?? '')
         setBranches(branchList)
 
         // Validar sucursal almacenada contra las sucursales asignadas
@@ -404,6 +422,11 @@ export default function AdminDashboard() {
               cambiar
             </button>
           )}
+          {adminName && (
+            <span className="admin-brand-greeting" title={adminName}>
+              Hola, {adminName.split(' ')[0]} <span aria-hidden="true">👋</span>
+            </span>
+          )}
         </div>
 
         {/* ── Barra de controles ── */}
@@ -479,6 +502,15 @@ export default function AdminDashboard() {
 
           {/* Derecha: navegación a secciones */}
           <div className="admin-topbar-right">
+            {selectedWeek?.status === 'open' && (
+              <button
+                onClick={() => setShowManualCut(true)}
+                className="admin-btn admin-btn--primary"
+                title="Registrar un corte de un barbero en cualquier día de la semana"
+              >
+                + Registrar corte
+              </button>
+            )}
             <Link href="/admin/reportes" className="admin-btn admin-btn--ghost">Reportes</Link>
 
             {/* Dropdown Configuración */}
@@ -508,12 +540,15 @@ export default function AdminDashboard() {
                 <Link href="/admin/auditoria" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
                   Auditoría
                 </Link>
+                <Link href="/admin/admins" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
+                  Administradores
+                </Link>
               </div>
             )}
 
 
             <Link href="/admin/adelantos" className="admin-btn admin-btn--ghost">Adelantos</Link>
-            <button onClick={handleLogout} className="admin-btn admin-btn--ghost">Salir</button>
+            <button onClick={handleLogout} className="admin-btn admin-btn--danger">Cerrar sesión</button>
           </div>
         </header>
 
@@ -562,7 +597,26 @@ export default function AdminDashboard() {
         )}
 
         {/* ─── TAB: LIQUIDACIONES ─── */}
-        {tab === 'liquidaciones' && (
+        {tab === 'liquidaciones' && (() => {
+          const barberOptsSettl = Array.from(new Map(settlements.map((s) => [s.barber_id, s.barber.full_name])))
+          const hasSettlFilters = !!(settlFilterBarber || settlFilterObjetivo || settlFilterPresentismo || settlFilterAdelantos || settlFilterAPagar || settlFilterEstado)
+          const filteredSettlements = settlements.filter((s) => {
+            const isSalary = s.barber.compensation_type === 'salary'
+            if (settlFilterBarber && s.barber_id !== settlFilterBarber) return false
+            if (settlFilterEstado && s.status !== settlFilterEstado) return false
+            if (settlFilterObjetivo === 'na' && isSalary) return false
+            if (settlFilterObjetivo === 'met' && (!isSalary || !s.objetivo_met)) return false
+            if (settlFilterObjetivo === 'not_met' && (!isSalary || s.objetivo_met === true)) return false
+            if (settlFilterPresentismo === 'na' && isSalary) return false
+            if (settlFilterPresentismo === 'met' && (!isSalary || !s.presentismo_met)) return false
+            if (settlFilterPresentismo === 'not_met' && (!isSalary || s.presentismo_met === true)) return false
+            if (settlFilterAdelantos === 'with' && s.advances_deducted <= 0) return false
+            if (settlFilterAdelantos === 'without' && s.advances_deducted > 0) return false
+            if (settlFilterAPagar === 'positive' && s.net_payable < 0) return false
+            if (settlFilterAPagar === 'negative' && s.net_payable >= 0) return false
+            return true
+          })
+          return (
           <div>
           {selectedWeek && (
             <div className="kpi-strip">
@@ -575,9 +629,58 @@ export default function AdminDashboard() {
               <KpiCard label="Gastos semana" value={formatARS(kpis.expensesTotal)} accent="negative" />
             </div>
           )}
+          {settlements.length > 0 && (
+            <div className="filter-bar">
+              <select value={settlFilterBarber} onChange={(e) => setSettlFilterBarber(e.target.value)} className="filter-input">
+                <option value="">Todos los barberos</option>
+                {barberOptsSettl.map(([id, name]) => (
+                  <option key={id} value={id}>{name}</option>
+                ))}
+              </select>
+              <select value={settlFilterEstado} onChange={(e) => setSettlFilterEstado(e.target.value)} className="filter-input">
+                <option value="">Todos los estados</option>
+                <option value="draft">Borrador</option>
+                <option value="confirmed">Confirmado</option>
+                <option value="paid">Pagado</option>
+              </select>
+              <select value={settlFilterObjetivo} onChange={(e) => setSettlFilterObjetivo(e.target.value)} className="filter-input">
+                <option value="">Objetivo (todos)</option>
+                <option value="met">Objetivo cumplido</option>
+                <option value="not_met">No cumplido</option>
+                <option value="na">No aplica</option>
+              </select>
+              <select value={settlFilterPresentismo} onChange={(e) => setSettlFilterPresentismo(e.target.value)} className="filter-input">
+                <option value="">Presentismo (todos)</option>
+                <option value="met">Presentismo ok</option>
+                <option value="not_met">Sin presentismo</option>
+                <option value="na">No aplica</option>
+              </select>
+              <select value={settlFilterAdelantos} onChange={(e) => setSettlFilterAdelantos(e.target.value)} className="filter-input">
+                <option value="">Adelantos (todos)</option>
+                <option value="with">Con adelantos</option>
+                <option value="without">Sin adelantos</option>
+              </select>
+              <select value={settlFilterAPagar} onChange={(e) => setSettlFilterAPagar(e.target.value)} className="filter-input">
+                <option value="">A pagar (todos)</option>
+                <option value="positive">A cobrar</option>
+                <option value="negative">Debe</option>
+              </select>
+              {hasSettlFilters && (
+                <button
+                  onClick={() => { setSettlFilterBarber(''); setSettlFilterObjetivo(''); setSettlFilterPresentismo(''); setSettlFilterAdelantos(''); setSettlFilterAPagar(''); setSettlFilterEstado('') }}
+                  className="filter-clear"
+                >
+                  ✕ Limpiar
+                </button>
+              )}
+              <span className="filter-count">{filteredSettlements.length} resultado{filteredSettlements.length !== 1 ? 's' : ''}</span>
+            </div>
+          )}
           <div className="admin-table-wrap">
             {settlements.length === 0 ? (
               <EmptyState message="No hay liquidaciones para esta semana. Cerrá la semana para generarlas." />
+            ) : filteredSettlements.length === 0 ? (
+              <EmptyState message="Sin resultados para los filtros aplicados." />
             ) : (
               <table className="admin-table">
                 <thead>
@@ -597,7 +700,7 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {settlements.map((s) => {
+                  {filteredSettlements.map((s) => {
                     const isSalary = s.barber.compensation_type === 'salary'
                     const isPositive = s.net_payable >= 0
                     const loadingKey = actionLoading
@@ -702,11 +805,11 @@ export default function AdminDashboard() {
                 <tfoot>
                   <tr className="tfoot-row">
                     <td colSpan={2}><strong>TOTALES</strong></td>
-                    <td><strong>{formatARS(kpis.grossTotal)}</strong></td>
+                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.gross_amount, 0))}</strong></td>
                     <td colSpan={4}></td>
-                    <td><strong>{formatARS(settlements.reduce((s, x) => s + x.already_collected, 0))}</strong></td>
-                    <td><strong>{formatARS(settlements.reduce((s, x) => s + x.advances_deducted, 0))}</strong></td>
-                    <td><strong className="net-payable--pos">{formatARS(kpis.totalPayable)}</strong></td>
+                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.already_collected, 0))}</strong></td>
+                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.advances_deducted, 0))}</strong></td>
+                    <td><strong className="net-payable--pos">{formatARS(filteredSettlements.reduce((s, x) => s + Math.max(x.net_payable, 0), 0))}</strong></td>
                     <td colSpan={2}></td>
                   </tr>
                 </tfoot>
@@ -714,16 +817,18 @@ export default function AdminDashboard() {
             )}
           </div>
           </div>
-        )}
+          )
+        })()}
 
         {/* ─── TAB: TRANSACCIONES ─── */}
         {tab === 'transacciones' && (() => {
           // Opciones únicas para los selects
           const barberOptions = Array.from(new Map(transactions.map((t) => [t.barber_id, t.barber.full_name])))
           const serviceOptions = Array.from(new Set(transactions.map((t) => t.service?.name).filter(Boolean))) as string[]
-          const hasFilters = filterDate || filterBarber || filterMethod || filterService
+          const hasFilters = filterDateFrom || filterDateTo || filterBarber || filterMethod || filterService
           const filtered = transactions.filter((tx) => {
-            if (filterDate && tx.transaction_date !== filterDate) return false
+            if (filterDateFrom && tx.transaction_date < filterDateFrom) return false
+            if (filterDateTo && tx.transaction_date > filterDateTo) return false
             if (filterBarber && tx.barber_id !== filterBarber) return false
             if (filterMethod && tx.payment_method !== filterMethod) return false
             if (filterService && (tx.service?.name ?? '') !== filterService) return false
@@ -735,10 +840,17 @@ export default function AdminDashboard() {
             <div className="filter-bar">
               <input
                 type="date"
-                value={filterDate}
-                onChange={(e) => setFilterDate(e.target.value)}
+                value={filterDateFrom}
+                onChange={(e) => setFilterDateFrom(e.target.value)}
                 className="filter-input"
-                title="Filtrar por fecha"
+                title="Desde"
+              />
+              <input
+                type="date"
+                value={filterDateTo}
+                onChange={(e) => setFilterDateTo(e.target.value)}
+                className="filter-input"
+                title="Hasta"
               />
               <select value={filterBarber} onChange={(e) => setFilterBarber(e.target.value)} className="filter-input">
                 <option value="">Todos los barberos</option>
@@ -757,7 +869,7 @@ export default function AdminDashboard() {
                 {serviceOptions.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
               {hasFilters && (
-                <button onClick={() => { setFilterDate(''); setFilterBarber(''); setFilterMethod(''); setFilterService('') }}
+                <button onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); setFilterBarber(''); setFilterMethod(''); setFilterService('') }}
                   className="filter-clear">
                   ✕ Limpiar
                 </button>
@@ -890,11 +1002,25 @@ export default function AdminDashboard() {
         })()}
 
         {/* ─── TAB: GASTOS ─── */}
-        {tab === 'gastos' && (
-          <div className="admin-table-wrap">
+        {tab === 'gastos' && (() => {
+          const hasExpFilters = !!(expFilterDateFrom || expFilterDateTo || expFilterCategory)
+          const filteredExpenses = expenses.filter((e) => {
+            if (expFilterDateFrom && e.expense_date < expFilterDateFrom) return false
+            if (expFilterDateTo && e.expense_date > expFilterDateTo) return false
+            if (expFilterCategory && e.category !== expFilterCategory) return false
+            return true
+          })
+          const filteredTotal = filteredExpenses.reduce((s, e) => s + e.amount, 0)
+          return (
+          <div>
             <div className="table-toolbar">
               <span className="toolbar-total">
-                Total gastos: <strong>{formatARS(kpis.expensesTotal)}</strong>
+                Total gastos: <strong>{formatARS(hasExpFilters ? filteredTotal : kpis.expensesTotal)}</strong>
+                {hasExpFilters && expenses.length !== filteredExpenses.length && (
+                  <span style={{ color: '#a1a1aa', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                    ({filteredExpenses.length} de {expenses.length})
+                  </span>
+                )}
               </span>
               <button
                 onClick={() => setShowExpenseForm(true)}
@@ -903,36 +1029,74 @@ export default function AdminDashboard() {
                 + Registrar gasto
               </button>
             </div>
-            {expenses.length === 0 ? (
-              <EmptyState message="No hay gastos registrados en este período." />
-            ) : (
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>Fecha</th>
-                    <th>Concepto</th>
-                    <th>Categoría</th>
-                    <th>Monto</th>
-                    <th>Notas</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {expenses.map((e) => (
-                    <tr key={e.id}>
-                      <td className="td-date">{formatDate(e.expense_date)}</td>
-                      <td>{e.concept}</td>
-                      <td>
-                        <span className="badge badge--gray">{e.category ?? '—'}</span>
-                      </td>
-                      <td className="td-danger">{formatARS(e.amount)}</td>
-                      <td className="td-muted">{e.notes ?? '—'}</td>
+            <div className="filter-bar">
+              <input
+                type="date"
+                value={expFilterDateFrom}
+                onChange={(e) => setExpFilterDateFrom(e.target.value)}
+                className="filter-input"
+                title="Desde"
+              />
+              <input
+                type="date"
+                value={expFilterDateTo}
+                onChange={(e) => setExpFilterDateTo(e.target.value)}
+                className="filter-input"
+                title="Hasta"
+              />
+              <select value={expFilterCategory} onChange={(e) => setExpFilterCategory(e.target.value)} className="filter-input">
+                <option value="">Todas las categorías</option>
+                {EXPENSE_CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              {hasExpFilters && (
+                <button
+                  onClick={() => { setExpFilterDateFrom(''); setExpFilterDateTo(''); setExpFilterCategory('') }}
+                  className="filter-clear"
+                >
+                  ✕ Limpiar
+                </button>
+              )}
+              {hasExpFilters && (
+                <span className="filter-count">{filteredExpenses.length} resultado{filteredExpenses.length !== 1 ? 's' : ''}</span>
+              )}
+            </div>
+            <div className="admin-table-wrap">
+              {expenses.length === 0 ? (
+                <EmptyState message="No hay gastos registrados en este período." />
+              ) : filteredExpenses.length === 0 ? (
+                <EmptyState message="Sin resultados para los filtros aplicados." />
+              ) : (
+                <table className="admin-table">
+                  <thead>
+                    <tr>
+                      <th>Fecha</th>
+                      <th>Concepto</th>
+                      <th>Categoría</th>
+                      <th>Monto</th>
+                      <th>Notas</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
+                  </thead>
+                  <tbody>
+                    {filteredExpenses.map((e) => (
+                      <tr key={e.id}>
+                        <td className="td-date">{formatDate(e.expense_date)}</td>
+                        <td>{e.concept}</td>
+                        <td>
+                          <span className="badge badge--gray">{e.category ?? '—'}</span>
+                        </td>
+                        <td className="td-danger">{formatARS(e.amount)}</td>
+                        <td className="td-muted">{e.notes ?? '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
           </div>
-        )}
+          )
+        })()}
 
       </main>
 
@@ -1010,6 +1174,23 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Modal: Registrar corte manual (admin) */}
+      {showManualCut && selectedWeek && selectedBranch && currentUserId && (
+        <ManualCutModal
+          branchId={selectedBranch}
+          weekId={selectedWeek.id}
+          weekStartDate={selectedWeek.start_date}
+          weekEndDate={selectedWeek.end_date}
+          adminId={currentUserId}
+          onClose={() => setShowManualCut(false)}
+          onSuccess={() => {
+            setShowManualCut(false)
+            // Forzar reload de transactions via cambio de referencia
+            setSelectedWeek((w) => (w ? { ...w } : null))
+          }}
+        />
       )}
 
       <div className="admin-watermark" aria-hidden="true">
@@ -1132,7 +1313,7 @@ function ExpenseFormModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Registrar gasto</h3>
@@ -1246,7 +1427,7 @@ function OverrideSplitModal({
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Editar split · {tx.barber.full_name}</h3>

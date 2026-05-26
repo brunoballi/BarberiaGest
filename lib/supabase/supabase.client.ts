@@ -167,44 +167,28 @@ export async function updateService(
 // ============================================================
 export async function getOpenWeek(branchId: string): Promise<Week | null> {
   const today = todayLocal()
-  // 1. Prioridad: la semana ABIERTA que contiene la fecha de hoy
-  const { data: containsToday, error: err1 } = await supabase
+  // Single query: fetch all open weeks (normally ≤2 at any time), apply priority in JS
+  const { data, error } = await supabase
     .from('weeks')
     .select('*')
     .eq('branch_id', branchId)
     .eq('status', 'open')
-    .lte('start_date', today)
-    .gte('end_date', today)
-    .limit(1)
-    .maybeSingle()
-  if (err1) throw new Error(`[getOpenWeek] ${err1.message}`)
+    .order('start_date', { ascending: true })
+    .limit(10)
+
+  if (error) throw new Error(`[getOpenWeek] ${error.message}`)
+  if (!data?.length) return null
+
+  // Priority 1: week that contains today
+  const containsToday = data.find(w => w.start_date <= today && w.end_date >= today)
   if (containsToday) return containsToday
 
-  // 2. Fallback: la próxima semana abierta (start_date > hoy) más cercana
-  const { data: nextOpen, error: err2 } = await supabase
-    .from('weeks')
-    .select('*')
-    .eq('branch_id', branchId)
-    .eq('status', 'open')
-    .gt('start_date', today)
-    .order('start_date', { ascending: true })
-    .limit(1)
-    .maybeSingle()
-  if (err2) throw new Error(`[getOpenWeek] ${err2.message}`)
+  // Priority 2: nearest future open week
+  const nextOpen = data.find(w => w.start_date > today)
   if (nextOpen) return nextOpen
 
-  // 3. Fallback: la última semana abierta del pasado (más reciente)
-  const { data: lastOpen, error: err3 } = await supabase
-    .from('weeks')
-    .select('*')
-    .eq('branch_id', branchId)
-    .eq('status', 'open')
-    .lt('start_date', today)
-    .order('start_date', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-  if (err3) throw new Error(`[getOpenWeek] ${err3.message}`)
-  return lastOpen
+  // Priority 3: most recent past open week
+  return data.filter(w => w.start_date < today).at(-1) ?? null
 }
 
 export async function getWeeksByBranch(branchId: string): Promise<Week[]> {
@@ -742,7 +726,8 @@ export async function reopenMonth(monthId: string): Promise<void> {
 export async function registerCut(
   payload: RegisterCutPayload,
   barber: Profile,
-  weekId: string
+  weekId: string,
+  createdBy?: string,
 ): Promise<Transaction> {
   const commissionRate = barber.commission_rate ?? 0.5
   // Parte del barbero: SOBRE EL PRECIO ORIGINAL (antes del descuento).
@@ -766,12 +751,14 @@ export async function registerCut(
   }
 
   // barber_already_collected:
-  // - Si admin lo pasa explícito, usar eso.
-  // - Si no, el barbero se queda automáticamente con la porción cash (efectivo en mano).
+  // - Transferencia: el cliente paga directo al barbero → ya cobró su parte
+  // - Efectivo: queda en caja → barbero cobra en la liquidación
   const barberAlreadyCollected: number =
     payload.barber_already_collected_override !== undefined
       ? payload.barber_already_collected_override
-      : 0  // Por defecto: cash queda en caja, barber cobra todo en settlement
+      : payload.payment_method === 'transfer'
+      ? barberShare
+      : 0
 
   const insert: TransactionInsert = {
     branch_id: barber.branch_id,
@@ -785,7 +772,7 @@ export async function registerCut(
     barber_share: barberShare,
     commission_rate_snapshot: commissionRate,
     barber_already_collected: barberAlreadyCollected,
-    created_by: barber.id,
+    created_by: createdBy ?? barber.id,
     // NEW
     cash_amount: cashAmount,
     transfer_amount: transferAmount,
@@ -848,7 +835,11 @@ export async function getWeekTransactions(
   const { data, error } = await supabase
     .from('transactions')
     .select(`
-      *,
+      id, barber_id, week_id, branch_id, service_id, transaction_date,
+      amount, payment_method, barber_share, branch_share, barber_already_collected,
+      commission_rate_snapshot, is_manual_override, override_notes,
+      created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount,
+      client_name, discount_amount, discount_reason,
       barber:profiles!barber_id ( id, full_name, compensation_type ),
       service:service_catalog!service_id ( id, name )
     `)
@@ -856,7 +847,7 @@ export async function getWeekTransactions(
     .order('transaction_date', { ascending: false })
 
   if (error) throw new Error(`[getWeekTransactions] ${error.message}`)
-  return data as TransactionWithRelations[]
+  return data as unknown as TransactionWithRelations[]
 }
 
 export async function updateTransaction(

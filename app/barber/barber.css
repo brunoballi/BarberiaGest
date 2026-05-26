@@ -776,6 +776,41 @@
   animation: view-enter 0.22s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
+/* Birthday banner */
+.birthday-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.875rem;
+  background: linear-gradient(135deg, #1c1c2e 0%, #1e1b2e 100%);
+  border: 1px solid #6d28d9;
+  border-radius: 1rem;
+  padding: 1rem 1.125rem;
+  box-shadow: 0 0 20px rgba(109, 40, 217, 0.15);
+}
+.birthday-banner__icon {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: rgba(109, 40, 217, 0.2);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  color: #a78bfa;
+}
+.birthday-banner__title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  color: #a78bfa;
+  line-height: 1.3;
+}
+.birthday-banner__sub {
+  font-size: 0.8125rem;
+  color: #71717a;
+  margin-top: 0.125rem;
+}
+
 /* ── Advance chip — acción diferenciada del método de pago ─────── */
 .payment-chip--advance {
   border-color: #3f3f46;

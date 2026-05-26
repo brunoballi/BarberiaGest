@@ -3,10 +3,12 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import './admin-layout.css'
+import HelpPanel from '../components/help-panel'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const isRoot = pathname === '/admin'
+  const isSelectBranch = pathname === '/admin/select-branch'
 
   return (
     <>
@@ -22,6 +24,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
       )}
       {children}
+      {/* FAB de ayuda en todo /admin/* excepto select-branch */}
+      {!isSelectBranch && <HelpPanel role="admin" />}
     </>
   )
 }

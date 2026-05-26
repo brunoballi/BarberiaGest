@@ -43,6 +43,9 @@ export interface Profile {
   box_rental_amount: number | null
   is_active: boolean
   created_at: string
+  // Datos personales
+  dni: string | null
+  birth_date: string | null
 }
 
 export interface ServiceCatalog {
@@ -242,6 +245,8 @@ export type ProfileUpdate = Partial<
     | 'objetivo_min_cuts'
     | 'box_rental_amount'
     | 'is_active'
+    | 'dni'
+    | 'birth_date'
   >
 >
 

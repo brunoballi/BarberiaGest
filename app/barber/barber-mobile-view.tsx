@@ -123,17 +123,13 @@ export default function BarberMobileView() {
   const [settlements, setSettlements] = useState<SettlementWithBarber[]>([])
   const [settlementsLoaded, setSettlementsLoaded] = useState(false)
   const [settlementsLoading, setSettlementsLoading] = useState(false)
+  const [settlFilterStatus, setSettlFilterStatus] = useState('')
+  const [expandedSettlement, setExpandedSettlement] = useState<string | null>(null)
   const [selectedService, setSelectedService] = useState<string>('')
   const [customAmount, setCustomAmount] = useState<string>('')
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [lastRegistered, setLastRegistered] = useState<Transaction | null>(null)
-  const [keepCash, setKeepCash] = useState(false)
-
-  // NEW: split payment + cliente + descuento
-  const [splitMode, setSplitMode] = useState(false)
-  const [splitCash, setSplitCash] = useState<string>('')      // monto en efectivo cuando hay split
-  const [splitTransfer, setSplitTransfer] = useState<string>('') // monto transferencia cuando hay split
   const [clientName, setClientName] = useState<string>('')
   const [discountAmount, setDiscountAmount] = useState<string>('')
   const [discountReason, setDiscountReason] = useState<string>('')
@@ -270,28 +266,11 @@ export default function BarberMobileView() {
   const effectiveAmount = Math.max(0, resolvedAmount - discountNum)
   // Parte del barbero: SIEMPRE sobre el precio original (el descuento lo absorbe la barbería)
   const previewBarberShare = Math.round(resolvedAmount * commissionRate)
-  // Split parsing
-  const splitCashNum     = parseFloat(splitCash)     || 0
-  const splitTransferNum = parseFloat(splitTransfer) || 0
-  const splitSum         = splitCashNum + splitTransferNum
-  const splitValid       = !splitMode || Math.abs(splitSum - effectiveAmount) < 0.01
-  // Cash portion del corte: si es split usamos lo escrito, si no es split y método es cash → todo va a cash
-  const previewCashPortion = splitMode ? splitCashNum : (paymentMethod === 'cash' ? effectiveAmount : 0)
-  // already_collected en preview: si keepCash y hay cash, barber se queda con SU parte de la porción cash
-  const previewAlreadyCollected =
-    keepCash && previewCashPortion > 0
-      ? Math.round(previewCashPortion * commissionRate)
-      : 0
+  // Transferencia → barbero ya tiene su parte; efectivo → queda en caja
+  const previewAlreadyCollected = paymentMethod === 'transfer' ? previewBarberShare : 0
 
   async function handleSubmit() {
     if (!profile || !week || !selectedService || !paymentMethod || effectiveAmount <= 0) return
-    if (splitMode && !splitValid) {
-      setError(
-        `La suma del split (${formatARS(splitSum)}) no coincide con el total a cobrar (${formatARS(effectiveAmount)}).\n` +
-        `Servicio: ${formatARS(resolvedAmount)} − Descuento: ${formatARS(discountNum)} = Total: ${formatARS(effectiveAmount)}`
-      )
-      return
-    }
     // Validar que sigue siendo el mismo día (protege si el form quedó abierto hasta medianoche)
     const nowDate = todayLocal()
     if (nowDate !== today) {
@@ -300,13 +279,8 @@ export default function BarberMobileView() {
     }
     try {
       setSubmitting(true)
-      // Calcular cash/transfer/card según modo
-      const cashAmt     = splitMode ? splitCashNum     : (paymentMethod === 'cash'     ? effectiveAmount : 0)
-      const transferAmt = splitMode ? splitTransferNum : (paymentMethod === 'transfer' ? effectiveAmount : 0)
-      const cardAmt     = !splitMode && paymentMethod === 'card' ? effectiveAmount : 0
-
-      // barber_already_collected: el barbero se queda con SU parte de la porción cash si activó el toggle
-      const cashShareForBarber = Math.round(cashAmt * commissionRate)
+      const cashAmt     = paymentMethod === 'cash'     ? effectiveAmount : 0
+      const transferAmt = paymentMethod === 'transfer' ? effectiveAmount : 0
 
       const payload: RegisterCutPayload = {
         service_id: selectedServiceData?.id ?? null,
@@ -315,13 +289,10 @@ export default function BarberMobileView() {
         transaction_date: today,
         cash_amount: cashAmt,
         transfer_amount: transferAmt,
-        card_amount: cardAmt,
+        card_amount: 0,
         client_name: clientName.trim() || null,
         discount_amount: discountNum > 0 ? discountNum : 0,
         discount_reason: discountReason.trim() || null,
-        ...(keepCash && cashAmt > 0
-          ? { barber_already_collected_override: cashShareForBarber }
-          : {}),
       }
       const tx = await registerCut(payload, profile, week.id)
       setLastRegistered(tx)
@@ -440,7 +411,6 @@ export default function BarberMobileView() {
     setSelectedService('')
     setCustomAmount('')
     setPaymentMethod(null)
-    setKeepCash(false)
     setLastRegistered(null)
     setView('home')
   }
@@ -449,7 +419,6 @@ export default function BarberMobileView() {
     setSelectedService('')
     setCustomAmount('')
     setPaymentMethod(null)
-    setKeepCash(false)
     setView('register')
   }
 
@@ -579,11 +548,10 @@ export default function BarberMobileView() {
 
         <div>
           <p className="section-label mb-2">Método de pago</p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2">
             {([
               { method: 'cash' as PaymentMethod, label: 'Efectivo', Icon: IconCash },
               { method: 'transfer' as PaymentMethod, label: 'Transf.', Icon: IconTransfer },
-              { method: 'card' as PaymentMethod, label: 'Tarjeta', Icon: IconCard },
             ] as const).map(({ method, label, Icon }) => (
               <button key={method} onClick={() => setEditMethod(method)}
                 className={`payment-chip ${editMethod === method ? 'payment-chip--active' : ''}`}>
@@ -764,108 +732,19 @@ export default function BarberMobileView() {
               ).map(({ method, label, Icon }) => (
                 <button
                   key={method}
-                  onClick={() => {
-                    setPaymentMethod(method)
-                    if (method !== 'cash') setKeepCash(false)
-                  }}
+                  onClick={() => setPaymentMethod(method)}
                   className={`payment-chip ${paymentMethod === method ? 'payment-chip--active' : ''}`}
                 >
                   <Icon />
                   <span className="text-xs mt-1">{label}</span>
-                  {paymentMethod === method && method !== 'cash' && !splitMode && resolvedAmount > 0 && (
+                  {paymentMethod === method && method !== 'cash' && resolvedAmount > 0 && (
                     <span className="text-xs text-emerald-400 mt-0.5">Ya en tu cuenta</span>
                   )}
                 </button>
               ))}
             </div>
 
-            {/* Toggle split payment */}
-            {effectiveAmount > 0 && (
-              <div className="split-toggle">
-                <label className="split-toggle__row">
-                  <input
-                    type="checkbox"
-                    checked={splitMode}
-                    onChange={(e) => {
-                      setSplitMode(e.target.checked)
-                      if (!e.target.checked) {
-                        setSplitCash('')
-                        setSplitTransfer('')
-                      }
-                    }}
-                  />
-                  <span>Pago combinado (efectivo + transferencia)</span>
-                </label>
-                {splitMode && (
-                  <div className="split-inputs">
-                    <p className="split-target">
-                      Total a cobrar: <strong>{formatARS(effectiveAmount)}</strong>
-                      {discountNum > 0 && (
-                        <span className="split-target__hint"> ({formatARS(resolvedAmount)} − {formatARS(discountNum)} desc.)</span>
-                      )}
-                    </p>
-                    <div>
-                      <label className="split-label">Efectivo</label>
-                      <div className="amount-input-wrapper">
-                        <span className="amount-prefix">$</span>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          placeholder="0"
-                          value={splitCash}
-                          onChange={(e) => {
-                            const v = e.target.value
-                            setSplitCash(v)
-                            // Auto-completar transferencia con el resto
-                            const cashN = parseFloat(v) || 0
-                            const remain = effectiveAmount - cashN
-                            setSplitTransfer(remain > 0 ? String(remain) : '0')
-                          }}
-                          className="amount-input"
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <label className="split-label">Transferencia (auto)</label>
-                      <div className="amount-input-wrapper">
-                        <span className="amount-prefix">$</span>
-                        <input
-                          type="number"
-                          inputMode="numeric"
-                          placeholder="0"
-                          value={splitTransfer}
-                          onChange={(e) => setSplitTransfer(e.target.value)}
-                          className="amount-input"
-                        />
-                      </div>
-                    </div>
-                    <p className={`split-sum ${splitValid ? 'split-sum--ok' : 'split-sum--err'}`}>
-                      {splitValid
-                        ? `✓ Suma OK: ${formatARS(splitSum)}`
-                        : `⚠ Suma ${formatARS(splitSum)} ≠ Total ${formatARS(effectiveAmount)}`}
-                    </p>
-                  </div>
-                )}
-              </div>
-            )}
           </section>
-
-          {paymentMethod === 'cash' && resolvedAmount > 0 && (
-            <section className="animate-fadein">
-              <button
-                type="button"
-                onClick={() => setKeepCash((v) => !v)}
-                className={`keep-cash-toggle ${keepCash ? 'keep-cash-toggle--on' : ''}`}
-              >
-                <span className="keep-cash-toggle__track">
-                  <span className="keep-cash-toggle__thumb" />
-                </span>
-                <span className="keep-cash-toggle__label">
-                  {keepCash ? '✓ Me quedo con mi parte en efectivo' : '¿Te quedás con tu parte en efectivo?'}
-                </span>
-              </button>
-            </section>
-          )}
 
           {isValid && (
             <div className="card space-y-2 animate-fadein">
@@ -887,10 +766,8 @@ export default function BarberMobileView() {
                 <span className="text-zinc-400 text-sm">Tu parte</span>
                 <span className="text-amber-400 font-bold text-lg">{formatARS(previewBarberShare)}</span>
               </div>
-              {previewAlreadyCollected > 0 && (
-                <p className="text-xs text-emerald-400 text-right">
-                  {paymentMethod === 'cash' ? 'Te quedás con tu parte en efectivo' : 'Ya depositado en tu cuenta'}
-                </p>
+              {paymentMethod === 'transfer' && (
+                <p className="text-xs text-emerald-400 text-right">Ya depositado en tu cuenta</p>
               )}
             </div>
           )}
@@ -912,100 +789,114 @@ export default function BarberMobileView() {
 
   // ── SETTLEMENTS ──────────────────────────────────────────────────────────
   if (view === 'settlements') {
+    const STATUS_FILTERS = [
+      { value: '', label: 'Todas' },
+      { value: 'draft', label: 'Borrador' },
+      { value: 'confirmed', label: 'Confirmado' },
+      { value: 'paid', label: 'Pagado' },
+    ]
+    const STATUS_CFG: Record<string, { label: string; color: string; dot: string }> = {
+      draft:     { label: 'Borrador',   color: 'text-zinc-400',    dot: 'bg-zinc-600' },
+      confirmed: { label: 'Confirmado', color: 'text-amber-400',   dot: 'bg-amber-500' },
+      paid:      { label: 'Pagado',     color: 'text-emerald-400', dot: 'bg-emerald-500' },
+    }
+    const filtered = settlements.filter((s) => !settlFilterStatus || s.status === settlFilterStatus)
     return (
       <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
         <header className="flex items-center gap-3 px-5 pt-safe pt-6 pb-4">
-          <button onClick={() => setView('home')} className="icon-btn">
-            <IconBack />
-          </button>
+          <button onClick={() => setView('home')} className="icon-btn"><IconBack /></button>
           <h1 className="text-lg font-bold text-white">Mis liquidaciones</h1>
         </header>
 
-        <div className="flex-1 overflow-y-auto px-5 pb-10 space-y-3">
+        {/* Filter chips */}
+        <div className="px-5 pb-3 flex items-center gap-2 overflow-x-auto">
+          {STATUS_FILTERS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setSettlFilterStatus(f.value)}
+              className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors flex-shrink-0 ${
+                settlFilterStatus === f.value
+                  ? 'bg-amber-500 text-zinc-950'
+                  : 'bg-zinc-800 border border-zinc-700 text-zinc-400 hover:text-white'
+              }`}
+            >
+              {f.label}
+            </button>
+          ))}
+          <span className="text-xs text-zinc-600 ml-auto whitespace-nowrap flex-shrink-0">
+            {filtered.length} semana{filtered.length !== 1 ? 's' : ''}
+          </span>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 pb-10 space-y-1.5">
           {settlementsLoading ? (
-            <div className="flex items-center justify-center py-16">
-              <div className="loader" />
-            </div>
-          ) : settlements.length === 0 ? (
+            <div className="flex items-center justify-center py-16"><div className="loader" /></div>
+          ) : filtered.length === 0 ? (
             <div className="card text-center py-10">
-              <p className="text-zinc-500 text-sm">No hay liquidaciones todavía</p>
+              <p className="text-zinc-500 text-sm">
+                {settlements.length === 0 ? 'No hay liquidaciones todavía' : 'Sin resultados'}
+              </p>
             </div>
-          ) : (
-            settlements.map((s) => {
-              const statusColors: Record<string, string> = {
-                draft: 'text-zinc-400',
-                confirmed: 'text-amber-400',
-                paid: 'text-emerald-400',
-              }
-              return (
-                <div key={s.id} className="card space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-white font-bold text-sm">
-                        Semana {s.week.week_number}
-                      </p>
-                      <p className="text-zinc-500 text-xs mt-0.5">
+          ) : filtered.map((s) => {
+            const isExpanded = expandedSettlement === s.id
+            const cfg = STATUS_CFG[s.status] ?? STATUS_CFG.draft
+            return (
+              <div key={s.id} className="bg-zinc-900 border border-zinc-800 rounded-xl overflow-hidden">
+                <button
+                  onClick={() => setExpandedSettlement(isExpanded ? null : s.id)}
+                  className="w-full px-4 py-3.5 flex items-center gap-3 text-left"
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-white font-bold text-sm">Sem. {s.week.week_number}</span>
+                      <span className="text-zinc-500 text-xs">
                         {new Date(s.week.start_date + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })}
                         {' – '}
                         {new Date(s.week.end_date + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: 'short', year: '2-digit' })}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs flex-wrap">
+                      <span className="text-zinc-500">{s.total_cuts} cortes</span>
+                      <span className="text-zinc-700">·</span>
+                      <span className="text-zinc-400">Facturado {formatARS(s.gross_amount)}</span>
+                      <span className="text-zinc-700">·</span>
+                      <span className="text-amber-400 font-semibold">Neto {formatARS(s.net_payable)}</span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
+                      <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
+                    </div>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5}
+                      className={`w-3.5 h-3.5 text-zinc-600 transition-transform duration-150 flex-shrink-0 ${isExpanded ? 'rotate-90' : ''}`}>
+                      <polyline points="9 18 15 12 9 6"/>
+                    </svg>
+                  </div>
+                </button>
+
+                {isExpanded && (
+                  <div className="border-t border-zinc-800 px-4 py-3 space-y-2">
+                    <SettlRow label={profile?.compensation_type === 'salary' ? 'Sueldo base' : 'Comisión'} value={formatARS(s.barber_gross)} />
+                    {s.bonus_presentismo > 0 && <SettlRow label="+ Presentismo" value={formatARS(s.bonus_presentismo)} valueClass="text-emerald-400" />}
+                    {s.bonus_objetivo > 0 && <SettlRow label="+ Objetivo" value={formatARS(s.bonus_objetivo)} valueClass="text-emerald-400" />}
+                    <div className="h-px bg-zinc-800 my-0.5" />
+                    <SettlRow label="Ganado" value={formatARS(s.total_earned)} />
+                    {s.already_collected > 0 && <SettlRow label="– Ya cobrado (transf.)" value={formatARS(s.already_collected)} valueClass="text-zinc-400" />}
+                    {s.advances_deducted > 0 && <SettlRow label="– Adelantos" value={formatARS(s.advances_deducted)} valueClass="text-red-400" />}
+                    <div className="h-px bg-zinc-800 my-0.5" />
+                    <SettlRow label="A recibir" value={formatARS(s.net_payable)} bold />
+                    {s.presentismo_met !== null && (
+                      <p className="text-xs text-zinc-600 mt-1">
+                        Presentismo: {s.presentismo_met ? 'marcado' : 'no marcado'}
+                        {s.objetivo_met !== null && <span> · Objetivo: {s.objetivo_met ? 'alcanzado' : 'no alcanzado'}</span>}
                       </p>
-                    </div>
-                    <span className={`text-xs font-semibold uppercase tracking-wide ${statusColors[s.status] ?? 'text-zinc-400'}`}>
-                      {SETTLEMENT_STATUS_LABELS[s.status]}
-                    </span>
-                  </div>
-
-                  <div className="divider" />
-
-                  <div className="space-y-1.5">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-zinc-400">Cortes · Facturado</span>
-                      <span className="text-white">{s.total_cuts} · {formatARS(s.gross_amount)}</span>
-                    </div>
-                    <div className="flex justify-between text-sm">
-                      <span className="text-zinc-400">Tu comisión</span>
-                      <span className="text-white">{formatARS(s.barber_gross)}</span>
-                    </div>
-                    {s.bonus_presentismo > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-zinc-400">Presentismo</span>
-                        <span className="text-emerald-400">+{formatARS(s.bonus_presentismo)}</span>
-                      </div>
-                    )}
-                    {s.bonus_objetivo > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-zinc-400">Objetivo</span>
-                        <span className="text-emerald-400">+{formatARS(s.bonus_objetivo)}</span>
-                      </div>
-                    )}
-                    {s.already_collected > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-zinc-400">Ya cobrado (transf/tarjeta)</span>
-                        <span className="text-zinc-400">−{formatARS(s.already_collected)}</span>
-                      </div>
-                    )}
-                    {s.advances_deducted > 0 && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-zinc-400">Adelantos</span>
-                        <span className="text-zinc-400">−{formatARS(s.advances_deducted)}</span>
-                      </div>
                     )}
                   </div>
-
-                  <div className="divider" />
-
-                  <div className="flex justify-between items-center">
-                    <span className="text-zinc-400 text-sm">
-                      {s.net_payable >= 0 ? 'A cobrar en efectivo' : 'Deuda pendiente'}
-                    </span>
-                    <span className={`font-bold text-lg ${s.net_payable >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
-                      {formatARS(Math.abs(s.net_payable))}
-                    </span>
-                  </div>
-                </div>
-              )
-            })
-          )}
+                )}
+              </div>
+            )
+          })}
         </div>
       </div>
     )
@@ -1040,6 +931,20 @@ export default function BarberMobileView() {
       </header>
 
       <div className="flex-1 overflow-y-auto px-5 pb-10 space-y-5">
+        {profile?.birth_date && today.slice(5) === profile.birth_date.slice(5) && (
+          <div className="birthday-banner">
+            <div className="birthday-banner__icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-5 h-5">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
+                <circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>
+            <div>
+              <p className="birthday-banner__title">¡Feliz cumpleaños, {profile.full_name.split(' ')[0]}!</p>
+              <p className="birthday-banner__sub">El equipo de Valhalla te desea un excelente año.</p>
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-2 gap-3">
           <div className="stat-card">
             <p className="stat-label">Hoy</p>
@@ -1292,5 +1197,19 @@ export default function BarberMobileView() {
       </div>
     </div>
     </>
+  )
+}
+
+function SettlRow({ label, value, valueClass, bold }: {
+  label: string
+  value: string
+  valueClass?: string
+  bold?: boolean
+}) {
+  return (
+    <div className="flex justify-between text-sm">
+      <span className="text-zinc-400">{label}</span>
+      <span className={bold ? 'font-bold text-amber-400' : (valueClass ?? 'text-white')}>{value}</span>
+    </div>
   )
 }

@@ -278,6 +278,16 @@
   color: #f59e0b;
 }
 
+.admin-brand-greeting {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: #a78bfa;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  padding-left: 1rem;
+}
+
 /* ─── Controls bar ───────────────────────────────────────────── */
 .admin-topbar {
   display: flex;
@@ -822,6 +832,11 @@
 /* ── Liquidaciones: cards apiladas en mobile ─────────────────── */
 @media (max-width: 639px) {
   .settlement-row { flex-direction: column; gap: 0.5rem; }
+}
+
+/* ── Forms: stack 2-col grids en mobile ──────────────────────── */
+@media (max-width: 639px) {
+  .form-row { grid-template-columns: 1fr; }
 }
 
 /* ── Desktop: aprovechar ancho en liquidaciones ──────────────── */

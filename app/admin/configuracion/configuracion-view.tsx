@@ -857,7 +857,7 @@ function NewMonthModal({ branchId, onClose, onCreated }: NewMonthModalProps) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div
         className="modal-box"
         style={{ maxWidth: '520px' }}
@@ -1013,7 +1013,7 @@ function WeekDetailModal({ week, month, data, loading, onClose }: WeekDetailModa
     : []
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div
         className="modal-box"
         style={{ maxWidth: '760px', width: '100%' }}
@@ -1247,7 +1247,7 @@ function NewYearModal({ branchId, onClose, onCreated }: NewYearModalProps) {
   }
 
   return (
-    <div className="modal-overlay" onClick={creating ? undefined : onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" style={{ maxWidth: '480px' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>+ Crear año completo</h3>
@@ -1334,7 +1334,7 @@ function ManualWeekModal({ branchId, onClose, onCreated }: ManualWeekModalProps)
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" style={{ maxWidth: '480px' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>+ Semana manual</h3>
@@ -1420,7 +1420,7 @@ function EditWeekModal({ week, onClose, onSaved }: EditWeekModalProps) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" style={{ maxWidth: '440px' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Editar Semana {week.week_number}</h3>

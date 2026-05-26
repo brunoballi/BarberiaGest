@@ -11,7 +11,7 @@ import type {
 import { WEEK_STATUS_LABELS, SETTLEMENT_STATUS_LABELS } from '@/lib/supabase/database.types'
 import {
   getCurrentProfile,
-  getBranches,
+  getMyBranches,
   getWeeksByBranch,
   createWeek,
   closeWeek,
@@ -81,12 +81,15 @@ export default function WeeksView() {
     try {
       setLoading(true)
       setError(null)
-      const [p, bs] = await Promise.all([getCurrentProfile(), getBranches()])
+      const [p, bs] = await Promise.all([getCurrentProfile(), getMyBranches()])
       if (!p) { setError('No autenticado'); return }
+      if (bs.length === 0) { setError('No tenés sucursales asignadas. Contactá al administrador.'); return }
       setProfile(p)
       setBranches(bs)
-      setSelectedBranch(p.branch_id)
-      await loadWeeks(p.branch_id)
+      // Si la sucursal actual del perfil no está entre las asignadas, usar la primera asignada
+      const initial = bs.some((b) => b.id === p.branch_id) ? p.branch_id : bs[0].id
+      setSelectedBranch(initial)
+      await loadWeeks(initial)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error inesperado')
     } finally {
