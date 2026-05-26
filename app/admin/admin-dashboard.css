@@ -896,6 +896,8 @@
 .dot-badge--transfer::before { background: #818cf8; }
 .dot-badge--card     { background: rgba(245, 158, 11, 0.1); color: #fbbf24; }
 .dot-badge--card::before { background: #fbbf24; }
+.dot-badge--mixed    { background: rgba(167, 139, 250, 0.1); color: #c4b5fd; }
+.dot-badge--mixed::before { background: linear-gradient(135deg, #34d399 50%, #818cf8 50%); }
 
 /* ─── Table toolbar ─────────────────────────────────────────── */
 .table-toolbar {

@@ -300,6 +300,27 @@ export default function AdminDashboard() {
     return () => { supabase.removeChannel(channel) }
   }, [tab, selectedWeek])
 
+  // ─── Realtime: auto-refresh en pestaña transacciones ──────────────
+  useEffect(() => {
+    if (tab !== 'transacciones' || !selectedWeek || selectedWeek.status !== 'open') return
+    const channel = supabase
+      .channel(`tx-tab-week-${selectedWeek.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'transactions', filter: `week_id=eq.${selectedWeek.id}` },
+        async () => {
+          const [txData, advData] = await Promise.all([
+            getWeekTransactions(selectedWeek.id),
+            getAdvancesByDateRange(selectedBranch, selectedWeek.start_date, selectedWeek.end_date),
+          ])
+          setTransactions(txData)
+          setWeekAdvances(advData)
+        }
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [tab, selectedWeek, selectedBranch])
+
   // ─── Acciones ──────────────────────────────────────────────────────
 
   async function handleCloseWeek() {
@@ -862,6 +883,7 @@ export default function AdminDashboard() {
                 <option value="">Todos los métodos</option>
                 <option value="cash">Efectivo</option>
                 <option value="transfer">Transferencia</option>
+                <option value="mixed">Mixto</option>
                 <option value="card">Tarjeta</option>
               </select>
               <select value={filterService} onChange={(e) => setFilterService(e.target.value)} className="filter-input">
@@ -887,6 +909,7 @@ export default function AdminDashboard() {
                     <th>Fecha</th>
                     <th>Barbero</th>
                     <th>Servicio</th>
+                    <th>Cliente</th>
                     <th>Método</th>
                     <th>Total</th>
                     <th>Barbería</th>
@@ -902,6 +925,7 @@ export default function AdminDashboard() {
                       <td className="td-date">{formatDate(tx.transaction_date)}</td>
                       <td>{tx.barber.full_name}</td>
                       <td>{tx.service?.name ?? '—'}</td>
+                      <td className="td-muted">{tx.client_name ?? '—'}</td>
                       <td>
                         <span className={`dot-badge dot-badge--${tx.payment_method}`}>
                           {PAYMENT_METHOD_LABELS[tx.payment_method]}
@@ -933,7 +957,7 @@ export default function AdminDashboard() {
                 </tbody>
                 <tfoot>
                   <tr className="tfoot-row">
-                    <td colSpan={4}><strong>{filtered.length} transacción{filtered.length !== 1 ? 'es' : ''}</strong></td>
+                    <td colSpan={5}><strong>{filtered.length} transacción{filtered.length !== 1 ? 'es' : ''}</strong></td>
                     <td><strong>{formatARS(filtered.reduce((s, t) => s + t.amount, 0))}</strong></td>
                     <td><strong>{formatARS(filtered.reduce((s, t) => s + t.branch_share, 0))}</strong></td>
                     <td><strong className="td-amber">{formatARS(filtered.reduce((s, t) => s + t.barber_share, 0))}</strong></td>
