@@ -9,7 +9,7 @@
 // ============================================================
 export type UserRole = 'admin' | 'barber'
 export type CompensationType = 'percentage' | 'salary' | 'box_rental'
-export type PaymentMethod = 'cash' | 'transfer' | 'card'
+export type PaymentMethod = 'cash' | 'transfer' | 'card' | 'mixed'
 export type WeekStatus = 'open' | 'closed' | 'paid'
 export type MonthStatus = 'active' | 'closed'
 export type SettlementStatus = 'draft' | 'confirmed' | 'paid'
@@ -358,6 +358,7 @@ export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: 'Efectivo',
   transfer: 'Transferencia',
   card: 'Tarjeta',
+  mixed: 'Mixto (Ef + Transf)',
 }
 
 /** Labels en español para estados de semana */

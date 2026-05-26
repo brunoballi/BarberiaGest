@@ -133,6 +133,11 @@ export default function BarberMobileView() {
   const [clientName, setClientName] = useState<string>('')
   const [discountAmount, setDiscountAmount] = useState<string>('')
   const [discountReason, setDiscountReason] = useState<string>('')
+  const [observations, setObservations] = useState<string>('')
+  const [splitPayment, setSplitPayment] = useState(false)
+  const [cashPart, setCashPart] = useState<string>('')
+  const [transferPart, setTransferPart] = useState<string>('')
+  const [formSubmitError, setFormSubmitError] = useState<string | null>(null)
 
   // Día seleccionado en la grilla de la semana (default: hoy)
   const [selectedDay, setSelectedDay] = useState<string>('')  // YYYY-MM-DD
@@ -270,36 +275,62 @@ export default function BarberMobileView() {
   const previewAlreadyCollected = paymentMethod === 'transfer' ? previewBarberShare : 0
 
   async function handleSubmit() {
-    if (!profile || !week || !selectedService || !paymentMethod || effectiveAmount <= 0) return
-    // Validar que sigue siendo el mismo día (protege si el form quedó abierto hasta medianoche)
-    const nowDate = todayLocal()
-    if (nowDate !== today) {
-      setError('El día cambió. Recargá la app para continuar.')
-      return
+    setFormSubmitError(null)
+    if (!profile || !week) return
+
+    if (!selectedService) { setFormSubmitError('Seleccioná un servicio antes de continuar'); return }
+    if (effectiveAmount <= 0) { setFormSubmitError('Ingresá un monto válido'); return }
+
+    let paymentMethodFinal: PaymentMethod
+    let cashAmt = 0
+    let transferAmt = 0
+
+    if (splitPayment) {
+      const cashNum  = parseFloat(cashPart)  || 0
+      const transNum = parseFloat(transferPart) || 0
+      if (cashNum <= 0 && transNum <= 0) { setFormSubmitError('Ingresá los montos de cada medio de pago'); return }
+      if (Math.abs(cashNum + transNum - effectiveAmount) > 1) {
+        setFormSubmitError(`La suma (${formatARS(cashNum + transNum)}) debe ser igual al total (${formatARS(effectiveAmount)})`)
+        return
+      }
+      paymentMethodFinal = 'mixed'
+      cashAmt   = cashNum
+      transferAmt = transNum
+    } else {
+      if (!paymentMethod) { setFormSubmitError('Seleccioná un método de pago'); return }
+      paymentMethodFinal = paymentMethod
+      cashAmt     = paymentMethod === 'cash'     ? effectiveAmount : 0
+      transferAmt = paymentMethod === 'transfer' ? effectiveAmount : 0
     }
+
+    // Protección cambio de día a medianoche
+    const nowDate = todayLocal()
+    if (nowDate !== today) { setFormSubmitError('El día cambió. Recargá la app para continuar.'); return }
+
+    // Combinar discount reason + observaciones en un solo campo
+    const parts = [discountReason.trim(), observations.trim()].filter(Boolean)
+    const discountReasonFinal = parts.length ? parts.join(' | ') : null
+
     try {
       setSubmitting(true)
-      const cashAmt     = paymentMethod === 'cash'     ? effectiveAmount : 0
-      const transferAmt = paymentMethod === 'transfer' ? effectiveAmount : 0
-
       const payload: RegisterCutPayload = {
-        service_id: selectedServiceData?.id ?? null,
-        amount: effectiveAmount,
-        payment_method: paymentMethod,
+        service_id:       selectedServiceData?.id ?? null,
+        amount:           effectiveAmount,
+        payment_method:   paymentMethodFinal,
         transaction_date: today,
-        cash_amount: cashAmt,
-        transfer_amount: transferAmt,
-        card_amount: 0,
-        client_name: clientName.trim() || null,
-        discount_amount: discountNum > 0 ? discountNum : 0,
-        discount_reason: discountReason.trim() || null,
+        cash_amount:      cashAmt,
+        transfer_amount:  transferAmt,
+        card_amount:      0,
+        client_name:      clientName.trim() || null,
+        discount_amount:  discountNum > 0 ? discountNum : 0,
+        discount_reason:  discountReasonFinal,
       }
       const tx = await registerCut(payload, profile, week.id)
       setLastRegistered(tx)
-      setTransactions((prev) => [tx, ...prev]) // actualización instantánea, sin reload
+      setTransactions((prev) => [tx, ...prev])
       setView('success')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al registrar')
+      setFormSubmitError(e instanceof Error ? e.message : 'Error al registrar')
     } finally {
       setSubmitting(false)
     }
@@ -411,6 +442,11 @@ export default function BarberMobileView() {
     setSelectedService('')
     setCustomAmount('')
     setPaymentMethod(null)
+    setSplitPayment(false)
+    setCashPart('')
+    setTransferPart('')
+    setObservations('')
+    setFormSubmitError(null)
     setLastRegistered(null)
     setView('home')
   }
@@ -419,6 +455,11 @@ export default function BarberMobileView() {
     setSelectedService('')
     setCustomAmount('')
     setPaymentMethod(null)
+    setSplitPayment(false)
+    setCashPart('')
+    setTransferPart('')
+    setObservations('')
+    setFormSubmitError(null)
     setView('register')
   }
 
@@ -619,7 +660,12 @@ export default function BarberMobileView() {
 
   // ── REGISTER ─────────────────────────────────────────────────────────────
   if (view === 'register') {
-    const isValid = selectedService && paymentMethod && resolvedAmount > 0
+    const cashNum    = parseFloat(cashPart)    || 0
+    const transferNum = parseFloat(transferPart) || 0
+    const splitValid = splitPayment
+      ? cashNum + transferNum > 0 && Math.abs(cashNum + transferNum - effectiveAmount) <= 1
+      : !!paymentMethod
+    const isValid = !!selectedService && effectiveAmount > 0 && splitValid
     return (
       <>
       {advanceModal}
@@ -721,29 +767,110 @@ export default function BarberMobileView() {
             )}
           </section>
 
+          {/* ── Observaciones (opcional) ── */}
+          <section>
+            <label className="section-label">Observaciones <span className="text-zinc-600 font-normal normal-case">(opcional)</span></label>
+            <input
+              type="text"
+              placeholder="Detalle adicional del servicio..."
+              value={observations}
+              onChange={(e) => setObservations(e.target.value)}
+              className="client-name-input"
+              maxLength={120}
+            />
+          </section>
+
           <section>
             <label className="section-label">Método de pago</label>
-            <div className="grid grid-cols-2 gap-2">
-              {(
-                [
+
+            {/* Chips cash / transfer (modo simple) */}
+            {!splitPayment && (
+              <div className="grid grid-cols-2 gap-2">
+                {([
                   { method: 'cash' as PaymentMethod, label: 'Efectivo', Icon: IconCash },
                   { method: 'transfer' as PaymentMethod, label: 'Transf.', Icon: IconTransfer },
-                ] as const
-              ).map(({ method, label, Icon }) => (
-                <button
-                  key={method}
-                  onClick={() => setPaymentMethod(method)}
-                  className={`payment-chip ${paymentMethod === method ? 'payment-chip--active' : ''}`}
-                >
-                  <Icon />
-                  <span className="text-xs mt-1">{label}</span>
-                  {paymentMethod === method && method !== 'cash' && resolvedAmount > 0 && (
-                    <span className="text-xs text-emerald-400 mt-0.5">Ya en tu cuenta</span>
-                  )}
-                </button>
-              ))}
-            </div>
+                ] as const).map(({ method, label, Icon }) => (
+                  <button
+                    key={method}
+                    onClick={() => setPaymentMethod(method)}
+                    className={`payment-chip ${paymentMethod === method ? 'payment-chip--active' : ''}`}
+                  >
+                    <Icon />
+                    <span className="text-xs mt-1">{label}</span>
+                    {paymentMethod === method && method !== 'cash' && resolvedAmount > 0 && (
+                      <span className="text-xs text-emerald-400 mt-0.5">Ya en tu cuenta</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
 
+            {/* Toggle pago mixto */}
+            <label className="flex items-center gap-2 mt-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={splitPayment}
+                onChange={(e) => {
+                  setSplitPayment(e.target.checked)
+                  if (e.target.checked) {
+                    setPaymentMethod(null)
+                    if (effectiveAmount > 0) {
+                      const half = Math.round(effectiveAmount / 2)
+                      setCashPart(String(half))
+                      setTransferPart(String(effectiveAmount - half))
+                    }
+                  } else {
+                    setCashPart('')
+                    setTransferPart('')
+                  }
+                }}
+                className="w-4 h-4 accent-amber-500"
+              />
+              <span className="text-sm text-zinc-400">Pago mixto (efectivo + transferencia)</span>
+            </label>
+
+            {/* Campos split */}
+            {splitPayment && (
+              <div className="grid grid-cols-2 gap-2 mt-3">
+                <div>
+                  <p className="text-xs text-zinc-500 mb-1">Efectivo</p>
+                  <div className="amount-input-wrapper">
+                    <span className="amount-prefix">$</span>
+                    <input
+                      type="number" inputMode="numeric" placeholder="0"
+                      value={cashPart}
+                      onChange={(e) => {
+                        setCashPart(e.target.value)
+                        const rest = effectiveAmount - (parseFloat(e.target.value) || 0)
+                        if (rest >= 0) setTransferPart(String(Math.round(rest)))
+                      }}
+                      className="amount-input"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs text-zinc-500 mb-1">Transferencia</p>
+                  <div className="amount-input-wrapper">
+                    <span className="amount-prefix">$</span>
+                    <input
+                      type="number" inputMode="numeric" placeholder="0"
+                      value={transferPart}
+                      onChange={(e) => {
+                        setTransferPart(e.target.value)
+                        const rest = effectiveAmount - (parseFloat(e.target.value) || 0)
+                        if (rest >= 0) setCashPart(String(Math.round(rest)))
+                      }}
+                      className="amount-input"
+                    />
+                  </div>
+                </div>
+                {(cashNum + transferNum) > 0 && (
+                  <p className={`col-span-2 text-xs text-right ${Math.abs(cashNum + transferNum - effectiveAmount) <= 1 ? 'text-emerald-400' : 'text-red-400'}`}>
+                    Suma: {formatARS(cashNum + transferNum)} · Total: {formatARS(effectiveAmount)}
+                  </p>
+                )}
+              </div>
+            )}
           </section>
 
           {isValid && (
@@ -755,28 +882,36 @@ export default function BarberMobileView() {
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-zinc-400">Total</span>
-                <span className="text-white">{formatARS(resolvedAmount)}</span>
+                <span className="text-white">{formatARS(effectiveAmount)}</span>
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-zinc-400">Método</span>
-                <span className="text-white">{PAYMENT_METHOD_LABELS[paymentMethod!]}</span>
+                <span className="text-white">
+                  {splitPayment ? `Mixto: ${formatARS(cashNum)} ef + ${formatARS(transferNum)} transf` : PAYMENT_METHOD_LABELS[paymentMethod!]}
+                </span>
               </div>
               <div className="divider" />
               <div className="flex justify-between">
                 <span className="text-zinc-400 text-sm">Tu parte</span>
                 <span className="text-amber-400 font-bold text-lg">{formatARS(previewBarberShare)}</span>
               </div>
-              {paymentMethod === 'transfer' && (
+              {!splitPayment && paymentMethod === 'transfer' && (
                 <p className="text-xs text-emerald-400 text-right">Ya depositado en tu cuenta</p>
+              )}
+              {splitPayment && transferNum > 0 && (
+                <p className="text-xs text-emerald-400 text-right">{formatARS(transferNum)} ya en tu cuenta</p>
               )}
             </div>
           )}
         </div>
 
         <div className="px-5 pb-safe pb-8 pt-4 border-t border-zinc-800">
+          {formSubmitError && (
+            <p className="text-red-400 text-sm mb-3 text-center">{formSubmitError}</p>
+          )}
           <button
             onClick={handleSubmit}
-            disabled={!isValid || submitting}
+            disabled={submitting}
             className="btn-primary w-full text-lg py-5 disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {submitting ? 'Registrando...' : 'Confirmar corte'}
@@ -964,11 +1099,18 @@ export default function BarberMobileView() {
           </div>
         </div>
 
-        <button onClick={goToRegister} className="register-btn w-full">
+        <button
+          onClick={goToRegister}
+          disabled={!!selectedDay && selectedDay !== today}
+          className="register-btn w-full disabled:opacity-40 disabled:cursor-not-allowed"
+        >
           <div className="flex items-center justify-center gap-3">
             <IconScissors />
             <span className="text-xl font-bold">Registrar corte</span>
           </div>
+          {!!selectedDay && selectedDay !== today && (
+            <p className="text-xs text-amber-200/60 mt-1">Solo podés registrar cortes del día de hoy</p>
+          )}
         </button>
 
         <div className="grid grid-cols-2 gap-3">
