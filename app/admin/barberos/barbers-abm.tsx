@@ -164,6 +164,9 @@ export default function BarbersAbm() {
   // Edit
   const [editingBarber, setEditingBarber] = useState<Profile | null>(null)
   const [editForm, setEditForm] = useState<EditForm | null>(null)
+  const [editEmail, setEditEmail] = useState('')
+  const [editEmailOriginal, setEditEmailOriginal] = useState('')
+  const [editEmailLoading, setEditEmailLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
 
@@ -264,10 +267,22 @@ export default function BarbersAbm() {
   }
 
   // ── Edit ────────────────────────────────────────────────────────────────
-  function openEdit(barber: Profile) {
+  async function openEdit(barber: Profile) {
     setEditingBarber(barber)
     setEditForm(profileToEditForm(barber))
     setEditError(null)
+    setEditEmail('')
+    setEditEmailOriginal('')
+    setEditEmailLoading(true)
+    try {
+      const res = await fetch(`/api/get-barber-email?profileId=${barber.id}`)
+      const json = await res.json()
+      const email = json.email ?? ''
+      setEditEmail(email)
+      setEditEmailOriginal(email)
+    } catch { /* sin cuenta auth — email vacío */ } finally {
+      setEditEmailLoading(false)
+    }
   }
 
   function patchEditForm(field: string, value: string) {
@@ -298,6 +313,21 @@ export default function BarbersAbm() {
       }
 
       await updateBarberProfile(editingBarber.id, updates)
+
+      // Actualizar email en auth si cambió
+      const newEmail = editEmail.trim()
+      if (newEmail && newEmail !== editEmailOriginal) {
+        const res = await fetch('/api/update-barber-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profileId: editingBarber.id, email: newEmail }),
+        })
+        if (!res.ok) {
+          const json = await res.json()
+          throw new Error(json.error ?? 'Error al actualizar email')
+        }
+      }
+
       setBarbers((prev) =>
         prev.map((b) => (b.id === editingBarber.id ? { ...b, ...updates } : b))
       )
@@ -582,6 +612,28 @@ export default function BarbersAbm() {
                 />
               </div>
 
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
+                  Email (acceso a la app)
+                </label>
+                {editEmailLoading ? (
+                  <div className="w-full bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2.5 text-sm text-zinc-500">
+                    Cargando...
+                  </div>
+                ) : (
+                  <input
+                    type="email"
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    placeholder="Sin cuenta de acceso"
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+                  />
+                )}
+                {editEmail && editEmail !== editEmailOriginal && (
+                  <p className="text-amber-400 text-xs mt-1">⚠ Se actualizará el email de acceso a la app</p>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
@@ -670,11 +722,14 @@ export default function BarbersAbm() {
                 key={barber.id}
                 barber={barber}
                 deletingId={deletingId}
+                togglingId={togglingId}
                 credentialsLoadingId={credentialsLoadingId}
                 onEdit={openEdit}
                 onCredentials={handleCredentials}
                 onDelete={handleDelete}
                 onCancelDelete={() => setDeletingId(null)}
+                onToggleActive={handleToggleActive}
+                onCancelToggle={() => setTogglingId(null)}
               />
             ))}
           </div>
@@ -693,11 +748,14 @@ export default function BarbersAbm() {
                 key={barber.id}
                 barber={barber}
                 deletingId={deletingId}
+                togglingId={togglingId}
                 credentialsLoadingId={credentialsLoadingId}
                 onEdit={openEdit}
                 onCredentials={handleCredentials}
                 onDelete={handleDelete}
                 onCancelDelete={() => setDeletingId(null)}
+                onToggleActive={handleToggleActive}
+                onCancelToggle={() => setTogglingId(null)}
               />
             ))}
           </div>
@@ -833,19 +891,25 @@ function CredentialsModal({
 function BarberRow({
   barber,
   deletingId,
+  togglingId,
   credentialsLoadingId,
   onEdit,
   onCredentials,
   onDelete,
   onCancelDelete,
+  onToggleActive,
+  onCancelToggle,
 }: {
   barber: Profile
   deletingId: string | null
+  togglingId: string | null
   credentialsLoadingId: string | null
   onEdit: (b: Profile) => void
   onCredentials: (b: Profile) => void
   onDelete: (b: Profile) => void
   onCancelDelete: () => void
+  onToggleActive: (b: Profile) => void
+  onCancelToggle: () => void
 }) {
   function rateLabel(b: Profile): string {
     if (b.compensation_type === 'percentage')
@@ -859,7 +923,8 @@ function BarberRow({
       : '—'
   }
 
-  const isDeleting = deletingId === barber.id
+  const isDeleting  = deletingId  === barber.id
+  const isToggling  = togglingId  === barber.id
 
   return (
     <div className={`bg-zinc-900 border rounded-xl px-5 py-4 flex items-center justify-between gap-4 ${barber.is_active ? 'border-zinc-800' : 'border-zinc-800/50 opacity-60'}`}>
@@ -884,7 +949,7 @@ function BarberRow({
           Editar
         </button>
 
-        {/* Credenciales */}
+        {/* Credenciales — solo activos */}
         {barber.is_active && (
           <button
             onClick={() => onCredentials(barber)}
@@ -903,25 +968,48 @@ function BarberRow({
           </button>
         )}
 
-        {/* Eliminar / Activar */}
-        {isDeleting ? (
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-zinc-400">¿{barber.is_active ? 'Eliminar' : 'Ya eliminado'}?</span>
-            <button onClick={() => onDelete(barber)} className="text-xs text-red-400 hover:text-red-300 font-bold">Sí</button>
-            <button onClick={onCancelDelete} className="text-xs text-zinc-500 hover:text-zinc-300">No</button>
-          </div>
-        ) : (
-          <button
-            onClick={() => onDelete(barber)}
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500 hover:text-red-400 border border-zinc-700 hover:border-red-500/40 bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
-              <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
-              <path d="M10 11v6"/><path d="M14 11v6"/>
-              <path d="M9 6V4h6v2"/>
-            </svg>
-            {barber.is_active ? 'Eliminar' : 'Activar'}
-          </button>
+        {/* Activar — solo inactivos */}
+        {!barber.is_active && (
+          isToggling ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-400">¿Activar?</span>
+              <button onClick={() => onToggleActive(barber)} className="text-xs text-emerald-400 hover:text-emerald-300 font-bold">Sí</button>
+              <button onClick={onCancelToggle} className="text-xs text-zinc-500 hover:text-zinc-300">No</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => onToggleActive(barber)}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-400 hover:text-emerald-400 border border-zinc-700 hover:border-emerald-500/40 bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+                <path d="M12 5v14M5 12l7-7 7 7"/>
+              </svg>
+              Activar
+            </button>
+          )
+        )}
+
+        {/* Eliminar — solo activos */}
+        {barber.is_active && (
+          isDeleting ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-400">¿Eliminar?</span>
+              <button onClick={() => onDelete(barber)} className="text-xs text-red-400 hover:text-red-300 font-bold">Sí</button>
+              <button onClick={onCancelDelete} className="text-xs text-zinc-500 hover:text-zinc-300">No</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => onDelete(barber)}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500 hover:text-red-400 border border-zinc-700 hover:border-red-500/40 bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                <path d="M10 11v6"/><path d="M14 11v6"/>
+                <path d="M9 6V4h6v2"/>
+              </svg>
+              Eliminar
+            </button>
+          )
         )}
       </div>
     </div>
