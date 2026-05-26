@@ -994,7 +994,7 @@ function WeekDetailModal({ week, month, data, loading, onClose }: WeekDetailModa
         const txs = data.transactions
         const totalCuts = txs.length
         const totalBilled = txs.reduce((s, t) => s + t.amount, 0)
-        const byMethod: Record<PaymentMethod, number> = { cash: 0, transfer: 0, card: 0 }
+        const byMethod: Record<PaymentMethod, number> = { cash: 0, transfer: 0, card: 0, mixed: 0 }
         for (const t of txs) byMethod[t.payment_method] += t.amount
         return { totalCuts, totalBilled, byMethod }
       })()
