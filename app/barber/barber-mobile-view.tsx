@@ -269,6 +269,16 @@ export default function BarberMobileView() {
   // Aplicar descuento al amount efectivo (lo que paga el cliente)
   const discountNum = parseFloat(discountAmount) || 0
   const effectiveAmount = Math.max(0, resolvedAmount - discountNum)
+
+  // Recalcular partes mixtas cuando cambia effectiveAmount
+  useEffect(() => {
+    if (!splitPayment) return
+    if (effectiveAmount === 0) { setCashPart('0'); setTransferPart('0'); return }
+    const half = Math.round(effectiveAmount / 2)
+    setCashPart(String(half))
+    setTransferPart(String(effectiveAmount - half))
+  }, [effectiveAmount, splitPayment])
+
   // Parte del barbero: SIEMPRE sobre el precio original (el descuento lo absorbe la barbería)
   const previewBarberShare = Math.round(resolvedAmount * commissionRate)
   // Transferencia → barbero ya tiene su parte; efectivo → queda en caja
@@ -279,14 +289,18 @@ export default function BarberMobileView() {
     if (!profile || !week) return
 
     if (!selectedService) { setFormSubmitError('Seleccioná un servicio antes de continuar'); return }
-    if (discountNum >= resolvedAmount) { setFormSubmitError('El descuento debe ser menor al precio del servicio'); return }
-    if (effectiveAmount <= 0) { setFormSubmitError('Ingresá un monto válido'); return }
+    if (discountNum > resolvedAmount) { setFormSubmitError('El descuento no puede superar el precio del servicio'); return }
+    if (resolvedAmount <= 0)          { setFormSubmitError('Ingresá un monto válido'); return }
 
     let paymentMethodFinal: PaymentMethod
     let cashAmt = 0
     let transferAmt = 0
 
-    if (splitPayment) {
+    if (effectiveAmount === 0) {
+      // Descuento 100%: no hay dinero que cobrar
+      paymentMethodFinal = 'cash'
+      cashAmt = 0; transferAmt = 0
+    } else if (splitPayment) {
       const cashNum  = parseFloat(cashPart)  || 0
       const transNum = parseFloat(transferPart) || 0
       if (cashNum <= 0 && transNum <= 0) { setFormSubmitError('Ingresá los montos de cada medio de pago'); return }
@@ -663,10 +677,12 @@ export default function BarberMobileView() {
   if (view === 'register') {
     const cashNum    = parseFloat(cashPart)    || 0
     const transferNum = parseFloat(transferPart) || 0
-    const splitValid = splitPayment
-      ? cashNum + transferNum > 0 && Math.abs(cashNum + transferNum - effectiveAmount) <= 1
-      : !!paymentMethod
-    const isValid = !!selectedService && effectiveAmount > 0 && splitValid
+    const splitValid = effectiveAmount === 0
+      ? true
+      : splitPayment
+        ? cashNum + transferNum > 0 && Math.abs(cashNum + transferNum - effectiveAmount) <= 1
+        : !!paymentMethod
+    const isValid = !!selectedService && effectiveAmount >= 0 && !!selectedService && splitValid
     return (
       <>
       {advanceModal}

@@ -156,23 +156,36 @@ export default function ManualCutModal({
   const cashNum         = parseFloat(cashPart) || 0
   const transferNum     = parseFloat(transferPart) || 0
 
+  // Cuando effectiveAmount cambia y el split está activo, recalcular partes
+  useEffect(() => {
+    if (!splitPayment || effectiveAmount < 0) return
+    if (effectiveAmount === 0) { setCashPart('0'); setTransferPart('0'); return }
+    const half = Math.round(effectiveAmount / 2)
+    setCashPart(String(half))
+    setTransferPart(String(effectiveAmount - half))
+  }, [effectiveAmount, splitPayment])
+
   const splitValid = splitPayment
-    ? cashNum + transferNum > 0 && Math.abs(cashNum + transferNum - effectiveAmount) <= 1
+    ? effectiveAmount === 0 || (cashNum + transferNum > 0 && Math.abs(cashNum + transferNum - effectiveAmount) <= 1)
     : !!method
-  const isValid = !!barberId && !!serviceId && effectiveAmount > 0 && !!date && splitValid
+  const isValid = !!barberId && !!serviceId && effectiveAmount >= 0 && !!date && splitValid
 
   async function handleSubmit() {
     setError(null)
     if (!barberId)      { setError('Seleccioná un barbero'); return }
     if (!serviceId)     { setError('Seleccioná un servicio'); return }
-    if (discountNum >= resolvedAmount) { setError('El descuento debe ser menor al precio del servicio'); return }
-    if (effectiveAmount <= 0) { setError('Ingresá un monto válido'); return }
+    if (discountNum > resolvedAmount) { setError('El descuento no puede superar el precio del servicio'); return }
+    if (resolvedAmount <= 0)          { setError('Ingresá un monto válido'); return }
 
     let paymentMethodFinal: PaymentMethod
     let cashAmt = 0
     let transferAmt = 0
 
-    if (splitPayment) {
+    if (effectiveAmount === 0) {
+      // Descuento 100%: no hay dinero que cobrar
+      paymentMethodFinal = 'cash'
+      cashAmt = 0; transferAmt = 0
+    } else if (splitPayment) {
       if (!splitValid) {
         setError(`La suma (${formatARS(cashNum + transferNum)}) debe ser igual al total (${formatARS(effectiveAmount)})`)
         return
