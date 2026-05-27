@@ -266,13 +266,13 @@ export default function ManualCutModal({
                   <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
                     <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '1.25rem', zIndex: 1, background: 'linear-gradient(to right, #1a1a1a, transparent)', pointerEvents: 'none' }} />
                     <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '1.25rem', zIndex: 1, background: 'linear-gradient(to left, #1a1a1a, transparent)', pointerEvents: 'none' }} />
-                    <div ref={stripRef} style={{ display: 'flex', gap: '0.3rem', overflowX: 'auto', padding: '0.1rem 0 4px', scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}>
+                    <div ref={stripRef} style={{ display: 'flex', gap: '0.3rem', overflowX: 'auto', padding: '0.1rem 0 4px', scrollbarWidth: 'none' }}>
                       {scrollDays.map((d) => {
                         const isToday  = d.date === today
                         const selected = d.date === date
                         return (
                           <button key={d.date} ref={isToday ? todayRef : undefined} type="button" onClick={() => setDate(d.date)}
-                            style={{ flex: '0 0 auto', width: '2.75rem', padding: '0.45rem 0.2rem', borderRadius: '0.5rem', textAlign: 'center', cursor: 'pointer', scrollSnapAlign: 'center', background: selected ? '#a78bfa' : '#18181b', border: `1px solid ${selected ? '#a78bfa' : isToday ? '#52525b' : '#27272a'}`, boxShadow: selected ? '0 0 0 2px rgba(167,139,250,0.35)' : 'none', transition: 'background 0.12s, border-color 0.12s' }}
+                            style={{ flex: '0 0 auto', width: '2.75rem', padding: '0.45rem 0.2rem', borderRadius: '0.5rem', textAlign: 'center', cursor: 'pointer', background: selected ? '#a78bfa' : '#18181b', border: `1px solid ${selected ? '#a78bfa' : isToday ? '#52525b' : '#27272a'}`, boxShadow: selected ? '0 0 0 2px rgba(167,139,250,0.35)' : 'none', transition: 'background 0.12s, border-color 0.12s' }}
                           >
                             <div style={{ fontSize: '0.62rem', fontWeight: 600, color: selected ? '#2e006c' : '#71717a' }}>{d.label}</div>
                             <div style={{ fontSize: '0.9rem', fontWeight: 700, color: selected ? '#0d0d0d' : '#e4e4e7' }}>{d.dayNum}</div>
