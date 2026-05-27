@@ -38,6 +38,13 @@ export default function AdminsView() {
   const [resettingId, setResettingId] = useState<string | null>(null)
   const [resetError, setResetError] = useState<string | null>(null)
 
+  // Edit admin
+  const [editingAdmin, setEditingAdmin] = useState<AdminUser | null>(null)
+  const [editForm, setEditForm] = useState({ full_name: '', email: '', branch_ids: [] as string[] })
+  const [editEmail, setEditEmail] = useState('')
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState<string | null>(null)
+
   const load = useCallback(async () => {
     try {
       const profile = await getCurrentProfile()
@@ -92,6 +99,66 @@ export default function AdminsView() {
       setFormError(e instanceof Error ? e.message : 'Error')
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function openEdit(admin: AdminUser) {
+    setEditError(null)
+    setEditingAdmin(admin)
+    setEditForm({
+      full_name: admin.full_name,
+      email: '',
+      branch_ids: admin.branches.map((b) => b.id),
+    })
+    // Cargar email desde auth
+    try {
+      const res = await fetch(`/api/get-barber-email?profileId=${admin.id}`)
+      const data = await res.json()
+      setEditEmail(data.email ?? '')
+      setEditForm((f) => ({ ...f, email: data.email ?? '' }))
+    } catch {
+      setEditEmail('')
+    }
+  }
+
+  function toggleEditBranch(id: string) {
+    setEditForm((f) => ({
+      ...f,
+      branch_ids: f.branch_ids.includes(id)
+        ? f.branch_ids.filter((b) => b !== id)
+        : [...f.branch_ids, id],
+    }))
+  }
+
+  async function handleSaveEdit() {
+    if (!editingAdmin) return
+    if (!editForm.full_name.trim()) { setEditError('El nombre es obligatorio'); return }
+    if (editForm.branch_ids.length === 0) { setEditError('Seleccioná al menos una sucursal'); return }
+    setEditSaving(true)
+    setEditError(null)
+    try {
+      const body: Record<string, unknown> = {
+        profileId: editingAdmin.id,
+        full_name: editForm.full_name.trim(),
+        branch_ids: editForm.branch_ids,
+      }
+      // Solo enviar email si cambió
+      if (editForm.email && editForm.email !== editEmail) {
+        body.email = editForm.email
+      }
+      const res = await fetch('/api/admin-users', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Error al guardar')
+      setEditingAdmin(null)
+      await load()
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : 'Error al guardar')
+    } finally {
+      setEditSaving(false)
     }
   }
 
@@ -203,15 +270,24 @@ export default function AdminsView() {
                       </span>
                     </td>
                     <td style={{ textAlign: 'right' }}>
-                      <button
-                        onClick={() => handleResetPassword(a.id, a.full_name)}
-                        disabled={resettingId === a.id || a.id === currentUserId}
-                        className="admin-btn admin-btn--ghost"
-                        style={{ fontSize: '0.8rem', padding: '0.375rem 0.75rem' }}
-                        title={a.id === currentUserId ? 'No podés resetear tu propia contraseña desde aquí' : 'Generar nueva contraseña'}
-                      >
-                        {resettingId === a.id ? 'Generando...' : '🔑 Credenciales'}
-                      </button>
+                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'flex-end' }}>
+                        <button
+                          onClick={() => openEdit(a)}
+                          className="admin-btn admin-btn--ghost"
+                          style={{ fontSize: '0.8rem', padding: '0.375rem 0.75rem' }}
+                        >
+                          ✏️ Editar
+                        </button>
+                        <button
+                          onClick={() => handleResetPassword(a.id, a.full_name)}
+                          disabled={resettingId === a.id || a.id === currentUserId}
+                          className="admin-btn admin-btn--ghost"
+                          style={{ fontSize: '0.8rem', padding: '0.375rem 0.75rem' }}
+                          title={a.id === currentUserId ? 'No podés resetear tu propia contraseña desde aquí' : 'Generar nueva contraseña'}
+                        >
+                          {resettingId === a.id ? 'Generando...' : '🔑 Credenciales'}
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -271,6 +347,61 @@ export default function AdminsView() {
               <button onClick={() => setShowForm(false)} className="admin-btn admin-btn--ghost">Cancelar</button>
               <button onClick={handleInvite} disabled={saving} className="admin-btn admin-btn--primary">
                 {saving ? 'Creando...' : 'Crear administrador'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Editar admin */}
+      {editingAdmin && (
+        <div className="modal-overlay">
+          <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Editar administrador</h3>
+              <button className="modal-close" onClick={() => setEditingAdmin(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {editError && <p className="form-error">{editError}</p>}
+              <label className="form-label">Nombre completo *</label>
+              <input
+                className="form-input"
+                value={editForm.full_name}
+                onChange={(e) => setEditForm({ ...editForm, full_name: e.target.value })}
+                placeholder="Nombre completo"
+              />
+              <label className="form-label" style={{ marginTop: '0.75rem' }}>Email</label>
+              <input
+                type="email"
+                className="form-input"
+                value={editForm.email}
+                onChange={(e) => setEditForm({ ...editForm, email: e.target.value })}
+                placeholder="email@ejemplo.com"
+              />
+              {editForm.email && editForm.email !== editEmail && (
+                <p style={{ fontSize: '0.75rem', color: '#f59e0b', marginTop: '0.25rem' }}>
+                  ⚠️ El email se actualizará al guardar
+                </p>
+              )}
+              <label className="form-label" style={{ marginTop: '0.75rem' }}>Sucursales *</label>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                {branches.map((b) => (
+                  <label key={b.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer', fontSize: '0.875rem', color: '#e4e4e7' }}>
+                    <input
+                      type="checkbox"
+                      checked={editForm.branch_ids.includes(b.id)}
+                      onChange={() => toggleEditBranch(b.id)}
+                      style={{ width: '1rem', height: '1rem', accentColor: '#a78bfa' }}
+                    />
+                    {b.name}
+                  </label>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button onClick={() => setEditingAdmin(null)} className="admin-btn admin-btn--ghost">Cancelar</button>
+              <button onClick={handleSaveEdit} disabled={editSaving} className="admin-btn admin-btn--primary">
+                {editSaving ? 'Guardando...' : 'Guardar cambios'}
               </button>
             </div>
           </div>
