@@ -730,15 +730,15 @@ export async function registerCut(
   createdBy?: string,
 ): Promise<Transaction> {
   const commissionRate = barber.commission_rate ?? 0.5
-  // Parte del barbero: SOBRE EL PRECIO ORIGINAL (antes del descuento).
+  // Parte del barbero: sobre el precio ORIGINAL (antes del descuento).
   // El descuento lo absorbe la barbería, no el barbero.
-  const discountAmt = payload.discount_amount ?? 0
-  const fullPrice   = payload.amount + discountAmt
-  const barberShare = Number((fullPrice * commissionRate).toFixed(2))
-  // La parte del negocio queda con lo que cobró el cliente menos lo del barbero.
-  // Si el descuento es grande el valor puede dar negativo → se clampea a 0
-  // (la barbería absorbe el descuento; la constraint branch_share >= 0 lo exige).
-  const branchShare = Math.max(0, Number((payload.amount - barberShare).toFixed(2)))
+  const discountAmt    = payload.discount_amount ?? 0
+  const fullPrice      = payload.amount + discountAmt
+  const barberShareRaw = Number((fullPrice * commissionRate).toFixed(2))
+  // Constraints DB: barber_share >= 0, branch_share >= 0, branch_share + barber_share = amount.
+  // Si el descuento es tan grande que barberShareRaw > amount, lo capeamos.
+  const barberShare = Math.min(barberShareRaw, payload.amount)
+  const branchShare = Number((payload.amount - barberShare).toFixed(2))
 
   // ── Split payment: si vienen montos parciales, los usamos.
   // Si no, cae todo al payment_method principal.
@@ -755,12 +755,12 @@ export async function registerCut(
   // barber_already_collected:
   // - Transferencia: el cliente paga directo al barbero → ya cobró su parte
   // - Efectivo: queda en caja → barbero cobra en la liquidación
-  // barber_already_collected no puede superar el monto efectivo pagado (constraint <= amount)
+  // barber_already_collected <= amount está garantizado porque barberShare <= payload.amount
   const barberAlreadyCollected: number =
     payload.barber_already_collected_override !== undefined
       ? payload.barber_already_collected_override
       : payload.payment_method === 'transfer'
-      ? Math.min(barberShare, payload.amount)
+      ? barberShare
       : 0
 
   const insert: TransactionInsert = {

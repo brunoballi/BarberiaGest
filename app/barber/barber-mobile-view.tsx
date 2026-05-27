@@ -279,6 +279,7 @@ export default function BarberMobileView() {
     if (!profile || !week) return
 
     if (!selectedService) { setFormSubmitError('Seleccioná un servicio antes de continuar'); return }
+    if (discountNum >= resolvedAmount) { setFormSubmitError('El descuento debe ser menor al precio del servicio'); return }
     if (effectiveAmount <= 0) { setFormSubmitError('Ingresá un monto válido'); return }
 
     let paymentMethodFinal: PaymentMethod

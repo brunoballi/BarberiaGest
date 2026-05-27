@@ -165,6 +165,7 @@ export default function ManualCutModal({
     setError(null)
     if (!barberId)      { setError('Seleccioná un barbero'); return }
     if (!serviceId)     { setError('Seleccioná un servicio'); return }
+    if (discountNum >= resolvedAmount) { setError('El descuento debe ser menor al precio del servicio'); return }
     if (effectiveAmount <= 0) { setError('Ingresá un monto válido'); return }
 
     let paymentMethodFinal: PaymentMethod
