@@ -548,9 +548,9 @@ function SettlementRow({
               onClick={() => setConfirmDelete(true)}
               disabled={deleting}
               title="Eliminar liquidación"
-              className="text-zinc-600 hover:text-red-400 text-sm transition-colors disabled:opacity-40"
+              className="text-xs px-2 py-0.5 rounded border border-zinc-700 text-zinc-400 hover:border-red-500 hover:text-red-400 transition-colors disabled:opacity-40"
             >
-              🗑
+              Eliminar
             </button>
           ) : (
             <span className="flex items-center gap-1.5 text-xs">
