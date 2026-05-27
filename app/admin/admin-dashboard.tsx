@@ -35,6 +35,7 @@ import {
   setPresentismo,
   confirmSettlement,
   markSettlementPaid,
+  deleteSettlement,
   createExpense,
   overrideTransactionSplit,
   getCurrentProfile,
@@ -182,6 +183,7 @@ export default function AdminDashboard() {
   const [settlFilterAdelantos, setSettlFilterAdelantos] = useState('')
   const [settlFilterAPagar, setSettlFilterAPagar] = useState('')
   const [settlFilterEstado, setSettlFilterEstado] = useState('')
+  const [confirmDeleteSettlId, setConfirmDeleteSettlId] = useState<string | null>(null)
 
   // Filtros tab gastos
   const [expFilterDateFrom, setExpFilterDateFrom] = useState('')
@@ -395,6 +397,25 @@ export default function AdminDashboard() {
       await loadTabData()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error marcando como pagado')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleDeleteSettlement(settlementId: string) {
+    setConfirmDeleteSettlId(null)
+    try {
+      setActionLoading(`delete-${settlementId}`)
+      const { weekReverted } = await deleteSettlement(settlementId)
+      if (weekReverted && selectedWeek) {
+        const ms = await getMonthsWithWeeks(selectedBranch)
+        setMonths(ms)
+        const updatedWeeks = ms[selectedMonthIdx]?.weeks ?? []
+        setSelectedWeek(updatedWeeks.find((w) => w.id === selectedWeek.id) ?? null)
+      }
+      await loadTabData()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al eliminar liquidación')
     } finally {
       setActionLoading(null)
     }
@@ -816,6 +837,32 @@ export default function AdminDashboard() {
                             )}
                             {s.status === 'paid' && (
                               <span className="action-done">✓ Pagado</span>
+                            )}
+                            {confirmDeleteSettlId === s.id ? (
+                              <span className="flex items-center gap-1 text-xs">
+                                <span className="td-muted">¿Eliminar?</span>
+                                <button
+                                  onClick={() => handleDeleteSettlement(s.id)}
+                                  disabled={loadingKey === `delete-${s.id}`}
+                                  className="action-btn action-btn--danger"
+                                >
+                                  Sí
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDeleteSettlId(null)}
+                                  className="action-btn"
+                                >
+                                  No
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmDeleteSettlId(s.id)}
+                                disabled={!!loadingKey}
+                                className="action-btn action-btn--danger"
+                              >
+                                Eliminar
+                              </button>
                             )}
                           </div>
                         </td>

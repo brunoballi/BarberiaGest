@@ -864,6 +864,8 @@
 .action-btn--pay:hover:not(:disabled) { background: rgba(16, 185, 129, 0.25); }
 .action-btn--cancel { background: rgba(239, 68, 68, 0.12); color: #f87171; }
 .action-btn--cancel:hover:not(:disabled) { background: rgba(239, 68, 68, 0.2); }
+.action-btn--danger { background: rgba(239, 68, 68, 0.12); color: #f87171; }
+.action-btn--danger:hover:not(:disabled) { background: rgba(239, 68, 68, 0.25); }
 .action-done { font-size: 0.75rem; color: #34d399; }
 
 /* ─── Footer totals ─────────────────────────────────────────── */
