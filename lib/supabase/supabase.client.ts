@@ -1015,6 +1015,47 @@ export async function markSettlementPaid(settlementId: string): Promise<void> {
   }
 }
 
+export async function deleteSettlement(
+  settlementId: string
+): Promise<{ weekReverted: boolean }> {
+  // 1. Obtener datos del settlement antes de eliminar
+  const { data: s, error: e1 } = await supabase
+    .from('settlements')
+    .select('barber_id, branch_id, week_id, status')
+    .eq('id', settlementId)
+    .single()
+  if (e1 || !s) throw new Error(`[deleteSettlement] ${e1?.message ?? 'no encontrado'}`)
+
+  // 2. Eliminar el settlement
+  const { error: e2 } = await supabase.from('settlements').delete().eq('id', settlementId)
+  if (e2) throw new Error(`[deleteSettlement] ${e2.message}`)
+
+  // 3. Si estaba pagado: revertir adelantos deducted → approved
+  if (s.status === 'paid') {
+    const { error: advErr } = await supabase
+      .from('advances')
+      .update({ status: 'approved' } satisfies AdvanceUpdate)
+      .eq('barber_id', s.barber_id)
+      .eq('branch_id', s.branch_id)
+      .eq('status', 'deducted')
+    if (advErr) console.error('[deleteSettlement/advances]', advErr.message)
+  }
+
+  // 4. Si la semana era "paid", revertirla a "closed"
+  let weekReverted = false
+  const { data: week } = await supabase
+    .from('weeks')
+    .select('status')
+    .eq('id', s.week_id)
+    .single()
+  if (week?.status === 'paid') {
+    await supabase.from('weeks').update({ status: 'closed' }).eq('id', s.week_id)
+    weekReverted = true
+  }
+
+  return { weekReverted }
+}
+
 // ============================================================
 // ADVANCES
 // ============================================================

@@ -21,6 +21,7 @@ import {
   getSettlementsForWeek,
   setPresentismo,
   confirmSettlement,
+  deleteSettlement,
 } from '@/lib/supabase/supabase.client'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -71,6 +72,7 @@ export default function WeeksView() {
   const [closing, setClosing]           = useState(false)
   const [markingPaid, setMarkingPaid]   = useState(false)
   const [confirmClose, setConfirmClose] = useState(false)
+  const [deletingSettlementId, setDeletingSettlementId] = useState<string | null>(null)
 
   const loadWeeks = useCallback(async (branchId: string) => {
     const data = await getWeeksByBranch(branchId)
@@ -217,6 +219,29 @@ export default function WeeksView() {
       )
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Error al confirmar')
+    }
+  }
+
+  // ── Delete settlement ──────────────────────────────────────────────────
+  async function handleDeleteSettlement(settlementId: string) {
+    setDeletingSettlementId(settlementId)
+    setActionError(null)
+    try {
+      const { weekReverted } = await deleteSettlement(settlementId)
+      const updatedSettlements = selectedWeek
+        ? await getSettlementsForWeek(selectedWeek.id)
+        : []
+      setSettlements(updatedSettlements)
+      if (weekReverted && selectedWeek) {
+        const updatedWeeks = await getWeeksByBranch(selectedBranch)
+        setWeeks(updatedWeeks)
+        const refreshed = updatedWeeks.find((w) => w.id === selectedWeek.id)
+        if (refreshed) setSelectedWeek(refreshed)
+      }
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Error al eliminar liquidación')
+    } finally {
+      setDeletingSettlementId(null)
     }
   }
 
@@ -445,6 +470,8 @@ export default function WeeksView() {
                                 weekStatus={week.status}
                                 onPresentismo={handlePresentismo}
                                 onConfirm={handleConfirm}
+                                onDelete={handleDeleteSettlement}
+                                deleting={deletingSettlementId === s.id}
                               />
                             ))}
                           </div>
@@ -488,12 +515,17 @@ function SettlementRow({
   weekStatus,
   onPresentismo,
   onConfirm,
+  onDelete,
+  deleting,
 }: {
   settlement: SettlementWithBarber
   weekStatus: Week['status']
   onPresentismo: (s: SettlementWithBarber, met: boolean) => void
   onConfirm: (id: string) => void
+  onDelete: (id: string) => void
+  deleting: boolean
 }) {
+  const [confirmDelete, setConfirmDelete] = useState(false)
   const isSalary = s.barber.compensation_type === 'salary'
   const canEdit  = weekStatus === 'closed' && s.status === 'draft'
 
@@ -502,13 +534,43 @@ function SettlementRow({
       {/* Barber + status */}
       <div className="flex items-center justify-between">
         <p className="text-white font-semibold text-sm">{s.barber.full_name}</p>
-        <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
-          s.status === 'paid'      ? 'bg-zinc-800 text-zinc-400 border-zinc-700' :
-          s.status === 'confirmed' ? 'bg-emerald-900/50 text-emerald-400 border-emerald-800/50' :
-                                     'bg-amber-900/50 text-amber-400 border-amber-800/50'
-        }`}>
-          {SETTLEMENT_STATUS_LABELS[s.status]}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className={`text-xs px-2 py-0.5 rounded-full border font-medium ${
+            s.status === 'paid'      ? 'bg-zinc-800 text-zinc-400 border-zinc-700' :
+            s.status === 'confirmed' ? 'bg-emerald-900/50 text-emerald-400 border-emerald-800/50' :
+                                       'bg-amber-900/50 text-amber-400 border-amber-800/50'
+          }`}>
+            {SETTLEMENT_STATUS_LABELS[s.status]}
+          </span>
+          {/* Eliminar con confirmación inline */}
+          {!confirmDelete ? (
+            <button
+              onClick={() => setConfirmDelete(true)}
+              disabled={deleting}
+              title="Eliminar liquidación"
+              className="text-zinc-600 hover:text-red-400 text-sm transition-colors disabled:opacity-40"
+            >
+              🗑
+            </button>
+          ) : (
+            <span className="flex items-center gap-1.5 text-xs">
+              <span className="text-zinc-400">¿Eliminar?</span>
+              <button
+                onClick={() => { setConfirmDelete(false); onDelete(s.id) }}
+                disabled={deleting}
+                className="text-red-400 hover:text-red-300 font-bold disabled:opacity-40"
+              >
+                {deleting ? '...' : 'Sí'}
+              </button>
+              <button
+                onClick={() => setConfirmDelete(false)}
+                className="text-zinc-500 hover:text-white"
+              >
+                No
+              </button>
+            </span>
+          )}
+        </div>
       </div>
 
       {/* Numbers grid */}
