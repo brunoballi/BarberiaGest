@@ -735,8 +735,10 @@ export async function registerCut(
   const discountAmt = payload.discount_amount ?? 0
   const fullPrice   = payload.amount + discountAmt
   const barberShare = Number((fullPrice * commissionRate).toFixed(2))
-  // La parte del negocio queda con lo que cobró el cliente menos lo del barbero (puede ser menor por el descuento)
-  const branchShare = Number((payload.amount - barberShare).toFixed(2))
+  // La parte del negocio queda con lo que cobró el cliente menos lo del barbero.
+  // Si el descuento es grande el valor puede dar negativo → se clampea a 0
+  // (la barbería absorbe el descuento; la constraint branch_share >= 0 lo exige).
+  const branchShare = Math.max(0, Number((payload.amount - barberShare).toFixed(2)))
 
   // ── Split payment: si vienen montos parciales, los usamos.
   // Si no, cae todo al payment_method principal.
