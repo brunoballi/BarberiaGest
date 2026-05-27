@@ -755,11 +755,12 @@ export async function registerCut(
   // barber_already_collected:
   // - Transferencia: el cliente paga directo al barbero → ya cobró su parte
   // - Efectivo: queda en caja → barbero cobra en la liquidación
+  // barber_already_collected no puede superar el monto efectivo pagado (constraint <= amount)
   const barberAlreadyCollected: number =
     payload.barber_already_collected_override !== undefined
       ? payload.barber_already_collected_override
       : payload.payment_method === 'transfer'
-      ? barberShare
+      ? Math.min(barberShare, payload.amount)
       : 0
 
   const insert: TransactionInsert = {
