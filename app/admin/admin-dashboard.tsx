@@ -14,6 +14,8 @@ import {
   type Advance,
   type Expense,
   type ExpenseInsert,
+  type ServiceCatalog,
+  type PaymentMethod,
   PAYMENT_METHOD_LABELS,
   WEEK_STATUS_LABELS,
   SETTLEMENT_STATUS_LABELS,
@@ -38,6 +40,9 @@ import {
   deleteSettlement,
   createExpense,
   overrideTransactionSplit,
+  fullEditTransaction,
+  getServicesByBranch,
+  getWeeksByBranch,
   getCurrentProfile,
   getAdvancesPendingForBarber,
   todayLocal,
@@ -100,6 +105,7 @@ export default function AdminDashboard() {
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [overrideTx, setOverrideTx] = useState<TransactionWithRelations | null>(null)
+  const [editTx, setEditTx] = useState<TransactionWithRelations | null>(null)
 
   // Live view
   const [liveTransactions, setLiveTransactions] = useState<TransactionWithRelations[]>([])
@@ -993,10 +999,10 @@ export default function AdminDashboard() {
                       </td>
                       <td>
                         <button
-                          onClick={() => setOverrideTx(tx)}
+                          onClick={() => setEditTx(tx)}
                           className="action-btn action-btn--confirm"
                         >
-                          Editar split
+                          Editar
                         </button>
                       </td>
                     </tr>
@@ -1180,6 +1186,16 @@ export default function AdminDashboard() {
           onClose={() => setShowExpenseForm(false)}
           onSaved={async () => {
             setShowExpenseForm(false)
+            await loadTabData()
+          }}
+        />
+      )}
+      {editTx && (
+        <EditTransactionModal
+          tx={editTx}
+          onClose={() => setEditTx(null)}
+          onSaved={async () => {
+            setEditTx(null)
             await loadTabData()
           }}
         />
@@ -1452,6 +1468,372 @@ function ExpenseFormModal({
 }
 
 // ─── Modal: Editar split de transacción ───────────────────────────────────
+// ─── EditTransactionModal helpers ────────────────────────────────────────
+const EDIT_DAY_NAMES   = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+const EDIT_MONTH_NAMES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+
+function buildEditScrollDays(center: string, back = 60, forward = 7) {
+  const [y, m, d] = center.split('-').map(Number)
+  return Array.from({ length: back + forward + 1 }, (_, i) => {
+    const dt  = new Date(y, m - 1, d - back + i)
+    const str = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+    return { date: str, label: EDIT_DAY_NAMES[dt.getDay()], dayNum: dt.getDate(), month: EDIT_MONTH_NAMES[dt.getMonth()] }
+  })
+}
+
+function EditSvcChip({ label, price, active, onClick }: { label: string; price: number; active: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} style={{ padding: '0.55rem 0.4rem', borderRadius: '0.5rem', textAlign: 'center', cursor: 'pointer', background: active ? '#a78bfa' : '#18181b', border: `1px solid ${active ? '#a78bfa' : '#27272a'}`, color: active ? '#0d0d0d' : '#e4e4e7', fontSize: '0.78rem', fontWeight: 600, transition: 'background 0.1s' }}>
+      {label}
+      {price > 0 && <span style={{ display: 'block', fontSize: '0.65rem', opacity: 0.6, marginTop: '0.15rem' }}>{formatARS(price)}</span>}
+    </button>
+  )
+}
+
+function EditPayChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} style={{ flex: 1, padding: '0.55rem', borderRadius: '0.5rem', background: active ? '#a78bfa' : '#18181b', border: `1px solid ${active ? '#a78bfa' : '#27272a'}`, color: active ? '#0d0d0d' : '#e4e4e7', fontSize: '0.85rem', fontWeight: 600, cursor: 'pointer', transition: 'background 0.1s' }}>
+      {label}
+    </button>
+  )
+}
+
+// ─── EditTransactionModal ─────────────────────────────────────────────────
+function EditTransactionModal({
+  tx,
+  onClose,
+  onSaved,
+}: {
+  tx: TransactionWithRelations
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const commissionRate = tx.commission_rate_snapshot ?? 0.5
+  const todayStr = todayLocal()
+
+  const [services,  setServices]  = useState<ServiceCatalog[]>([])
+  const [allWeeks,  setAllWeeks]  = useState<Week[]>([])
+  const [loading,   setLoading]   = useState(true)
+  const [saving,    setSaving]    = useState(false)
+  const [err,       setErr]       = useState<string | null>(null)
+
+  const [date,          setDate]          = useState(tx.transaction_date)
+  const [serviceId,     setServiceId]     = useState(tx.service_id ?? '')
+  const [customAmt,     setCustomAmt]     = useState(String(tx.amount + (tx.discount_amount ?? 0)))
+  const [clientName,    setClientName]    = useState(tx.client_name ?? '')
+  const [discount,      setDiscount]      = useState(String(tx.discount_amount ?? 0))
+  const [discountReason, setDiscountReason] = useState(tx.discount_reason ?? '')
+  const [method,        setMethod]        = useState<PaymentMethod | ''>(tx.payment_method === 'mixed' ? '' : tx.payment_method as PaymentMethod)
+  const [splitPayment,  setSplitPayment]  = useState(tx.payment_method === 'mixed')
+  const [cashPart,      setCashPart]      = useState(String(tx.cash_amount ?? ''))
+  const [transferPart,  setTransferPart]  = useState(String(tx.transfer_amount ?? ''))
+
+  const [effectiveWeekId,    setEffectiveWeekId]    = useState(tx.week_id)
+  const [effectiveWeekLabel, setEffectiveWeekLabel] = useState<string | null>(null)
+
+  const scrollDays = buildEditScrollDays(date)
+  const dayRef  = useRef<HTMLButtonElement>(null)
+  const stripRef = useRef<HTMLDivElement>(null)
+
+  function slideLeft()  { stripRef.current?.scrollBy({ left: -132, behavior: 'smooth' }) }
+  function slideRight() { stripRef.current?.scrollBy({ left:  132, behavior: 'smooth' }) }
+
+  useEffect(() => {
+    async function load() {
+      try {
+        const [svcs, weeks] = await Promise.all([
+          getServicesByBranch(tx.branch_id),
+          getWeeksByBranch(tx.branch_id),
+        ])
+        setServices(svcs.filter((s) => s.is_active))
+        setAllWeeks(weeks)
+      } catch (e) {
+        setErr(e instanceof Error ? e.message : 'Error cargando datos')
+      } finally {
+        setLoading(false)
+      }
+    }
+    load()
+  }, [tx.branch_id])
+
+  useEffect(() => {
+    if (allWeeks.length === 0) return
+    const match = allWeeks.find((w) => w.start_date <= date && date <= w.end_date)
+    if (match) {
+      setEffectiveWeekId(match.id)
+      setEffectiveWeekLabel(match.id === tx.week_id ? null : `Semana ${match.start_date} → ${match.end_date}`)
+    } else {
+      setEffectiveWeekId(tx.week_id)
+      setEffectiveWeekLabel('⚠️ Esta fecha no pertenece a ninguna semana registrada')
+    }
+  }, [date, allWeeks, tx.week_id])
+
+  useEffect(() => {
+    dayRef.current?.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'center' })
+  }, [loading])
+
+  const selectedService = services.find((s) => s.id === serviceId)
+  const resolvedAmount  = customAmt ? parseFloat(customAmt) : (selectedService?.base_price ?? 0)
+  const discountNum     = parseFloat(discount) || 0
+  const effectiveAmount = Math.max(0, resolvedAmount - discountNum)
+  const cashNum         = parseFloat(cashPart) || 0
+  const transferNum     = parseFloat(transferPart) || 0
+
+  const barberShareCalc = Math.max(0, Math.min(
+    Number((resolvedAmount * commissionRate - discountNum * 0.5).toFixed(2)),
+    effectiveAmount
+  ))
+  const branchShareCalc = Number((effectiveAmount - barberShareCalc).toFixed(2))
+
+  useEffect(() => {
+    if (!splitPayment || effectiveAmount < 0) return
+    if (effectiveAmount === 0) { setCashPart('0'); setTransferPart('0'); return }
+    const half = Math.round(effectiveAmount / 2)
+    setCashPart(String(half))
+    setTransferPart(String(effectiveAmount - half))
+  }, [effectiveAmount, splitPayment])
+
+  const splitValid = splitPayment
+    ? effectiveAmount === 0 || (cashNum + transferNum > 0 && Math.abs(cashNum + transferNum - effectiveAmount) <= 1)
+    : !!method
+  const weekError = effectiveWeekLabel?.startsWith('⚠️')
+  const isValid = !!serviceId && effectiveAmount >= 0 && !!date && splitValid && !weekError
+
+  async function handleSave() {
+    setErr(null)
+    if (!serviceId)                     { setErr('Seleccioná un servicio'); return }
+    if (discountNum > resolvedAmount)   { setErr('El descuento no puede superar el precio del servicio'); return }
+    if (resolvedAmount < 0)             { setErr('Ingresá un monto válido'); return }
+    if (weekError)                      { setErr('La fecha no pertenece a ninguna semana registrada'); return }
+
+    let paymentMethodFinal: PaymentMethod
+    let cashAmt = 0
+    let transferAmt = 0
+
+    if (effectiveAmount === 0) {
+      paymentMethodFinal = 'cash'
+    } else if (splitPayment) {
+      if (!splitValid) { setErr(`La suma (${formatARS(cashNum + transferNum)}) debe ser igual al total (${formatARS(effectiveAmount)})`); return }
+      paymentMethodFinal = 'mixed'
+      cashAmt = cashNum; transferAmt = transferNum
+    } else {
+      if (!method) { setErr('Seleccioná un método de pago'); return }
+      paymentMethodFinal = method as PaymentMethod
+      cashAmt     = method === 'cash'     ? effectiveAmount : 0
+      transferAmt = method === 'transfer' ? effectiveAmount : 0
+    }
+
+    const barberAlreadyCollected = paymentMethodFinal === 'transfer' ? barberShareCalc : 0
+
+    try {
+      setSaving(true)
+      await fullEditTransaction(tx.id, {
+        transaction_date: date,
+        week_id:          effectiveWeekId,
+        service_id:       serviceId || null,
+        amount:           effectiveAmount,
+        discount_amount:  discountNum,
+        discount_reason:  discountReason.trim() || null,
+        payment_method:   paymentMethodFinal,
+        cash_amount:      cashAmt,
+        transfer_amount:  transferAmt,
+        card_amount:      0,
+        client_name:      clientName.trim() || null,
+        barber_share:     barberShareCalc,
+        branch_share:     branchShareCalc,
+        barber_already_collected: barberAlreadyCollected,
+      })
+      onSaved()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Error guardando')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const barberName = (tx.barber as { full_name: string } | null)?.full_name ?? '—'
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-box" style={{ maxWidth: '540px' }} onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>Editar corte · {barberName}</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+
+        {loading ? (
+          <div className="modal-body" style={{ textAlign: 'center', padding: '2rem' }}>
+            <div className="admin-loader" style={{ margin: '0 auto' }} />
+          </div>
+        ) : (
+          <>
+            <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {err && <p className="form-error">{err}</p>}
+
+              {/* Barbero (readonly) */}
+              <div>
+                <label className="form-label">Barbero</label>
+                <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '0.5rem', padding: '0.55rem 0.75rem', color: '#a1a1aa', fontSize: '0.9rem' }}>{barberName}</div>
+              </div>
+
+              {/* Día (slider) */}
+              <div>
+                <label className="form-label">Día *</label>
+                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                  <button type="button" onClick={slideLeft} style={{ flexShrink: 0, width: '1.6rem', height: '1.6rem', borderRadius: '50%', background: '#27272a', border: '1px solid #3f3f46', color: '#a1a1aa', fontSize: '1rem', lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
+                  <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
+                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '1.25rem', zIndex: 1, background: 'linear-gradient(to right, #1a1a1a, transparent)', pointerEvents: 'none' }} />
+                    <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '1.25rem', zIndex: 1, background: 'linear-gradient(to left, #1a1a1a, transparent)', pointerEvents: 'none' }} />
+                    <div ref={stripRef} style={{ display: 'flex', gap: '0.3rem', overflowX: 'auto', padding: '0.1rem 0 4px', scrollbarWidth: 'none' }}>
+                      {scrollDays.map((d) => {
+                        const isToday  = d.date === todayStr
+                        const selected = d.date === date
+                        return (
+                          <button key={d.date} ref={selected ? dayRef : undefined} type="button" onClick={() => setDate(d.date)}
+                            style={{ flex: '0 0 auto', width: '2.75rem', padding: '0.45rem 0.2rem', borderRadius: '0.5rem', textAlign: 'center', cursor: 'pointer', background: selected ? '#a78bfa' : '#18181b', border: `1px solid ${selected ? '#a78bfa' : isToday ? '#52525b' : '#27272a'}`, boxShadow: selected ? '0 0 0 2px rgba(167,139,250,0.35)' : 'none', transition: 'background 0.12s' }}
+                          >
+                            <div style={{ fontSize: '0.62rem', fontWeight: 600, color: selected ? '#2e006c' : '#71717a' }}>{d.label}</div>
+                            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: selected ? '#0d0d0d' : '#e4e4e7' }}>{d.dayNum}</div>
+                            <div style={{ fontSize: '0.58rem', color: selected ? '#2e006c' : isToday ? '#a78bfa' : '#3f3f46' }}>{isToday ? 'hoy' : d.month}</div>
+                          </button>
+                        )
+                      })}
+                    </div>
+                  </div>
+                  <button type="button" onClick={slideRight} style={{ flexShrink: 0, width: '1.6rem', height: '1.6rem', borderRadius: '50%', background: '#27272a', border: '1px solid #3f3f46', color: '#a1a1aa', fontSize: '1rem', lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
+                </div>
+                {effectiveWeekLabel && (
+                  <p style={{ fontSize: '0.73rem', marginTop: '0.35rem', color: weekError ? '#f87171' : '#34d399' }}>
+                    {weekError ? effectiveWeekLabel : `✓ Se moverá a: ${effectiveWeekLabel}`}
+                  </p>
+                )}
+              </div>
+
+              {/* Servicio (chips) */}
+              <div>
+                <label className="form-label">Servicio *</label>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
+                  {services.map((s) => (
+                    <EditSvcChip key={s.id} label={s.name} price={s.base_price} active={serviceId === s.id}
+                      onClick={() => { setServiceId(s.id); setCustomAmt('') }} />
+                  ))}
+                </div>
+              </div>
+
+              {/* Monto */}
+              <div>
+                <label className="form-label">Monto cobrado</label>
+                <input type="number" inputMode="numeric" className="form-input"
+                  placeholder={selectedService ? String(selectedService.base_price) : '0'}
+                  value={customAmt} onChange={(e) => setCustomAmt(e.target.value)} />
+              </div>
+
+              {/* Cliente */}
+              <div>
+                <label className="form-label">Cliente <span style={{ color: '#52525b', fontWeight: 400 }}>(opcional)</span></label>
+                <input className="form-input" placeholder="Nombre del cliente" value={clientName}
+                  onChange={(e) => setClientName(e.target.value)} maxLength={60} />
+              </div>
+
+              {/* Descuento */}
+              <div>
+                <label className="form-label">Descuento <span style={{ color: '#52525b', fontWeight: 400 }}>(opcional)</span></label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '0.5rem' }}>
+                  <input type="number" inputMode="numeric" className="form-input" placeholder="$0"
+                    value={discount} onChange={(e) => setDiscount(e.target.value)} />
+                  <input className="form-input" placeholder="Motivo del descuento" value={discountReason}
+                    onChange={(e) => setDiscountReason(e.target.value)} disabled={discountNum <= 0} maxLength={80} />
+                </div>
+                {discountNum > 0 && resolvedAmount > 0 && (
+                  <p style={{ color: '#f59e0b', fontSize: '0.75rem', marginTop: '0.3rem' }}>
+                    {formatARS(resolvedAmount)} − {formatARS(discountNum)} = <strong>{formatARS(effectiveAmount)}</strong>
+                  </p>
+                )}
+              </div>
+
+              {/* Método de pago */}
+              <div>
+                <label className="form-label">Método de pago *</label>
+                {!splitPayment && (
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <EditPayChip label="Efectivo"      active={method === 'cash'}     onClick={() => setMethod('cash')} />
+                    <EditPayChip label="Transferencia" active={method === 'transfer'} onClick={() => setMethod('transfer')} />
+                  </div>
+                )}
+                <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginTop: '0.6rem', cursor: 'pointer' }}>
+                  <input type="checkbox" checked={splitPayment}
+                    onChange={(e) => {
+                      setSplitPayment(e.target.checked)
+                      if (e.target.checked) {
+                        setMethod('')
+                        if (effectiveAmount > 0) { const h = Math.round(effectiveAmount / 2); setCashPart(String(h)); setTransferPart(String(effectiveAmount - h)) }
+                      } else { setCashPart(''); setTransferPart('') }
+                    }}
+                    style={{ width: '1rem', height: '1rem', accentColor: '#a78bfa' }} />
+                  <span style={{ fontSize: '0.85rem', color: '#a1a1aa' }}>Pago mixto (efectivo + transferencia)</span>
+                </label>
+                {splitPayment && (
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    <div>
+                      <p style={{ fontSize: '0.72rem', color: '#71717a', marginBottom: '0.25rem' }}>Efectivo $</p>
+                      <input type="number" inputMode="numeric" className="form-input" placeholder="0" value={cashPart}
+                        onChange={(e) => { setCashPart(e.target.value); const r = effectiveAmount - (parseFloat(e.target.value) || 0); if (r >= 0) setTransferPart(String(Math.round(r))) }} />
+                    </div>
+                    <div>
+                      <p style={{ fontSize: '0.72rem', color: '#71717a', marginBottom: '0.25rem' }}>Transferencia $</p>
+                      <input type="number" inputMode="numeric" className="form-input" placeholder="0" value={transferPart}
+                        onChange={(e) => { setTransferPart(e.target.value); const r = effectiveAmount - (parseFloat(e.target.value) || 0); if (r >= 0) setCashPart(String(Math.round(r))) }} />
+                    </div>
+                    {(cashNum + transferNum) > 0 && (
+                      <p style={{ gridColumn: '1/-1', fontSize: '0.75rem', textAlign: 'right', color: Math.abs(cashNum + transferNum - effectiveAmount) <= 1 ? '#34d399' : '#f87171' }}>
+                        Suma: {formatARS(cashNum + transferNum)} · Total: {formatARS(effectiveAmount)}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Preview */}
+              {isValid && (
+                <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '0.5rem', padding: '0.65rem 0.85rem', fontSize: '0.84rem' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem' }}>
+                    <span style={{ color: '#a1a1aa' }}>Total a cobrar</span>
+                    <strong style={{ color: '#fff' }}>{formatARS(effectiveAmount)}</strong>
+                  </div>
+                  {splitPayment && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.75rem', color: '#71717a' }}>
+                      <span>Ef {formatARS(cashNum)} + Transf {formatARS(transferNum)}</span>
+                    </div>
+                  )}
+                  {discountNum > 0 && (
+                    <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f59e0b', fontSize: '0.75rem' }}>
+                      <span>Descuento (50/50)</span><span>−{formatARS(discountNum)}</span>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.35rem' }}>
+                    <span style={{ color: '#a1a1aa' }}>Parte barbero ({Math.round(commissionRate * 100)}%)</span>
+                    <span style={{ color: '#f59e0b', fontWeight: 600 }}>{formatARS(barberShareCalc)}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                    <span style={{ color: '#a1a1aa' }}>Parte barbería</span>
+                    <span style={{ color: '#fff' }}>{formatARS(branchShareCalc)}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button onClick={onClose} className="admin-btn admin-btn--ghost">Cancelar</button>
+              <button onClick={handleSave} disabled={saving || !isValid} className="admin-btn admin-btn--primary">
+                {saving ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  )
+}
+
 function OverrideSplitModal({
   tx,
   onClose,

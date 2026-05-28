@@ -730,14 +730,13 @@ export async function registerCut(
   createdBy?: string,
 ): Promise<Transaction> {
   const commissionRate = barber.commission_rate ?? 0.5
-  // Parte del barbero: sobre el precio ORIGINAL (antes del descuento).
-  // El descuento lo absorbe la barbería, no el barbero.
+  // El descuento se divide 50/50: barbero absorbe la mitad, barbería la otra mitad.
+  // La comisión del barbero sigue calculándose sobre el precio original.
   const discountAmt    = payload.discount_amount ?? 0
   const fullPrice      = payload.amount + discountAmt
-  const barberShareRaw = Number((fullPrice * commissionRate).toFixed(2))
+  const barberShareRaw = Number((fullPrice * commissionRate - discountAmt * 0.5).toFixed(2))
   // Constraints DB: barber_share >= 0, branch_share >= 0, branch_share + barber_share = amount.
-  // Si el descuento es tan grande que barberShareRaw > amount, lo capeamos.
-  const barberShare = Math.min(barberShareRaw, payload.amount)
+  const barberShare = Math.max(0, Math.min(barberShareRaw, payload.amount))
   const branchShare = Number((payload.amount - barberShare).toFixed(2))
 
   // ── Split payment: si vienen montos parciales, los usamos.
@@ -848,6 +847,7 @@ export async function getWeekTransactions(
     `)
     .eq('week_id', weekId)
     .order('transaction_date', { ascending: false })
+    .order('created_at', { ascending: false })
 
   if (error) throw new Error(`[getWeekTransactions] ${error.message}`)
   return data as unknown as TransactionWithRelations[]
@@ -891,6 +891,32 @@ export async function overrideTransactionSplit(
     .eq('id', transactionId)
 
   if (error) throw new Error(`[overrideTransactionSplit] ${error.message}`)
+}
+
+export async function fullEditTransaction(
+  txId: string,
+  updates: {
+    transaction_date: string
+    week_id: string
+    service_id: string | null
+    amount: number
+    discount_amount: number
+    discount_reason: string | null
+    payment_method: string
+    cash_amount: number
+    transfer_amount: number
+    card_amount: number
+    client_name: string | null
+    barber_share: number
+    branch_share: number
+    barber_already_collected: number
+  }
+): Promise<void> {
+  const { error } = await supabase
+    .from('transactions')
+    .update({ ...updates, is_manual_override: true })
+    .eq('id', txId)
+  if (error) throw new Error(`[fullEditTransaction] ${error.message}`)
 }
 
 // ============================================================
