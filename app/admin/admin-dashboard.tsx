@@ -1642,7 +1642,7 @@ function EditTransactionModal({
         barber_share:     barberShareCalc,
         branch_share:     branchShareCalc,
         barber_already_collected: barberAlreadyCollected,
-        override_notes:   notes.trim() || 'Editado manualmente',
+        override_notes:   'Editado manualmente',
       })
       onSaved()
     } catch (e) {
