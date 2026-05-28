@@ -97,7 +97,7 @@ function PayChip({ label, active, onClick }: { label: string; active: boolean; o
 }
 
 export default function ManualCutModal({
-  branchId, weekId, adminId, onClose, onSuccess,
+  branchId, weekId, weekStartDate, adminId, onClose, onSuccess,
 }: Props) {
   const [barbers,    setBarbers]   = useState<Profile[]>([])
   const [services,   setServices]  = useState<ServiceCatalog[]>([])
@@ -120,7 +120,12 @@ export default function ManualCutModal({
   const [transferPart,  setTransferPart]  = useState('')
 
   const today      = todayStr()
-  const scrollDays = buildScrollDays(today, 7, 7)
+  // Días hacia atrás: cubrir desde el inicio de la semana seleccionada + buffer
+  const daysBack   = Math.max(30, Math.round(
+    (new Date(today + 'T12:00:00').getTime() - new Date(weekStartDate + 'T12:00:00').getTime())
+    / (1000 * 60 * 60 * 24)
+  ) + 3)
+  const scrollDays = buildScrollDays(today, daysBack, 7)
   const todayRef   = useRef<HTMLButtonElement>(null)
   const stripRef   = useRef<HTMLDivElement>(null)
 
