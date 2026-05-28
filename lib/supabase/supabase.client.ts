@@ -910,6 +910,7 @@ export async function fullEditTransaction(
     barber_share: number
     branch_share: number
     barber_already_collected: number
+    override_notes: string
   }
 ): Promise<void> {
   const { error } = await supabase
