@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import {
   getAllBarbersByBranch,
   getServicesByBranch,
+  getWeeksByBranch,
   registerCut,
 } from '@/lib/supabase/supabase.client'
 import type {
@@ -11,6 +12,7 @@ import type {
   ServiceCatalog,
   PaymentMethod,
   RegisterCutPayload,
+  Week,
 } from '@/lib/supabase/database.types'
 import './admin-dashboard.css'
 
@@ -119,6 +121,11 @@ export default function ManualCutModal({
   const [cashPart,      setCashPart]      = useState('')
   const [transferPart,  setTransferPart]  = useState('')
 
+  // week_id efectivo: puede diferir del prop si el admin elige una fecha de otra semana
+  const [effectiveWeekId,   setEffectiveWeekId]   = useState(weekId)
+  const [effectiveWeekLabel, setEffectiveWeekLabel] = useState<string | null>(null)
+  const [allWeeks,          setAllWeeks]           = useState<Week[]>([])
+
   const today      = todayStr()
   // Días hacia atrás: cubrir desde el inicio de la semana seleccionada + buffer
   const daysBack   = Math.max(30, Math.round(
@@ -135,12 +142,14 @@ export default function ManualCutModal({
   useEffect(() => {
     async function load() {
       try {
-        const [bs, svcs] = await Promise.all([
+        const [bs, svcs, weeks] = await Promise.all([
           getAllBarbersByBranch(branchId),
           getServicesByBranch(branchId),
+          getWeeksByBranch(branchId),
         ])
         setBarbers(bs.filter((b) => b.is_active))
         setServices(svcs.filter((s) => s.is_active))
+        setAllWeeks(weeks)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error cargando datos')
       } finally {
@@ -149,6 +158,20 @@ export default function ManualCutModal({
     }
     load()
   }, [branchId])
+
+  // Cuando cambia la fecha, resolver a qué semana pertenece
+  useEffect(() => {
+    if (allWeeks.length === 0) return
+    const match = allWeeks.find((w) => w.start_date <= date && date <= w.end_date)
+    if (match) {
+      setEffectiveWeekId(match.id)
+      setEffectiveWeekLabel(match.id === weekId ? null : `Semana ${match.start_date} → ${match.end_date}`)
+    } else {
+      // Fecha fuera de cualquier semana registrada
+      setEffectiveWeekId(weekId)
+      setEffectiveWeekLabel('⚠️ Esta fecha no pertenece a ninguna semana registrada')
+    }
+  }, [date, allWeeks, weekId])
 
   useEffect(() => {
     todayRef.current?.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'center' })
@@ -225,7 +248,7 @@ export default function ManualCutModal({
         discount_amount:  discountNum > 0 ? discountNum : 0,
         discount_reason:  discountReasonFinal,
       }
-      await registerCut(payload, barber, weekId, adminId)
+      await registerCut(payload, barber, effectiveWeekId, adminId)
       onSuccess()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al registrar')
@@ -289,6 +312,11 @@ export default function ManualCutModal({
                   </div>
                   <button type="button" onClick={slideRight} style={{ flexShrink: 0, width: '1.6rem', height: '1.6rem', borderRadius: '50%', background: '#27272a', border: '1px solid #3f3f46', color: '#a1a1aa', fontSize: '1rem', lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
                 </div>
+                {effectiveWeekLabel && (
+                  <p style={{ fontSize: '0.73rem', marginTop: '0.35rem', color: effectiveWeekLabel.startsWith('⚠️') ? '#f87171' : '#34d399' }}>
+                    {effectiveWeekLabel.startsWith('⚠️') ? effectiveWeekLabel : `✓ Se registrará en: ${effectiveWeekLabel}`}
+                  </p>
+                )}
               </div>
 
               {/* ── Servicio (chips) ── */}
