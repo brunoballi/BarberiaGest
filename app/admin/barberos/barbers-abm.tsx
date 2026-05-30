@@ -128,19 +128,27 @@ function CompensationFields({
     </div>
   )
 
+  const salaryFields = (
+    <div className="grid grid-cols-2 gap-3">
+      {input('Sueldo base ($)', 'base_salary_rate', form.base_salary_rate)}
+      {input('Presentismo (% del total)', 'presentismo_rate', form.presentismo_rate, '5')}
+      {input('Objetivo (% del total)', 'objetivo_rate', form.objetivo_rate, '5')}
+      {input('Cortes p/objetivo', 'objetivo_min_cuts', form.objetivo_min_cuts)}
+    </div>
+  )
+
   if (type === 'percentage') {
-    return input('Comisión (%)', 'commission_rate', form.commission_rate, '50')
+    // Comisión % + (opcional) sueldo base, presentismo, objetivo y cortes p/objetivo
+    return (
+      <div className="space-y-3">
+        {input('Comisión (%)', 'commission_rate', form.commission_rate, '50')}
+        {salaryFields}
+      </div>
+    )
   }
 
   if (type === 'salary') {
-    return (
-      <div className="grid grid-cols-2 gap-3">
-        {input('Sueldo base ($)', 'base_salary_rate', form.base_salary_rate)}
-        {input('Presentismo (% del total)', 'presentismo_rate', form.presentismo_rate, '5')}
-        {input('Objetivo (% del total)', 'objetivo_rate', form.objetivo_rate, '5')}
-        {input('Cortes p/objetivo', 'objetivo_min_cuts', form.objetivo_min_cuts)}
-      </div>
-    )
+    return salaryFields
   }
 
   return input('Alquiler mensual ($)', 'box_rental_amount', form.box_rental_amount)
