@@ -10,7 +10,11 @@ El sistema requiere 4 mejoras operacionales para refinar el flujo de:
 
 ---
 
-## 1. Descuentos → Beneficios (Parámetro Admin)
+## 1. Descuentos → Beneficios (Parámetro Admin) ✅ COMPLETADA
+
+> Verificado: tabla `benefits` + RLS en prod, CRUD en `supabase.client` (getBenefitsByBranch,
+> createBenefit, updateBenefit, computeBenefitDiscount), página `/admin/beneficios` (con link
+> en el nav), dropdown en manual-cut-modal y en la vista del barbero, `registerCut` guarda `benefit_id`.
 
 ### Objetivo
 Reemplazar campo manual `discount_amount` + `discount_reason` por un sistema de **beneficios predefinidos**. El admin configura beneficios en las sucursales; barberos/admin seleccionan de un dropdown al registrar cortes.
@@ -65,9 +69,21 @@ CREATE TABLE public.benefits (
 
 ---
 
-## 2. Semanas: Martes a Sábado (6 días)
+## 2. Semanas: Martes a Sábado ✅ COMPLETADA (2026-05-30)
 
-### Objetivo
+> **Enfoque real (no cambia la generación de semanas):** verificado en prod que TODAS
+> las semanas son lunes→domingo (7 días) y los datos cargados ya son mar-sáb. En vez de
+> migrar rangos (destructivo), se restringe a nivel de día en la vista del barbero:
+> - Barbero: solo carga mar(2)–sáb(6). Dom/lun grisados y bloqueados (`isBarberAllowedDay`,
+>   bloqueo en botón + `handleSubmit`).
+> - Admin: sin límite (carga cualquier día vía manual-cut).
+> - Override: nueva columna `weeks.barber_extra_days date[]` (migración 004, aplicada).
+>   El admin habilita un dom/lun puntual desde el detalle de la semana en weeks-view
+>   (`updateBarberExtraDays`); el barbero respeta esas fechas.
+>
+> **NO** se cambió `generateWeekRangesForMonth`, el RPC de año, ni el cron.
+
+### Objetivo (propuesta original — descartada por destructiva)
 Cambiar rango de semana de **lunes-domingo (7 días)** a **martes-sábado (6 días)**. Los barberos solo pueden cargar martes-sábado; admin puede cargar lunes/domingo si es necesario.
 
 ### Cambios en Base de Datos
@@ -124,7 +140,11 @@ ADD CONSTRAINT valid_week_range CHECK (
 
 ---
 
-## 3. Configuración de Transferencias por Barbero
+## 3. Configuración de Transferencias por Barbero ✅ COMPLETADA
+
+> Verificado: columna `profiles.receives_transfers` (migración 003, aplicada), checkbox en
+> edición de barbero (barbers-abm), badge "Transf → Valhalla", y `registerCut` respeta el flag
+> en el split de pago.
 
 ### Objetivo
 Cada barbero configura si recibe transferencias en su cuenta (sí/no). Si no, todo va a Valhalla.
@@ -170,7 +190,12 @@ ALTER TABLE public.profiles ADD COLUMN IF NOT EXISTS
 
 ---
 
-## 4. Retiros de Socios (Separar de Gastos)
+## 4. Retiros de Socios (Separar de Gastos) ✅ COMPLETADA (vía categoría)
+
+> Verificado: categoría `retiro_socio` en EXPENSE_CATEGORIES; `getReportByPeriod` calcula
+> `partnerWithdrawals` por separado y NO lo resta de `netProfit` (netProfit = branchShare -
+> totalExpenses, excluyendo retiros); reportes-view muestra filas "Retiros de socios". Se
+> registra como gasto con esa categoría (no se usó tabla `partner_withdrawals` separada).
 
 ### Objetivo
 Crear categoría/tabla separada para retiros de socios. Impacte en reportes de forma diferenciada (no restar de ganancia, sino mostrar aparte).
