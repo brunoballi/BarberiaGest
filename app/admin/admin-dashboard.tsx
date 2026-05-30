@@ -12,7 +12,6 @@ import {
   type TransactionWithRelations,
   type AdvanceWithBarber,
   type Advance,
-  type Expense,
   type ExpenseInsert,
   type ServiceCatalog,
   type PaymentMethod,
@@ -20,6 +19,7 @@ import {
   WEEK_STATUS_LABELS,
   SETTLEMENT_STATUS_LABELS,
   EXPENSE_CATEGORIES,
+  EXPENSE_CATEGORY_LABELS,
 } from '@/lib/supabase/database.types'
 import {
   getBranches,
@@ -32,6 +32,7 @@ import {
   getWeekTransactions,
   getAdvancesByDateRange,
   getExpensesByWeek,
+  type ExpenseWithUser,
   closeWeek,
   calculateAllSettlementsForWeek,
   setPresentismo,
@@ -100,7 +101,7 @@ export default function AdminDashboard() {
   const [settlements, setSettlements] = useState<SettlementWithBarber[]>([])
   const [transactions, setTransactions] = useState<TransactionWithRelations[]>([])
   const [weekAdvances, setWeekAdvances] = useState<AdvanceWithBarber[]>([])
-  const [expenses, setExpenses] = useState<Expense[]>([])
+  const [expenses, setExpenses] = useState<ExpenseWithUser[]>([])
 
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [showExpenseForm, setShowExpenseForm] = useState(false)
@@ -246,9 +247,14 @@ export default function AdminDashboard() {
         setMonths([])
         const ms = await getMonthsWithWeeks(selectedBranch)
         setMonths(ms)
-        // Apuntar al mes que tiene semana abierta, o el último mes
+        // Prioridad: 1) mes actual (hoy), 2) mes con semana abierta, 3) último mes
+        const today = new Date()
+        const curMonth = today.getMonth() + 1 // 1-12
+        const curYear = today.getFullYear()
+        const currentIdx = ms.findIndex((m) => m.month === curMonth && m.year === curYear)
         const openIdx = ms.findIndex((m) => m.weeks.some((w) => w.status === 'open'))
-        const idx = openIdx >= 0 ? openIdx : Math.max(0, ms.length - 1)
+        const idx =
+          currentIdx >= 0 ? currentIdx : openIdx >= 0 ? openIdx : Math.max(0, ms.length - 1)
         setSelectedMonthIdx(idx)
         const ws = ms[idx]?.weeks ?? []
         setSelectedWeek(ws.find((w) => w.status === 'open') ?? ws[ws.length - 1] ?? null)
@@ -584,6 +590,9 @@ export default function AdminDashboard() {
                 </Link>
                 <Link href="/admin/servicios" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
                   Servicios
+                </Link>
+                <Link href="/admin/beneficios" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
+                  Beneficios
                 </Link>
                 <Link href="/admin/auditoria" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
                   Auditoría
@@ -1124,7 +1133,7 @@ export default function AdminDashboard() {
               <select value={expFilterCategory} onChange={(e) => setExpFilterCategory(e.target.value)} className="filter-input">
                 <option value="">Todas las categorías</option>
                 {EXPENSE_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c} value={c}>{EXPENSE_CATEGORY_LABELS[c]}</option>
                 ))}
               </select>
               {hasExpFilters && (
@@ -1153,6 +1162,7 @@ export default function AdminDashboard() {
                       <th>Categoría</th>
                       <th>Monto</th>
                       <th>Notas</th>
+                      <th>Registrado por</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1165,6 +1175,7 @@ export default function AdminDashboard() {
                         </td>
                         <td className="td-danger">{formatARS(e.amount)}</td>
                         <td className="td-muted">{e.notes ?? '—'}</td>
+                        <td className="td-muted">{e.registered_by_name ?? '—'}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1444,7 +1455,7 @@ function ExpenseFormModal({
           >
             <option value="">Sin categoría</option>
             {EXPENSE_CATEGORIES.map((c) => (
-              <option key={c} value={c}>{c}</option>
+              <option key={c} value={c}>{EXPENSE_CATEGORY_LABELS[c]}</option>
             ))}
           </select>
           <label className="form-label">Notas</label>

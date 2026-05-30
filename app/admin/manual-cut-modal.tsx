@@ -5,6 +5,8 @@ import {
   getAllBarbersByBranch,
   getServicesByBranch,
   getWeeksByBranch,
+  getActiveBenefitsByBranch,
+  computeBenefitDiscount,
   registerCut,
 } from '@/lib/supabase/supabase.client'
 import type {
@@ -13,6 +15,7 @@ import type {
   PaymentMethod,
   RegisterCutPayload,
   Week,
+  Benefit,
 } from '@/lib/supabase/database.types'
 import './admin-dashboard.css'
 
@@ -103,6 +106,7 @@ export default function ManualCutModal({
 }: Props) {
   const [barbers,    setBarbers]   = useState<Profile[]>([])
   const [services,   setServices]  = useState<ServiceCatalog[]>([])
+  const [benefits,   setBenefits]  = useState<Benefit[]>([])
   const [loading,    setLoading]   = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [error,      setError]     = useState<string | null>(null)
@@ -115,6 +119,7 @@ export default function ManualCutModal({
   const [clientName,    setClientName]    = useState('')
   const [discount,      setDiscount]      = useState('')
   const [discountReason, setDiscountReason] = useState('')
+  const [benefitId,     setBenefitId]     = useState('')
   const [observations,  setObservations]  = useState('')
   const [method,        setMethod]        = useState<PaymentMethod | ''>('')
   const [splitPayment,  setSplitPayment]  = useState(false)
@@ -142,14 +147,16 @@ export default function ManualCutModal({
   useEffect(() => {
     async function load() {
       try {
-        const [bs, svcs, weeks] = await Promise.all([
+        const [bs, svcs, weeks, bens] = await Promise.all([
           getAllBarbersByBranch(branchId),
           getServicesByBranch(branchId),
           getWeeksByBranch(branchId),
+          getActiveBenefitsByBranch(branchId),
         ])
         setBarbers(bs.filter((b) => b.is_active))
         setServices(svcs.filter((s) => s.is_active))
         setAllWeeks(weeks)
+        setBenefits(bens)
       } catch (e) {
         setError(e instanceof Error ? e.message : 'Error cargando datos')
       } finally {
@@ -180,6 +187,18 @@ export default function ManualCutModal({
   const selectedService = services.find((s) => s.id === serviceId)
   const resolvedAmount  = customAmt ? parseFloat(customAmt) : (selectedService?.base_price ?? 0)
   const discountNum     = parseFloat(discount) || 0
+  const selectedBenefit = benefits.find((b) => b.id === benefitId)
+
+  // Mejora 1: al elegir un beneficio, pre-rellenar descuento y motivo.
+  // Para % se recalcula si cambia el monto. La matemática del descuento NO cambia (50/50).
+  useEffect(() => {
+    if (!benefitId) return
+    const b = benefits.find((x) => x.id === benefitId)
+    if (!b) return
+    const d = computeBenefitDiscount(b, resolvedAmount)
+    setDiscount(d > 0 ? String(d) : '')
+    setDiscountReason(b.name)
+  }, [benefitId, resolvedAmount, benefits])
   const effectiveAmount = Math.max(0, resolvedAmount - discountNum)
   const cashNum         = parseFloat(cashPart) || 0
   const transferNum     = parseFloat(transferPart) || 0
@@ -247,6 +266,7 @@ export default function ManualCutModal({
         client_name:      clientName.trim() || null,
         discount_amount:  discountNum > 0 ? discountNum : 0,
         discount_reason:  discountReasonFinal,
+        benefit_id:       benefitId || null,
       }
       await registerCut(payload, barber, effectiveWeekId, adminId)
       onSuccess()
@@ -358,6 +378,34 @@ export default function ManualCutModal({
                 />
               </div>
 
+              {/* ── Beneficio (Mejora 1) ── */}
+              {benefits.length > 0 && (
+                <div>
+                  <label className="form-label">Beneficio <span style={{ color: '#52525b', fontWeight: 400 }}>(opcional)</span></label>
+                  <select
+                    className="form-input"
+                    value={benefitId}
+                    onChange={(e) => {
+                      const id = e.target.value
+                      setBenefitId(id)
+                      if (!id) { setDiscount(''); setDiscountReason('') }
+                    }}
+                  >
+                    <option value="">— sin beneficio —</option>
+                    {benefits.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name} ({b.discount_type === 'percentage' ? `${b.discount_value}%` : formatARS(b.discount_value)})
+                      </option>
+                    ))}
+                  </select>
+                  {selectedBenefit && discountNum > 0 && (
+                    <p style={{ color: '#34d399', fontSize: '0.75rem', marginTop: '0.3rem' }}>
+                      Ahorra {formatARS(discountNum)} con &quot;{selectedBenefit.name}&quot;
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* ── Descuento ── */}
               <div>
                 <label className="form-label">Descuento <span style={{ color: '#52525b', fontWeight: 400 }}>(opcional)</span></label>
@@ -366,13 +414,13 @@ export default function ManualCutModal({
                     type="number" inputMode="numeric" className="form-input"
                     placeholder="$0"
                     value={discount}
-                    onChange={(e) => setDiscount(e.target.value)}
+                    onChange={(e) => { setBenefitId(''); setDiscount(e.target.value) }}
                   />
                   <input
                     className="form-input"
                     placeholder="Motivo del descuento"
                     value={discountReason}
-                    onChange={(e) => setDiscountReason(e.target.value)}
+                    onChange={(e) => { setBenefitId(''); setDiscountReason(e.target.value) }}
                     disabled={discountNum <= 0}
                     maxLength={80}
                   />

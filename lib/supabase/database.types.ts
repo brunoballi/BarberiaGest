@@ -46,6 +46,19 @@ export interface Profile {
   // Datos personales
   dni: string | null
   birth_date: string | null
+  // Mejora 3: si recibe transferencias en su cuenta (true) o van a Valhalla (false)
+  receives_transfers: boolean
+}
+
+export interface Benefit {
+  id: string
+  branch_id: string
+  name: string
+  description: string | null
+  discount_type: 'fixed' | 'percentage'
+  discount_value: number
+  is_active: boolean
+  created_at: string
 }
 
 export interface ServiceCatalog {
@@ -110,6 +123,8 @@ export interface Transaction {
   client_name: string | null
   discount_amount: number
   discount_reason: string | null
+  // Mejora 1: beneficio aplicado (opcional, para reporting)
+  benefit_id: string | null
 }
 
 export interface Advance {
@@ -177,7 +192,17 @@ export interface Expense {
 // ============================================================
 export type BranchInsert = Omit<Branch, 'id' | 'created_at'>
 
-export type ProfileInsert = Omit<Profile, 'created_at'>
+export type ProfileInsert = Omit<Profile, 'created_at' | 'receives_transfers'> & {
+  receives_transfers?: boolean
+}
+
+export type BenefitInsert = Omit<Benefit, 'id' | 'created_at' | 'is_active'> & {
+  is_active?: boolean
+}
+
+export type BenefitUpdate = Partial<
+  Pick<Benefit, 'name' | 'description' | 'discount_type' | 'discount_value' | 'is_active'>
+>
 
 export type ServiceCatalogInsert = Omit<ServiceCatalog, 'id' | 'created_at'>
 
@@ -189,10 +214,11 @@ export type WeekInsert = Omit<Week, 'id' | 'created_at' | 'closed_at' | 'closed_
 
 export type TransactionInsert = Omit<
   Transaction,
-  'id' | 'created_at' | 'updated_at' | 'is_manual_override' | 'override_notes'
+  'id' | 'created_at' | 'updated_at' | 'is_manual_override' | 'override_notes' | 'benefit_id'
 > & {
   is_manual_override?: boolean
   override_notes?: string
+  benefit_id?: string | null
 }
 
 export type AdvanceInsert = Omit<Advance, 'id' | 'created_at' | 'status' | 'deducted_in'>
@@ -247,6 +273,7 @@ export type ProfileUpdate = Partial<
     | 'is_active'
     | 'dni'
     | 'birth_date'
+    | 'receives_transfers'
   >
 >
 
@@ -290,8 +317,9 @@ export interface BranchReport {
   totalIncome: number        // suma de transactions.amount
   branchShare: number        // suma de transactions.branch_share (lo que queda al negocio de cortes)
   barberShare: number        // suma de transactions.barber_share (comisiones)
-  totalExpenses: number      // suma de expenses.amount
+  totalExpenses: number      // suma de expenses.amount (excluye retiros de socios)
   expensesByCategory: Record<string, number>
+  partnerWithdrawals: number // Mejora 4: retiros de socios (no restan de netProfit)
   netProfit: number          // branchShare - totalExpenses
   profitMargin: number       // netProfit / totalIncome * 100
 }
@@ -313,6 +341,8 @@ export interface RegisterCutPayload {
   client_name?: string | null
   discount_amount?: number
   discount_reason?: string | null
+  // Mejora 1: beneficio seleccionado (pre-rellena descuento)
+  benefit_id?: string | null
 }
 
 /** Resultado del cálculo de un settlement para mostrar en UI */
@@ -352,6 +382,18 @@ export const EXPENSE_CATEGORIES = [
 ] as const
 
 export type ExpenseCategory = (typeof EXPENSE_CATEGORIES)[number]
+
+/** Labels en español para categorías de gastos */
+export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
+  alquiler: 'Alquiler',
+  servicios: 'Servicios',
+  personal: 'Personal',
+  insumos: 'Insumos',
+  marketing: 'Marketing',
+  impuestos: 'Impuestos',
+  retiro_socio: 'Retiro de socios',
+  otros: 'Otros',
+}
 
 /** Labels en español para métodos de pago */
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {

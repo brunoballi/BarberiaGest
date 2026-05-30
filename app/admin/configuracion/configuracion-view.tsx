@@ -55,6 +55,13 @@ function formatDate(dateStr: string): string {
   return date.toLocaleDateString('es-AR', { day: '2-digit', month: 'short' })
 }
 
+const DOW_LABELS = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
+/** Etiqueta del día real de la semana para una fecha YYYY-MM-DD */
+function dowLabel(dateStr: string): string {
+  const [year, month, day] = dateStr.split('-').map(Number)
+  return DOW_LABELS[new Date(year, month - 1, day).getDay()]
+}
+
 function getMonthDateRange(year: number, month: number): { firstDay: string; lastDay: string } {
   const firstDay = `${year}-${String(month).padStart(2, '0')}-01`
   const lastDayDate = new Date(year, month, 0)
@@ -90,16 +97,16 @@ function previewWeeksForMonth(year: number, month: number): Array<{ start: strin
   const last = new Date(lastDay)
   const weeks: Array<{ start: string; end: string }> = []
 
-  // Start from first Monday at or before first day
+  // Mejora 2: arrancar en el primer martes anterior o igual al primer día (semana martes-sábado)
   let cursor = new Date(first)
   const dayOfWeek = cursor.getDay() // 0=Sun
-  const daysSinceMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1
-  cursor.setDate(cursor.getDate() - daysSinceMonday)
+  const daysSinceTuesday = (dayOfWeek - 2 + 7) % 7
+  cursor.setDate(cursor.getDate() - daysSinceTuesday)
 
   while (cursor <= last) {
     const weekStart = new Date(cursor)
     const weekEnd = new Date(cursor)
-    weekEnd.setDate(weekEnd.getDate() + 6)
+    weekEnd.setDate(weekEnd.getDate() + 4) // martes → sábado
 
     const fmt = (d: Date) =>
       `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
@@ -766,11 +773,11 @@ function WeekRow({ week, month, onCloseWeek, onReopenWeek, onDeleteWeek, onEditW
         </span>
         <span style={{ fontSize: '0.8125rem' }}>
           <span style={{ color: clampedStart ? '#52525b' : '#a1a1aa' }}>
-            Lun {formatDate(activeFrom)}
+            {dowLabel(activeFrom)} {formatDate(activeFrom)}
           </span>
           <span style={{ color: '#3f3f46', margin: '0 0.375rem' }}>–</span>
           <span style={{ color: clampedEnd ? '#52525b' : '#a1a1aa' }}>
-            Dom {formatDate(activeTo)}
+            {dowLabel(activeTo)} {formatDate(activeTo)}
           </span>
         </span>
         <span className={weekStatusBadgeClass(week.status)}>
@@ -1268,7 +1275,7 @@ function NewYearModal({ branchId, onClose, onCreated }: NewYearModalProps) {
           ) : (
             <>
               <p style={{ fontSize: '0.85rem', color: '#a1a1aa', margin: '0 0 0.75rem' }}>
-                Crea automáticamente los <strong>12 meses</strong> del año seleccionado con <strong>todas sus semanas</strong> Lun–Dom (aprox 52).
+                Crea automáticamente los <strong>12 meses</strong> del año seleccionado con <strong>todas sus semanas</strong> Mar–Sáb (aprox 52).
                 Si algún mes o semana ya existe, se respeta y solo se crea lo faltante.
               </p>
               <div className="form-group">

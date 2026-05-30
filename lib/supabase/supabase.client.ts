@@ -18,6 +18,7 @@ import type {
   Week,
   WeekInsert,
   Settlement,
+  SettlementStatus,
   SettlementWithBarber,
   SettlementUpdate,
   Advance,
@@ -31,6 +32,9 @@ import type {
   ServiceCatalog,
   ServiceCatalogInsert,
   RegisterCutPayload,
+  Benefit,
+  BenefitInsert,
+  BenefitUpdate,
 } from './database.types'
 
 // ============================================================
@@ -160,6 +164,68 @@ export async function updateService(
     .eq('id', id)
 
   if (error) throw new Error(`[updateService] ${error.message}`)
+}
+
+// ============================================================
+// BENEFITS (Mejora 1)
+// ============================================================
+
+/** Todos los beneficios de la sucursal (para ABM admin) */
+export async function getBenefitsByBranch(branchId: string): Promise<Benefit[]> {
+  const { data, error } = await supabase
+    .from('benefits')
+    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at')
+    .eq('branch_id', branchId)
+    .order('name')
+
+  if (error) throw new Error(`[getBenefitsByBranch] ${error.message}`)
+  return data
+}
+
+/** Solo beneficios activos (para el dropdown al registrar cortes) */
+export async function getActiveBenefitsByBranch(branchId: string): Promise<Benefit[]> {
+  const { data, error } = await supabase
+    .from('benefits')
+    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at')
+    .eq('branch_id', branchId)
+    .eq('is_active', true)
+    .order('name')
+
+  if (error) throw new Error(`[getActiveBenefitsByBranch] ${error.message}`)
+  return data
+}
+
+export async function createBenefit(payload: BenefitInsert): Promise<Benefit> {
+  const { data, error } = await supabase
+    .from('benefits')
+    .insert(payload)
+    .select()
+    .single()
+
+  if (error) throw new Error(`[createBenefit] ${error.message}`)
+  return data
+}
+
+export async function updateBenefit(id: string, updates: BenefitUpdate): Promise<void> {
+  const { error } = await supabase
+    .from('benefits')
+    .update(updates)
+    .eq('id', id)
+
+  if (error) throw new Error(`[updateBenefit] ${error.message}`)
+}
+
+/**
+ * Calcula el monto de descuento ($) que aplica un beneficio sobre un precio.
+ * 'fixed' → monto fijo (acotado al precio). 'percentage' → % del precio.
+ */
+export function computeBenefitDiscount(benefit: Benefit, price: number): number {
+  if (price <= 0) return 0
+  const raw =
+    benefit.discount_type === 'percentage'
+      ? price * (benefit.discount_value / 100)
+      : benefit.discount_value
+  return Number(Math.min(Math.max(raw, 0), price).toFixed(2))
 }
 
 // ============================================================
@@ -599,14 +665,19 @@ export function todayLocal(): string {
   return dateToLocalString(new Date())
 }
 
-/** Genera rangos lunes-domingo para todas las semanas que tocan el mes */
+/**
+ * Mejora 2: genera rangos martes-sábado (5 días hábiles) para todas las
+ * semanas que tocan el mes. Refleja el horario real del negocio: la
+ * barbería trabaja de martes a sábado (domingo y lunes cerrado).
+ * Cada semana arranca un martes y termina el sábado siguiente.
+ */
 function generateWeekRangesForMonth(year: number, month: number): Array<{ start_date: string; end_date: string }> {
   const firstDay = new Date(year, month - 1, 1)
   const lastDay  = new Date(year, month, 0)
 
-  // Retroceder al lunes anterior o igual al primer día del mes
-  const dow = firstDay.getDay() // 0=Dom, 1=Lun, ..., 6=Sáb
-  const daysBack = dow === 0 ? 6 : dow - 1
+  // Retroceder al martes anterior o igual al primer día del mes (0=Dom ... 2=Mar ... 6=Sáb)
+  const dow = firstDay.getDay()
+  const daysBack = (dow - 2 + 7) % 7
   const weekStart = new Date(firstDay)
   weekStart.setDate(firstDay.getDate() - daysBack)
 
@@ -615,7 +686,7 @@ function generateWeekRangesForMonth(year: number, month: number): Array<{ start_
 
   while (cur <= lastDay) {
     const end = new Date(cur)
-    end.setDate(cur.getDate() + 6)
+    end.setDate(cur.getDate() + 4) // martes (+0) → sábado (+4)
     ranges.push({
       start_date: dateToLocalString(cur),
       end_date:   dateToLocalString(end),
@@ -755,10 +826,12 @@ export async function registerCut(
   // - Transferencia: el cliente paga directo al barbero → ya cobró su parte
   // - Efectivo: queda en caja → barbero cobra en la liquidación
   // barber_already_collected <= amount está garantizado porque barberShare <= payload.amount
+  // Mejora 3: si el barbero NO recibe transferencias, la plata de la transferencia
+  // va a la cuenta de Valhalla → el barbero NO la cobró aún (se le paga en la liquidación).
   const barberAlreadyCollected: number =
     payload.barber_already_collected_override !== undefined
       ? payload.barber_already_collected_override
-      : payload.payment_method === 'transfer'
+      : payload.payment_method === 'transfer' && barber.receives_transfers
       ? barberShare
       : 0
 
@@ -782,6 +855,7 @@ export async function registerCut(
     client_name: payload.client_name ?? null,
     discount_amount: payload.discount_amount ?? 0,
     discount_reason: payload.discount_reason ?? null,
+    benefit_id: payload.benefit_id ?? null,
   }
 
   const { data, error } = await supabase
@@ -805,7 +879,7 @@ export async function getBarberTransactionsByDateRange(
 ): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
-    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, discount_amount, discount_reason')
+    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, discount_amount, discount_reason, benefit_id')
     .eq('barber_id', barberId)
     .gte('transaction_date', startDate)
     .lte('transaction_date', endDate)
@@ -822,7 +896,7 @@ export async function getBarberTransactionsForWeek(
 ): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
-    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, discount_amount, discount_reason')
+    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, discount_amount, discount_reason, benefit_id')
     .eq('barber_id', barberId)
     .eq('week_id', weekId)
     .order('transaction_date', { ascending: false })
@@ -841,7 +915,7 @@ export async function getWeekTransactions(
       amount, payment_method, barber_share, branch_share, barber_already_collected,
       commission_rate_snapshot, is_manual_override, override_notes,
       created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount,
-      client_name, discount_amount, discount_reason,
+      client_name, discount_amount, discount_reason, benefit_id,
       barber:profiles!barber_id ( id, full_name, compensation_type ),
       service:service_catalog!service_id ( id, name )
     `)
@@ -967,6 +1041,27 @@ export async function getSettlementsForWeek(
 
   if (error) throw new Error(`[getSettlementsForWeek] ${error.message}`)
   return data as SettlementWithBarber[]
+}
+
+/**
+ * Estado de la liquidación de un barbero para una semana.
+ * Se usa para "cerrar semana por barbero": si está 'confirmed' o 'paid',
+ * la semana queda cerrada para ese barbero y no puede cargar más cortes.
+ * Devuelve null si aún no hay liquidación calculada.
+ */
+export async function getSettlementStatusForWeek(
+  weekId: string,
+  barberId: string
+): Promise<SettlementStatus | null> {
+  const { data, error } = await supabase
+    .from('settlements')
+    .select('status')
+    .eq('week_id', weekId)
+    .eq('barber_id', barberId)
+    .maybeSingle()
+
+  if (error) throw new Error(`[getSettlementStatusForWeek] ${error.message}`)
+  return (data?.status as SettlementStatus | undefined) ?? null
 }
 
 export async function getBarberSettlements(
@@ -1197,7 +1292,12 @@ export async function getExpensesByBranch(
   return data
 }
 
-export async function getExpensesByWeek(weekId: string): Promise<Expense[]> {
+/** Gasto con el nombre del usuario que lo registró (auditoría) */
+export interface ExpenseWithUser extends Expense {
+  registered_by_name: string | null
+}
+
+export async function getExpensesByWeek(weekId: string): Promise<ExpenseWithUser[]> {
   const { data, error } = await supabase
     .from('expenses')
     .select('*')
@@ -1205,7 +1305,24 @@ export async function getExpensesByWeek(weekId: string): Promise<Expense[]> {
     .order('expense_date', { ascending: false })
 
   if (error) throw new Error(`[getExpensesByWeek] ${error.message}`)
-  return data
+  const rows = data ?? []
+  if (rows.length === 0) return []
+
+  // Resolver nombres de quién registró cada gasto (mismo patrón que getAuditLog)
+  const userIds = [...new Set(rows.map((r) => r.registered_by).filter((id): id is string => !!id))]
+  let userMap: Record<string, string> = {}
+  if (userIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('profiles')
+      .select('id, full_name')
+      .in('id', userIds)
+    userMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p.full_name]))
+  }
+
+  return rows.map((r) => ({
+    ...r,
+    registered_by_name: userMap[r.registered_by] ?? null,
+  }))
 }
 
 // ============================================================
@@ -1237,15 +1354,21 @@ export async function getReportByPeriod(
     const txs = (txData ?? []).filter((t) => t.branch_id === branch.id)
     const exps = (expData ?? []).filter((e) => e.branch_id === branch.id)
 
-    const totalIncome   = txs.reduce((s, t) => s + t.amount, 0)
-    const branchShare   = txs.reduce((s, t) => s + t.branch_share, 0)
-    const barberShare   = txs.reduce((s, t) => s + t.barber_share, 0)
-    const totalExpenses = exps.reduce((s, e) => s + e.amount, 0)
-    const netProfit     = branchShare - totalExpenses
-    const profitMargin  = totalIncome > 0 ? (netProfit / totalIncome) * 100 : 0
+    // Mejora 4: los retiros de socios (category='retiro_socio') NO son un gasto operativo.
+    // Se reportan aparte y NO restan de la ganancia neta.
+    const isWithdrawal = (cat: string | null) => cat === 'retiro_socio'
+
+    const totalIncome        = txs.reduce((s, t) => s + t.amount, 0)
+    const branchShare        = txs.reduce((s, t) => s + t.branch_share, 0)
+    const barberShare        = txs.reduce((s, t) => s + t.barber_share, 0)
+    const partnerWithdrawals = exps.filter((e) => isWithdrawal(e.category)).reduce((s, e) => s + e.amount, 0)
+    const totalExpenses      = exps.filter((e) => !isWithdrawal(e.category)).reduce((s, e) => s + e.amount, 0)
+    const netProfit          = branchShare - totalExpenses
+    const profitMargin       = totalIncome > 0 ? (netProfit / totalIncome) * 100 : 0
 
     const expensesByCategory: Record<string, number> = {}
     exps.forEach((e) => {
+      if (isWithdrawal(e.category)) return // excluir retiros del desglose de gastos
       expensesByCategory[e.category] = (expensesByCategory[e.category] ?? 0) + e.amount
     })
 
@@ -1258,6 +1381,7 @@ export async function getReportByPeriod(
       barberShare,
       totalExpenses,
       expensesByCategory,
+      partnerWithdrawals,
       netProfit,
       profitMargin,
     }

@@ -9,6 +9,7 @@ import {
   type SettlementWithBarber,
   type PaymentMethod,
   type RegisterCutPayload,
+  type Benefit,
   PAYMENT_METHOD_LABELS,
   SETTLEMENT_STATUS_LABELS,
 } from '@/lib/supabase/database.types'
@@ -18,7 +19,10 @@ import {
   getBarberTransactionsForWeek,
   getBarberTransactionsByDateRange,
   getBarberSettlements,
+  getSettlementStatusForWeek,
   getServicesByBranch,
+  getActiveBenefitsByBranch,
+  computeBenefitDiscount,
   registerCut,
   updateTransaction,
   createAdvance,
@@ -115,6 +119,7 @@ export default function BarberMobileView() {
   const [view, setView] = useState<View>('home')
   const [profile, setProfile] = useState<Profile | null>(null)
   const [week, setWeek] = useState<Week | null>(null)
+  const [weekClosed, setWeekClosed] = useState(false) // liquidación confirmed/paid → semana cerrada para este barbero
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -133,6 +138,8 @@ export default function BarberMobileView() {
   const [clientName, setClientName] = useState<string>('')
   const [discountAmount, setDiscountAmount] = useState<string>('')
   const [discountReason, setDiscountReason] = useState<string>('')
+  const [benefits, setBenefits] = useState<Benefit[]>([])
+  const [benefitId, setBenefitId] = useState<string>('')
   const [observations, setObservations] = useState<string>('')
   const [splitPayment, setSplitPayment] = useState(false)
   const [cashPart, setCashPart] = useState<string>('')
@@ -177,20 +184,26 @@ export default function BarberMobileView() {
       if (!p) { setError('No autenticado'); return }
       setProfile(p)
 
-      // Servicios y semana en paralelo — ahorra 1 round-trip
-      const [svcs, w] = await Promise.all([
+      // Servicios, semana y beneficios en paralelo — ahorra round-trips
+      const [svcs, w, bens] = await Promise.all([
         getServicesByBranch(p.branch_id),
         getOpenWeek(p.branch_id),
+        getActiveBenefitsByBranch(p.branch_id),
       ])
 
       const active = svcs.filter((s) => s.is_active)
       if (active.length > 0) setServices(active)
+      setBenefits(bens)
 
       if (!w) { setError('No hay semana abierta. Contactá al admin.'); return }
       setWeek(w)
 
-      const txs = await getBarberTransactionsForWeek(p.id, w.id)
+      const [txs, settlStatus] = await Promise.all([
+        getBarberTransactionsForWeek(p.id, w.id),
+        getSettlementStatusForWeek(w.id, p.id),
+      ])
       setTransactions(txs)
+      setWeekClosed(settlStatus === 'confirmed' || settlStatus === 'paid')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error inesperado')
     } finally {
@@ -220,17 +233,24 @@ export default function BarberMobileView() {
   const todayTotal = todayTxs.reduce((s, t) => s + t.amount, 0)
   const todayBarber = todayTxs.reduce((s, t) => s + t.barber_share, 0)
 
-  // ── Días de la semana (Lun a Dom) según week.start_date ───────────
-  const DAY_LABELS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+  // ── Días de la semana según el rango real start_date → end_date ───────────
+  // Mejora 2: las semanas nuevas son martes-sábado (5 días); las viejas pueden
+  // ser lunes-domingo (7 días). Derivamos la cantidad de días del rango y
+  // etiquetamos por el día real de la semana, así funciona para ambos casos.
+  const DAY_LABELS_BY_DOW = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
   const weekDays: { date: string; label: string; dayNum: number; isToday: boolean }[] = (() => {
     if (!week) return []
-    const [y, m, d] = week.start_date.split('-').map(Number)
-    return Array.from({ length: 7 }, (_, i) => {
-      const date = new Date(y, m - 1, d + i)
+    const [sy, sm, sd] = week.start_date.split('-').map(Number)
+    const [ey, em, ed] = week.end_date.split('-').map(Number)
+    const startDt = new Date(sy, sm - 1, sd)
+    const endDt   = new Date(ey, em - 1, ed)
+    const count = Math.round((endDt.getTime() - startDt.getTime()) / 86400000) + 1
+    return Array.from({ length: Math.max(1, count) }, (_, i) => {
+      const date = new Date(sy, sm - 1, sd + i)
       const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
       return {
         date: dateStr,
-        label: DAY_LABELS[i],
+        label: DAY_LABELS_BY_DOW[date.getDay()],
         dayNum: date.getDate(),
         isToday: dateStr === today,
       }
@@ -269,6 +289,17 @@ export default function BarberMobileView() {
   // Aplicar descuento al amount efectivo (lo que paga el cliente)
   const discountNum = parseFloat(discountAmount) || 0
   const effectiveAmount = Math.max(0, resolvedAmount - discountNum)
+  const selectedBenefit = benefits.find((b) => b.id === benefitId)
+
+  // Mejora 1: al elegir un beneficio, pre-rellenar descuento y motivo (50/50 sin cambios)
+  useEffect(() => {
+    if (!benefitId) return
+    const b = benefits.find((x) => x.id === benefitId)
+    if (!b) return
+    const dsc = computeBenefitDiscount(b, resolvedAmount)
+    setDiscountAmount(dsc > 0 ? String(dsc) : '')
+    setDiscountReason(b.name)
+  }, [benefitId, resolvedAmount, benefits])
 
   // Recalcular partes mixtas cuando cambia effectiveAmount
   useEffect(() => {
@@ -288,6 +319,7 @@ export default function BarberMobileView() {
     setFormSubmitError(null)
     if (!profile || !week) return
 
+    if (weekClosed) { setFormSubmitError('Tu semana está cerrada (liquidación confirmada). Contactá al admin.'); return }
     if (!selectedService) { setFormSubmitError('Seleccioná un servicio antes de continuar'); return }
     if (discountNum > resolvedAmount) { setFormSubmitError('El descuento no puede superar el precio del servicio'); return }
     if (resolvedAmount <= 0)          { setFormSubmitError('Ingresá un monto válido'); return }
@@ -339,6 +371,7 @@ export default function BarberMobileView() {
         client_name:      clientName.trim() || null,
         discount_amount:  discountNum > 0 ? discountNum : 0,
         discount_reason:  discountReasonFinal,
+        benefit_id:       benefitId || null,
       }
       const tx = await registerCut(payload, profile, week.id)
       setLastRegistered(tx)
@@ -461,12 +494,14 @@ export default function BarberMobileView() {
     setCashPart('')
     setTransferPart('')
     setObservations('')
+    setBenefitId('')
     setFormSubmitError(null)
     setLastRegistered(null)
     setView('home')
   }
 
   function goToRegister() {
+    if (weekClosed) return
     setSelectedService('')
     setCustomAmount('')
     setPaymentMethod(null)
@@ -474,6 +509,7 @@ export default function BarberMobileView() {
     setCashPart('')
     setTransferPart('')
     setObservations('')
+    setBenefitId('')
     setFormSubmitError(null)
     setView('register')
   }
@@ -752,6 +788,34 @@ export default function BarberMobileView() {
             />
           </section>
 
+          {/* ── Beneficio (opcional) — Mejora 1 ── */}
+          {benefits.length > 0 && (
+            <section>
+              <label className="section-label">Beneficio (opcional)</label>
+              <select
+                value={benefitId}
+                onChange={(e) => {
+                  const id = e.target.value
+                  setBenefitId(id)
+                  if (!id) { setDiscountAmount(''); setDiscountReason('') }
+                }}
+                className="client-name-input"
+              >
+                <option value="">— sin beneficio —</option>
+                {benefits.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} ({b.discount_type === 'percentage' ? `${b.discount_value}%` : formatARS(b.discount_value)})
+                  </option>
+                ))}
+              </select>
+              {selectedBenefit && discountNum > 0 && (
+                <p className="discount-hint" style={{ color: '#34d399' }}>
+                  Ahorra {formatARS(discountNum)} con &quot;{selectedBenefit.name}&quot;
+                </p>
+              )}
+            </section>
+          )}
+
           {/* ── Descuento (opcional) ── */}
           <section>
             <label className="section-label">Descuento (opcional)</label>
@@ -763,7 +827,7 @@ export default function BarberMobileView() {
                   inputMode="numeric"
                   placeholder="0"
                   value={discountAmount}
-                  onChange={(e) => setDiscountAmount(e.target.value)}
+                  onChange={(e) => { setBenefitId(''); setDiscountAmount(e.target.value) }}
                   className="amount-input"
                 />
               </div>
@@ -771,7 +835,7 @@ export default function BarberMobileView() {
                 type="text"
                 placeholder="Razón (opcional)"
                 value={discountReason}
-                onChange={(e) => setDiscountReason(e.target.value)}
+                onChange={(e) => { setBenefitId(''); setDiscountReason(e.target.value) }}
                 className="client-name-input"
                 maxLength={80}
                 disabled={discountNum <= 0}
@@ -1118,14 +1182,16 @@ export default function BarberMobileView() {
 
         <button
           onClick={goToRegister}
-          disabled={!!selectedDay && selectedDay !== today}
+          disabled={weekClosed || (!!selectedDay && selectedDay !== today)}
           className="register-btn w-full disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <div className="flex items-center justify-center gap-3">
             <IconScissors />
             <span className="text-xl font-bold">Registrar corte</span>
           </div>
-          {!!selectedDay && selectedDay !== today && (
+          {weekClosed ? (
+            <p className="text-xs text-amber-200/60 mt-1">Semana cerrada: tu liquidación ya fue confirmada</p>
+          ) : !!selectedDay && selectedDay !== today && (
             <p className="text-xs text-amber-200/60 mt-1">Solo podés registrar cortes del día de hoy</p>
           )}
         </button>

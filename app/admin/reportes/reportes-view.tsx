@@ -36,9 +36,14 @@ const EXPENSE_LABELS: Record<string, string> = {
   alquiler: 'Alquiler',
   servicios: 'Servicios',
   personal: 'Personal',
+  insumos: 'Insumos',
+  marketing: 'Marketing',
+  impuestos: 'Impuestos',
+  retiro_socio: 'Retiro de socios',
+  otros: 'Otros',
+  // categorías legacy que pudieran existir en datos antiguos
   productos: 'Productos',
   mantenimiento: 'Mantenimiento',
-  otros: 'Otros',
 }
 
 const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899']
@@ -125,10 +130,11 @@ export default function ReportesView() {
       barberShare:    acc.barberShare + r.barberShare,
       totalExpenses:  acc.totalExpenses + r.totalExpenses,
       expensesByCategory: acc.expensesByCategory,
+      partnerWithdrawals: acc.partnerWithdrawals + r.partnerWithdrawals,
       netProfit:      acc.netProfit + r.netProfit,
       profitMargin:   0,
     }),
-    { branchId: 'total', branchName: 'Total', cutCount: 0, totalIncome: 0, branchShare: 0, barberShare: 0, totalExpenses: 0, expensesByCategory: {}, netProfit: 0, profitMargin: 0 }
+    { branchId: 'total', branchName: 'Total', cutCount: 0, totalIncome: 0, branchShare: 0, barberShare: 0, totalExpenses: 0, expensesByCategory: {}, partnerWithdrawals: 0, netProfit: 0, profitMargin: 0 }
   )
   total.profitMargin = total.totalIncome > 0 ? (total.netProfit / total.totalIncome) * 100 : 0
   const avg = {
@@ -211,6 +217,12 @@ export default function ReportesView() {
                     color={r.profitMargin >= 0 ? 'emerald' : 'red'}
                     bold
                   />
+                  {r.partnerWithdrawals > 0 && (
+                    <>
+                      <div className="report-card__divider" />
+                      <MetricRow label="Retiros de socios" value={formatARS(r.partnerWithdrawals)} color="amber" small />
+                    </>
+                  )}
                 </div>
               </div>
             ))}
@@ -227,6 +239,9 @@ export default function ReportesView() {
                 <div className="report-card__divider" />
                 <MetricRow label="Ganancia neta"      value={formatARS(total.netProfit)} color={total.netProfit >= 0 ? 'violet' : 'red'} bold />
                 <MetricRow label="Margen promedio"    value={formatPct(avg.profitMargin)} color={avg.profitMargin >= 0 ? 'emerald' : 'red'} bold />
+                {total.partnerWithdrawals > 0 && (
+                  <MetricRow label="Retiros de socios" value={formatARS(total.partnerWithdrawals)} color="amber" small />
+                )}
                 <div className="report-card__divider" />
                 <p className="report-card__avg-title">Promedio por sucursal</p>
                 <MetricRow label="Ing. promedio"   value={formatARS(avg.totalIncome)} small />

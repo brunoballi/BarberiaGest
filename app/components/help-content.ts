@@ -109,7 +109,7 @@ export const ADMIN_HELP: HelpSection[] = [
     items: [
       {
         q: '¿Cuándo cierro una semana?',
-        a: 'Cuando ya cargaste todos los cortes del lunes a domingo. Antes de cerrar, asegurate de marcar el presentismo/objetivo de cada barbero (si corresponde) en la pestaña Liquidaciones.',
+        a: 'Cuando ya cargaste todos los cortes de la semana (martes a sábado). Antes de cerrar, asegurate de marcar el presentismo/objetivo de cada barbero (si corresponde) en la pestaña Liquidaciones.',
       },
       {
         q: '¿Qué pasa al cerrar una semana?',

@@ -75,6 +75,7 @@ interface EditForm {
   objetivo_rate: string
   objetivo_min_cuts: string
   box_rental_amount: string
+  receives_transfers: boolean
 }
 
 function profileToEditForm(p: Profile): EditForm {
@@ -89,6 +90,7 @@ function profileToEditForm(p: Profile): EditForm {
     objetivo_rate: p.objetivo_rate != null ? String(p.objetivo_rate * 100) : '',
     objetivo_min_cuts: p.objetivo_min_cuts != null ? String(p.objetivo_min_cuts) : '',
     box_rental_amount: p.box_rental_amount != null ? String(p.box_rental_amount) : '',
+    receives_transfers: p.receives_transfers,
   }
 }
 
@@ -310,6 +312,7 @@ export default function BarbersAbm() {
         objetivo_rate: editForm.objetivo_rate ? parseFloat(editForm.objetivo_rate) / 100 : null,
         objetivo_min_cuts: editForm.objetivo_min_cuts ? parseInt(editForm.objetivo_min_cuts, 10) : null,
         box_rental_amount: editForm.box_rental_amount ? parseFloat(editForm.box_rental_amount) : null,
+        receives_transfers: editForm.receives_transfers,
       }
 
       await updateBarberProfile(editingBarber.id, updates)
@@ -660,6 +663,26 @@ export default function BarbersAbm() {
                 </div>
               </div>
 
+              {/* Mejora 3: configuración de transferencias */}
+              <div className="bg-zinc-800/40 border border-zinc-700 rounded-lg px-4 py-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.receives_transfers}
+                    onChange={(e) => setEditForm((f) => f ? { ...f, receives_transfers: e.target.checked } : f)}
+                    className="mt-0.5 w-4 h-4 accent-amber-500"
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold text-white">Recibe transferencias en su cuenta</span>
+                    <span className="block text-xs text-zinc-400 mt-0.5">
+                      {editForm.receives_transfers
+                        ? 'Las transferencias las cobra el barbero directamente (ya cobrado).'
+                        : 'Las transferencias van a la cuenta de Valhalla; se le pagan en la liquidación.'}
+                    </span>
+                  </span>
+                </label>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
                   Modelo de compensación
@@ -932,6 +955,7 @@ function BarberRow({
         <p className="text-white font-semibold text-sm truncate">{barber.full_name}</p>
         <p className="text-zinc-500 text-xs mt-0.5">
           {COMP_LABELS[barber.compensation_type]} · {rateLabel(barber)}
+          {!barber.receives_transfers && <span className="ml-2 text-indigo-400">· Transf → Valhalla</span>}
           {!barber.is_active && <span className="ml-2 text-zinc-600">· Inactivo</span>}
         </p>
       </div>
