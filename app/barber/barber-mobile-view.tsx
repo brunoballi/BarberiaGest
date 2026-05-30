@@ -773,12 +773,13 @@ export default function BarberMobileView() {
             <div className="amount-input-wrapper">
               <span className="amount-prefix">$</span>
               <input
-                type="number"
-                inputMode="numeric"
-                placeholder={selectedServiceData?.base_price ? String(selectedServiceData.base_price) : '0'}
-                value={customAmount}
-                onChange={(e) => setCustomAmount(e.target.value)}
+                type="text"
+                readOnly
+                tabIndex={-1}
+                aria-readonly="true"
+                value={Math.round(effectiveAmount).toLocaleString('es-AR')}
                 className="amount-input"
+                style={{ opacity: 0.6, cursor: 'not-allowed' }}
               />
             </div>
             {effectiveAmount > 0 && (
@@ -830,39 +831,20 @@ export default function BarberMobileView() {
             </section>
           )}
 
-          {/* ── Monto cobrado y Descuento (solo lectura — el descuento se aplica vía Beneficio) ── */}
+          {/* ── Descuento (solo lectura — se aplica vía Beneficio) ── */}
           <section>
-            <div className="discount-grid">
-              <div>
-                <label className="section-label">Monto cobrado</label>
-                <div className="amount-input-wrapper">
-                  <span className="amount-prefix">$</span>
-                  <input
-                    type="text"
-                    readOnly
-                    tabIndex={-1}
-                    aria-readonly="true"
-                    value={Math.round(effectiveAmount).toLocaleString('es-AR')}
-                    className="amount-input"
-                    style={{ opacity: 0.6, cursor: 'not-allowed' }}
-                  />
-                </div>
-              </div>
-              <div>
-                <label className="section-label">Descuento</label>
-                <div className="amount-input-wrapper">
-                  <span className="amount-prefix">$</span>
-                  <input
-                    type="text"
-                    readOnly
-                    tabIndex={-1}
-                    aria-readonly="true"
-                    value={Math.round(discountNum).toLocaleString('es-AR')}
-                    className="amount-input"
-                    style={{ opacity: 0.6, cursor: 'not-allowed' }}
-                  />
-                </div>
-              </div>
+            <label className="section-label">Descuento</label>
+            <div className="amount-input-wrapper">
+              <span className="amount-prefix">$</span>
+              <input
+                type="text"
+                readOnly
+                tabIndex={-1}
+                aria-readonly="true"
+                value={Math.round(discountNum).toLocaleString('es-AR')}
+                className="amount-input"
+                style={{ opacity: 0.6, cursor: 'not-allowed' }}
+              />
             </div>
             {discountNum > 0 && resolvedAmount > 0 && (
               <p className="discount-hint">
