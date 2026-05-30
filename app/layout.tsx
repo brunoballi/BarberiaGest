@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import Providers from "./providers";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,7 +29,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
-        <div className="flowi-root">{children}</div>
+        <div className="flowi-root"><Providers>{children}</Providers></div>
         <footer className="flowi-footer">
           <span className="flowi-footer__logo">
             <svg viewBox="0 0 16 16" fill="none" aria-hidden="true">

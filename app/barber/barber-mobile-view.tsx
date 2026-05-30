@@ -9,7 +9,6 @@ import {
   type SettlementWithBarber,
   type PaymentMethod,
   type RegisterCutPayload,
-  type Benefit,
   PAYMENT_METHOD_LABELS,
   SETTLEMENT_STATUS_LABELS,
 } from '@/lib/supabase/database.types'
@@ -20,8 +19,6 @@ import {
   getBarberTransactionsByDateRange,
   getBarberSettlements,
   getSettlementStatusForWeek,
-  getServicesByBranch,
-  getActiveBenefitsByBranch,
   computeBenefitDiscount,
   registerCut,
   updateTransaction,
@@ -29,6 +26,7 @@ import {
   todayLocal,
   supabase,
 } from '@/lib/supabase/supabase.client'
+import { useServices, useActiveBenefits } from '@/lib/hooks/use-catalogs'
 import './barber.css'
 
 // ─── Utilidades ───────────────────────────────────────────────────────────
@@ -124,7 +122,10 @@ export default function BarberMobileView() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const [services, setServices] = useState<ServiceOption[]>(DEFAULT_SERVICES)
+  // Servicios desde React Query (cache 10 min, compartido). Fallback a defaults.
+  const servicesQuery = useServices(profile?.branch_id)
+  const activeServices = (servicesQuery.data ?? []).filter((s) => s.is_active)
+  const services: ServiceOption[] = activeServices.length > 0 ? activeServices : DEFAULT_SERVICES
   const [settlements, setSettlements] = useState<SettlementWithBarber[]>([])
   const [settlementsLoaded, setSettlementsLoaded] = useState(false)
   const [settlementsLoading, setSettlementsLoading] = useState(false)
@@ -138,7 +139,8 @@ export default function BarberMobileView() {
   const [clientName, setClientName] = useState<string>('')
   const [discountAmount, setDiscountAmount] = useState<string>('')
   const [discountReason, setDiscountReason] = useState<string>('')
-  const [benefits, setBenefits] = useState<Benefit[]>([])
+  const benefitsQuery = useActiveBenefits(profile?.branch_id)
+  const benefits = benefitsQuery.data ?? []
   const [benefitId, setBenefitId] = useState<string>('')
   const [observations, setObservations] = useState<string>('')
   const [splitPayment, setSplitPayment] = useState(false)
@@ -184,17 +186,8 @@ export default function BarberMobileView() {
       if (!p) { setError('No autenticado'); return }
       setProfile(p)
 
-      // Servicios, semana y beneficios en paralelo — ahorra round-trips
-      const [svcs, w, bens] = await Promise.all([
-        getServicesByBranch(p.branch_id),
-        getOpenWeek(p.branch_id),
-        getActiveBenefitsByBranch(p.branch_id),
-      ])
-
-      const active = svcs.filter((s) => s.is_active)
-      if (active.length > 0) setServices(active)
-      setBenefits(bens)
-
+      // Servicios y beneficios ahora vienen de React Query (useServices/useActiveBenefits).
+      const w = await getOpenWeek(p.branch_id)
       if (!w) { setError('No hay semana abierta. Contactá al admin.'); return }
       setWeek(w)
 
