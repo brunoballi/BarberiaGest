@@ -279,6 +279,26 @@ export async function createWeek(payload: WeekInsert): Promise<Week> {
   return data
 }
 
+/**
+ * Mejora 2: habilita/deshabilita días dom-lun puntuales para que los barberos
+ * puedan cargar cortes esa fecha. `dates` es la lista completa de fechas (YYYY-MM-DD)
+ * habilitadas para la semana. Devuelve la semana actualizada.
+ */
+export async function updateBarberExtraDays(
+  weekId: string,
+  dates: string[]
+): Promise<Week> {
+  const { data, error } = await supabase
+    .from('weeks')
+    .update({ barber_extra_days: dates } satisfies WeekUpdate)
+    .eq('id', weekId)
+    .select('*')
+    .single()
+
+  if (error) throw new Error(`[updateBarberExtraDays] ${error.message}`)
+  return data as Week
+}
+
 export async function closeWeek(
   weekId: string,
   closedBy: string

@@ -234,9 +234,9 @@ export default function BarberMobileView() {
   const todayBarber = todayTxs.reduce((s, t) => s + t.barber_share, 0)
 
   // ── Días de la semana según el rango real start_date → end_date ───────────
-  // Mejora 2: las semanas nuevas son martes-sábado (5 días); las viejas pueden
-  // ser lunes-domingo (7 días). Derivamos la cantidad de días del rango y
-  // etiquetamos por el día real de la semana, así funciona para ambos casos.
+  // Las semanas son lunes-domingo (7 días). Derivamos la cantidad de días del
+  // rango y etiquetamos por el día real de la semana. Mejora 2: los barberos
+  // solo cargan mar-sáb; dom/lun se grisan salvo que el admin los habilite.
   const DAY_LABELS_BY_DOW = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
   const weekDays: { date: string; label: string; dayNum: number; isToday: boolean; dow: number }[] = (() => {
     if (!week) return []

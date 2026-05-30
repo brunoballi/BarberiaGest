@@ -22,6 +22,7 @@ import {
   setPresentismo,
   confirmSettlement,
   deleteSettlement,
+  updateBarberExtraDays,
 } from '@/lib/supabase/supabase.client'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -38,6 +39,23 @@ function formatDate(d: string): string {
     day: 'numeric',
     month: 'short',
   })
+}
+
+// Mejora 2: días domingo(0)/lunes(1) dentro del rango de una semana.
+// Son los días que el admin puede habilitar para que los barberos carguen cortes.
+function blockedDaysInRange(startDate: string, endDate: string): { date: string; label: string }[] {
+  const [sy, sm, sd] = startDate.split('-').map(Number)
+  const [ey, em, ed] = endDate.split('-').map(Number)
+  const end = new Date(ey, em - 1, ed)
+  const out: { date: string; label: string }[] = []
+  for (const dt = new Date(sy, sm - 1, sd); dt <= end; dt.setDate(dt.getDate() + 1)) {
+    const dow = dt.getDay()
+    if (dow === 0 || dow === 1) {
+      const ds = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
+      out.push({ date: ds, label: dow === 0 ? 'Domingo' : 'Lunes' })
+    }
+  }
+  return out
 }
 
 const STATUS_COLORS: Record<Week['status'], string> = {
@@ -73,6 +91,7 @@ export default function WeeksView() {
   const [markingPaid, setMarkingPaid]   = useState(false)
   const [confirmClose, setConfirmClose] = useState(false)
   const [deletingSettlementId, setDeletingSettlementId] = useState<string | null>(null)
+  const [savingExtraDay, setSavingExtraDay] = useState<string | null>(null)
 
   const loadWeeks = useCallback(async (branchId: string) => {
     const data = await getWeeksByBranch(branchId)
@@ -107,6 +126,24 @@ export default function WeeksView() {
     setSettlements([])
     try { await loadWeeks(branchId) }
     catch (e) { setError(e instanceof Error ? e.message : 'Error') }
+  }
+
+  async function handleToggleExtraDay(week: Week, dateStr: string) {
+    const current = week.barber_extra_days ?? []
+    const next = current.includes(dateStr)
+      ? current.filter((d) => d !== dateStr)
+      : [...current, dateStr]
+    setSavingExtraDay(dateStr)
+    setActionError(null)
+    try {
+      const updated = await updateBarberExtraDays(week.id, next)
+      setWeeks((prev) => prev.map((w) => (w.id === week.id ? updated : w)))
+      setSelectedWeek((sw) => (sw && sw.id === week.id ? updated : sw))
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Error al actualizar días habilitados')
+    } finally {
+      setSavingExtraDay(null)
+    }
   }
 
   async function handleSelectWeek(week: Week) {
@@ -452,6 +489,40 @@ export default function WeeksView() {
                       )}
                     </div>
                   )}
+
+                  {/* Open week: habilitar dom/lun para barberos (Mejora 2) */}
+                  {week.status === 'open' && (() => {
+                    const blocked = blockedDaysInRange(week.start_date, week.end_date)
+                    if (blocked.length === 0) return null
+                    const enabled = new Set(week.barber_extra_days ?? [])
+                    return (
+                      <div className="space-y-2 border-t border-zinc-800 pt-4">
+                        <p className="text-zinc-300 text-sm font-semibold">Días domingo/lunes para barberos</p>
+                        <p className="text-zinc-500 text-xs">
+                          Por defecto los barberos solo cargan martes a sábado. Habilitá un día si excepcionalmente se trabajó.
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {blocked.map((b) => {
+                            const on = enabled.has(b.date)
+                            return (
+                              <button
+                                key={b.date}
+                                onClick={() => handleToggleExtraDay(week, b.date)}
+                                disabled={savingExtraDay === b.date}
+                                className={`px-3 py-2 rounded-lg text-sm border transition-colors disabled:opacity-40 ${
+                                  on
+                                    ? 'bg-amber-500/20 border-amber-500/50 text-amber-300'
+                                    : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                                }`}
+                              >
+                                {b.label} {formatDate(b.date)} · {savingExtraDay === b.date ? 'Guardando...' : on ? 'Habilitado ✓' : 'Deshabilitado'}
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )
+                  })()}
 
                   {/* Closed / Paid week: settlements */}
                   {(week.status === 'closed' || week.status === 'paid') && (

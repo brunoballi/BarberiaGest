@@ -257,7 +257,7 @@ export type SettlementUpdate = Partial<
   >
 >
 
-export type WeekUpdate = Partial<Pick<Week, 'status' | 'closed_at' | 'closed_by' | 'start_date' | 'end_date'>>
+export type WeekUpdate = Partial<Pick<Week, 'status' | 'closed_at' | 'closed_by' | 'start_date' | 'end_date' | 'barber_extra_days'>>
 
 export type AdvanceUpdate = Partial<Pick<Advance, 'status' | 'deducted_in' | 'reason'>>
 
