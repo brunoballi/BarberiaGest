@@ -95,6 +95,7 @@ export interface Week {
   status: WeekStatus
   closed_at: string | null
   closed_by: string | null
+  barber_extra_days: string[] // Mejora 2: fechas dom/lun habilitadas para barberos
   created_at: string
 }
 
@@ -206,10 +207,11 @@ export type BenefitUpdate = Partial<
 
 export type ServiceCatalogInsert = Omit<ServiceCatalog, 'id' | 'created_at'>
 
-export type WeekInsert = Omit<Week, 'id' | 'created_at' | 'closed_at' | 'closed_by' | 'month_id'> & {
+export type WeekInsert = Omit<Week, 'id' | 'created_at' | 'closed_at' | 'closed_by' | 'month_id' | 'barber_extra_days'> & {
   month_id?: string | null
   closed_at?: string | null
   closed_by?: string | null
+  barber_extra_days?: string[]
 }
 
 export type TransactionInsert = Omit<

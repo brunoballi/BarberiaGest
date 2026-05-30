@@ -238,7 +238,7 @@ export default function BarberMobileView() {
   // ser lunes-domingo (7 días). Derivamos la cantidad de días del rango y
   // etiquetamos por el día real de la semana, así funciona para ambos casos.
   const DAY_LABELS_BY_DOW = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
-  const weekDays: { date: string; label: string; dayNum: number; isToday: boolean }[] = (() => {
+  const weekDays: { date: string; label: string; dayNum: number; isToday: boolean; dow: number }[] = (() => {
     if (!week) return []
     const [sy, sm, sd] = week.start_date.split('-').map(Number)
     const [ey, em, ed] = week.end_date.split('-').map(Number)
@@ -253,9 +253,22 @@ export default function BarberMobileView() {
         label: DAY_LABELS_BY_DOW[date.getDay()],
         dayNum: date.getDate(),
         isToday: dateStr === today,
+        dow: date.getDay(),
       }
     })
   })()
+
+  // ── Mejora 2: los barberos solo cargan martes(2)–sábado(6).
+  // Domingo(0) y lunes(1) quedan bloqueados (grisados), salvo que el admin
+  // habilite ese día puntual (week.barber_extra_days). El admin no tiene este límite.
+  const BARBER_BLOCKED_DOWS = new Set([0, 1])
+  const extraEnabledDays = new Set(week?.barber_extra_days ?? [])
+  function isBarberAllowedDay(dateStr: string): boolean {
+    const [y, m, d] = dateStr.split('-').map(Number)
+    const dow = new Date(y, m - 1, d).getDay()
+    return !BARBER_BLOCKED_DOWS.has(dow) || extraEnabledDays.has(dateStr)
+  }
+  const todayAllowedForBarber = isBarberAllowedDay(today)
 
   // Asegurar selectedDay inicial = hoy (o el primer día de la semana si hoy no cae)
   useEffect(() => {
@@ -320,6 +333,7 @@ export default function BarberMobileView() {
     if (!profile || !week) return
 
     if (weekClosed) { setFormSubmitError('Tu semana está cerrada (liquidación confirmada). Contactá al admin.'); return }
+    if (!todayAllowedForBarber) { setFormSubmitError('Hoy no se cargan cortes (domingo/lunes). Pedile al admin que habilite el día.'); return }
     if (!selectedService) { setFormSubmitError('Seleccioná un servicio antes de continuar'); return }
     if (discountNum > resolvedAmount) { setFormSubmitError('El descuento no puede superar el precio del servicio'); return }
     if (resolvedAmount <= 0)          { setFormSubmitError('Ingresá un monto válido'); return }
@@ -1182,7 +1196,7 @@ export default function BarberMobileView() {
 
         <button
           onClick={goToRegister}
-          disabled={weekClosed || (!!selectedDay && selectedDay !== today)}
+          disabled={weekClosed || !todayAllowedForBarber || (!!selectedDay && selectedDay !== today)}
           className="register-btn w-full disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <div className="flex items-center justify-center gap-3">
@@ -1191,6 +1205,8 @@ export default function BarberMobileView() {
           </div>
           {weekClosed ? (
             <p className="text-xs text-amber-200/60 mt-1">Semana cerrada: tu liquidación ya fue confirmada</p>
+          ) : !todayAllowedForBarber ? (
+            <p className="text-xs text-amber-200/60 mt-1">Hoy no se cargan cortes (domingo/lunes). Si se trabaja, pedile al admin que habilite el día.</p>
           ) : !!selectedDay && selectedDay !== today && (
             <p className="text-xs text-amber-200/60 mt-1">Solo podés registrar cortes del día de hoy</p>
           )}
@@ -1242,11 +1258,14 @@ export default function BarberMobileView() {
               {weekDays.map((d) => {
                 const count = (txsByDay[d.date] ?? []).length
                 const isActive = selectedDay === d.date
+                const isBlocked = !isBarberAllowedDay(d.date) // dom/lun no habilitado
                 return (
                   <button
                     key={d.date}
                     onClick={() => setSelectedDay(d.date)}
+                    title={isBlocked ? 'Día no habilitado para cargar cortes' : undefined}
                     className={`day-block ${isActive ? 'day-block--active' : ''} ${d.isToday ? 'day-block--today' : ''}`}
+                    style={isBlocked && !isActive ? { opacity: 0.4 } : undefined}
                   >
                     <span className="day-block__label">{d.label}</span>
                     <span className="day-block__num">{d.dayNum}</span>
