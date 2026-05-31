@@ -1440,3 +1440,75 @@ export async function updateBarberProfile(
 
   if (error) throw new Error(`[updateBarberProfile] ${error.message}`)
 }
+
+// ============================================================
+// EXPENSES CRUD
+// ============================================================
+export async function createExpense(data: {
+  branchId: string
+  concept: string
+  category: string
+  amount: number
+  expenseDate: string
+  weekId?: string
+  notes?: string
+}): Promise<string> {
+  const { data: result, error } = await supabase.rpc('create_expense', {
+    p_branch_id: data.branchId,
+    p_concept: data.concept,
+    p_category: data.category,
+    p_amount: data.amount,
+    p_expense_date: data.expenseDate,
+    p_week_id: data.weekId || null,
+    p_notes: data.notes || null,
+  })
+  if (error) throw new Error(`[createExpense] ${error.message}`)
+  return result
+}
+
+export async function updateExpense(
+  expenseId: string,
+  data: {
+    concept: string
+    category: string
+    amount: number
+    expenseDate: string
+    notes?: string
+  }
+): Promise<void> {
+  const { error } = await supabase.rpc('update_expense', {
+    p_expense_id: expenseId,
+    p_concept: data.concept,
+    p_category: data.category,
+    p_amount: data.amount,
+    p_expense_date: data.expenseDate,
+    p_notes: data.notes || null,
+  })
+  if (error) throw new Error(`[updateExpense] ${error.message}`)
+}
+
+export async function deleteExpense(expenseId: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_expense', {
+    p_expense_id: expenseId,
+  })
+  if (error) throw new Error(`[deleteExpense] ${error.message}`)
+}
+
+export async function getExpensesByBranch(
+  branchId: string,
+  weekId?: string
+): Promise<Expense[]> {
+  let query = supabase
+    .from('expenses')
+    .select('*')
+    .eq('branch_id', branchId)
+
+  if (weekId) {
+    query = query.eq('week_id', weekId)
+  }
+
+  const { data, error } = await query.order('expense_date', { ascending: false })
+
+  if (error) throw new Error(`[getExpensesByBranch] ${error.message}`)
+  return data || []
+}

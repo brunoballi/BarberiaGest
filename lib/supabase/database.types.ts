@@ -279,6 +279,14 @@ export type ProfileUpdate = Partial<
   >
 >
 
+export type ExpenseUpdate = Partial<
+  Pick<Expense, 'concept' | 'category' | 'amount' | 'expense_date' | 'notes'>
+>
+
+export type ExpenseForm = Omit<Expense, 'id' | 'created_at' | 'registered_by' | 'paid_by'> & {
+  category: ExpenseCategory
+}
+
 // ============================================================
 // JOIN TYPES — Para queries con relaciones
 // ============================================================
