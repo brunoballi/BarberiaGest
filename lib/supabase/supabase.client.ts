@@ -1353,56 +1353,50 @@ export async function getReportByPeriod(
   endDate: string
 ): Promise<BranchReport[]> {
   const branchIds = branches.map((b) => b.id)
+  if (branchIds.length === 0) return []
 
-  const [{ data: txData }, { data: expData }] = await Promise.all([
-    supabase
-      .from('transactions')
-      .select('branch_id, amount, branch_share, barber_share')
-      .in('branch_id', branchIds)
-      .gte('transaction_date', startDate)
-      .lte('transaction_date', endDate),
-    supabase
-      .from('expenses')
-      .select('branch_id, amount, category')
-      .in('branch_id', branchIds)
-      .gte('expense_date', startDate)
-      .lte('expense_date', endDate),
-  ])
+  // Agregación server-side: el RPC devuelve totales por sucursal (no filas crudas).
+  const { data, error } = await supabase.rpc('report_by_period', {
+    p_branch_ids: branchIds,
+    p_start: startDate,
+    p_end: endDate,
+  })
+  if (error) throw new Error(`[getReportByPeriod] ${error.message}`)
+
+  type ReportRow = {
+    branch_id: string
+    cut_count: number
+    total_income: number
+    branch_share: number
+    barber_share: number
+    total_expenses: number
+    partner_withdrawals: number
+    expenses_by_category: Record<string, number> | null
+  }
+  const byId = new Map((data as ReportRow[] ?? []).map((r) => [r.branch_id, r]))
 
   return branches.map((branch) => {
-    const txs = (txData ?? []).filter((t) => t.branch_id === branch.id)
-    const exps = (expData ?? []).filter((e) => e.branch_id === branch.id)
-
-    // Mejora 4: los retiros de socios (category='retiro_socio') NO son un gasto operativo.
-    // Se reportan aparte y NO restan de la ganancia neta.
-    const isWithdrawal = (cat: string | null) => cat === 'retiro_socio'
-
-    const totalIncome        = txs.reduce((s, t) => s + t.amount, 0)
-    const branchShare        = txs.reduce((s, t) => s + t.branch_share, 0)
-    const barberShare        = txs.reduce((s, t) => s + t.barber_share, 0)
-    const partnerWithdrawals = exps.filter((e) => isWithdrawal(e.category)).reduce((s, e) => s + e.amount, 0)
-    const totalExpenses      = exps.filter((e) => !isWithdrawal(e.category)).reduce((s, e) => s + e.amount, 0)
-    const netProfit          = branchShare - totalExpenses
-    const profitMargin       = totalIncome > 0 ? (netProfit / totalIncome) * 100 : 0
-
+    const r = byId.get(branch.id)
+    const totalIncome   = Number(r?.total_income ?? 0)
+    const branchShare   = Number(r?.branch_share ?? 0)
+    const totalExpenses = Number(r?.total_expenses ?? 0)
+    const netProfit     = branchShare - totalExpenses
     const expensesByCategory: Record<string, number> = {}
-    exps.forEach((e) => {
-      if (isWithdrawal(e.category)) return // excluir retiros del desglose de gastos
-      expensesByCategory[e.category] = (expensesByCategory[e.category] ?? 0) + e.amount
-    })
-
+    for (const [k, v] of Object.entries(r?.expenses_by_category ?? {})) {
+      expensesByCategory[k] = Number(v)
+    }
     return {
       branchId: branch.id,
       branchName: branch.name,
-      cutCount: txs.length,
+      cutCount: Number(r?.cut_count ?? 0),
       totalIncome,
       branchShare,
-      barberShare,
+      barberShare: Number(r?.barber_share ?? 0),
       totalExpenses,
       expensesByCategory,
-      partnerWithdrawals,
+      partnerWithdrawals: Number(r?.partner_withdrawals ?? 0),
       netProfit,
-      profitMargin,
+      profitMargin: totalIncome > 0 ? (netProfit / totalIncome) * 100 : 0,
     }
   })
 }
