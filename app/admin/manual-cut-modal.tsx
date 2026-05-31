@@ -388,7 +388,14 @@ export default function ManualCutModal({
                     onChange={(e) => {
                       const id = e.target.value
                       setBenefitId(id)
-                      if (!id) { setDiscount(''); setDiscountReason('') }
+                      if (!id) { setDiscount(''); setDiscountReason(''); return }
+                      // Calcular el descuento en el acto (no esperar al efecto):
+                      const b = benefits.find((x) => x.id === id)
+                      if (b) {
+                        const d = computeBenefitDiscount(b, resolvedAmount)
+                        setDiscount(d > 0 ? String(d) : '')
+                        setDiscountReason(b.name)
+                      }
                     }}
                   >
                     <option value="">— sin beneficio —</option>
