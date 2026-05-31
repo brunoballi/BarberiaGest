@@ -21,9 +21,8 @@ import {
   EXPENSE_CATEGORIES,
   EXPENSE_CATEGORY_LABELS,
 } from '@/lib/supabase/database.types'
+import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import {
-  getBranches,
-  getMyBranches,
   getMonthsWithWeeks,
   yearHasMonths,
   MONTH_NAMES,
@@ -203,7 +202,7 @@ export default function AdminDashboard() {
       try {
         const [profile, branchList] = await Promise.all([
           getCurrentProfile(),
-          getMyBranches(),
+          getMyBranchesCached(),
         ])
         if (!profile || profile.role !== 'admin') {
           setError('Acceso denegado. Se requiere rol Admin.')

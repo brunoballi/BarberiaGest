@@ -11,10 +11,10 @@ import type {
 } from '@/lib/supabase/database.types'
 import {
   getCurrentProfile,
-  getMyBranches,
   getAllBarbersByBranch,
   updateBarberProfile,
 } from '@/lib/supabase/supabase.client'
+import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 const COMP_LABELS: Record<CompensationType, string> = {
@@ -204,7 +204,7 @@ export default function BarbersAbm() {
     try {
       setLoading(true)
       setError(null)
-      const [p, bs] = await Promise.all([getCurrentProfile(), getMyBranches()])
+      const [p, bs] = await Promise.all([getCurrentProfile(), getMyBranchesCached()])
       if (!p) { setError('No autenticado'); return }
       if (bs.length === 0) { setError('No tenés sucursales asignadas.'); return }
       setAdminProfile(p)

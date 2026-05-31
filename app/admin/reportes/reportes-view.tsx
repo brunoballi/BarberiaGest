@@ -15,7 +15,8 @@ import {
   Cell,
 } from 'recharts'
 import type { BranchReport } from '@/lib/supabase/database.types'
-import { getMyBranches, getReportByPeriod } from '@/lib/supabase/supabase.client'
+import { getReportByPeriod } from '@/lib/supabase/supabase.client'
+import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import { MONTH_NAMES } from '@/lib/supabase/supabase.client'
 import './reportes.css'
 
@@ -94,7 +95,7 @@ export default function ReportesView() {
     try {
       setLoading(true)
       setError(null)
-      const myBranches = await getMyBranches()
+      const myBranches = await getMyBranchesCached()
       if (myBranches.length === 0) { setReports([]); return }
       const data = await getReportByPeriod(myBranches, startDate, endDate)
       setReports(data)

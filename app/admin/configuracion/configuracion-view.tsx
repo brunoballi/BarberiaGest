@@ -23,9 +23,9 @@ import {
   getWeekTransactions,
   getSettlementsForWeek,
   getCurrentProfile,
-  getMyBranches,
   MONTH_NAMES,
 } from '@/lib/supabase/supabase.client'
+import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import type {
   MonthWithWeeks,
   Month,
@@ -198,7 +198,7 @@ export default function ConfiguracionView() {
 
   useEffect(() => {
     async function init() {
-      const [profile, myBranches] = await Promise.all([getCurrentProfile(), getMyBranches()])
+      const [profile, myBranches] = await Promise.all([getCurrentProfile(), getMyBranchesCached()])
       if (!profile) return
       if (myBranches.length === 0) {
         setError('No tenés sucursales asignadas.')

@@ -6,11 +6,11 @@ import { usePersistedBranch, getStoredBranch } from '@/lib/hooks/usePersistedBra
 import type { Branch, Profile, ServiceCatalog, ServiceCatalogInsert } from '@/lib/supabase/database.types'
 import {
   getCurrentProfile,
-  getMyBranches,
   getServicesByBranch,
   createService,
   updateService,
 } from '@/lib/supabase/supabase.client'
+import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 
 function formatARS(n: number): string {
   return new Intl.NumberFormat('es-AR', {
@@ -54,7 +54,7 @@ export default function ServicesView() {
   const loadInitial = useCallback(async () => {
     try {
       setLoading(true)
-      const [p, bs] = await Promise.all([getCurrentProfile(), getMyBranches()])
+      const [p, bs] = await Promise.all([getCurrentProfile(), getMyBranchesCached()])
       if (!p) { setError('No autenticado'); return }
       if (bs.length === 0) { setError('No tenés sucursales asignadas.'); return }
       setProfile(p)

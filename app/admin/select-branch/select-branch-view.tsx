@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { getCurrentProfile, getMyBranches } from '@/lib/supabase/supabase.client'
+import { getCurrentProfile } from '@/lib/supabase/supabase.client'
+import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import { setStoredBranch } from '@/lib/hooks/usePersistedBranch'
 import type { Branch } from '@/lib/supabase/database.types'
 import './select-branch.css'
@@ -22,7 +23,7 @@ export default function SelectBranchView() {
         if (profile.role !== 'admin') { router.replace('/barber'); return }
         setAdminName(profile.full_name ?? '')
 
-        const list = await getMyBranches()
+        const list = await getMyBranchesCached()
         if (list.length === 0) {
           setError('No tenés sucursales asignadas. Contactá al administrador.')
           return

@@ -1,27 +1,31 @@
 'use client'
 
-import { useState } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
 /**
- * Provider de React Query para toda la app.
- * staleTime por defecto de 60s: evita refetchs en cada montaje/navegación.
- * Los hooks de catálogos (servicios, beneficios, sucursales, barberos, meses)
- * usan staleTime más largo porque cambian poco.
+ * Singleton de QueryClient (solo browser). Lo comparten el provider y los
+ * helpers imperativos (getMyBranchesCached) para que usen el MISMO cache.
+ * Client-only por construcción: seguro para datos con scope de autenticación
+ * (no se comparte entre usuarios/requests como pasaría con un memo server-side).
  */
-export default function Providers({ children }: { children: React.ReactNode }) {
-  const [client] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            staleTime: 60_000, // 1 min
-            gcTime: 10 * 60_000, // 10 min en cache tras quedar sin uso
-            refetchOnWindowFocus: false,
-            retry: 1,
-          },
+let browserQueryClient: QueryClient | undefined
+
+export function getQueryClient(): QueryClient {
+  if (!browserQueryClient) {
+    browserQueryClient = new QueryClient({
+      defaultOptions: {
+        queries: {
+          staleTime: 60_000, // 1 min
+          gcTime: 10 * 60_000,
+          refetchOnWindowFocus: false,
+          retry: 1,
         },
-      })
-  )
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>
+      },
+    })
+  }
+  return browserQueryClient
+}
+
+export default function Providers({ children }: { children: React.ReactNode }) {
+  return <QueryClientProvider client={getQueryClient()}>{children}</QueryClientProvider>
 }

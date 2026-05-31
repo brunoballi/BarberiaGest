@@ -6,7 +6,6 @@ import { usePersistedBranch, getStoredBranch } from '@/lib/hooks/usePersistedBra
 import type { Profile, AdvanceWithBarber, AdvanceInsert } from '@/lib/supabase/database.types'
 import {
   getCurrentProfile,
-  getMyBranches,
   getBarbersByBranch,
   getPendingAdvancesByBranch,
   createAdvance,
@@ -14,6 +13,7 @@ import {
   cancelAdvance,
   todayLocal,
 } from '@/lib/supabase/supabase.client'
+import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import '../admin-dashboard.css'
 
 function formatARS(amount: number): string {
@@ -72,7 +72,7 @@ export default function AdvancesView() {
     try {
       setLoading(true)
       setError(null)
-      const [p, bs] = await Promise.all([getCurrentProfile(), getMyBranches()])
+      const [p, bs] = await Promise.all([getCurrentProfile(), getMyBranchesCached()])
       if (!p) { setError('No autenticado'); return }
       if (bs.length === 0) { setError('No tenés sucursales asignadas.'); return }
       setProfile(p)

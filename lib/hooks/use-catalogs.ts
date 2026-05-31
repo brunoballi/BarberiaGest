@@ -1,6 +1,7 @@
 'use client'
 
 import { useQuery } from '@tanstack/react-query'
+import { getQueryClient } from '@/app/providers'
 import {
   getServicesByBranch,
   getActiveBenefitsByBranch,
@@ -8,6 +9,22 @@ import {
   getMonthsWithWeeks,
   getMyBranches,
 } from '@/lib/supabase/supabase.client'
+
+// Helper imperativo: devuelve las sucursales del usuario desde el cache de
+// React Query (fetch solo si están stale). Sirve para los flujos de carga
+// imperativos del admin (que validan sucursal y redirigen) sin refactor.
+export function getMyBranchesCached() {
+  return getQueryClient().ensureQueryData({
+    queryKey: ['my-branches'],
+    queryFn: getMyBranches,
+    staleTime: 10 * 60_000,
+  })
+}
+
+// Invalidar tras crear/editar/borrar sucursales.
+export function invalidateBranches() {
+  return getQueryClient().invalidateQueries({ queryKey: ['my-branches'] })
+}
 
 // Catálogos: cambian poco → staleTime largo (10 min). Se comparten por
 // branchId entre componentes/rutas, así no se re-consultan al navegar.
