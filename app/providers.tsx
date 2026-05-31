@@ -1,6 +1,7 @@
 'use client'
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
+import VersionWatcher from './version-watcher'
 
 /**
  * Singleton de QueryClient (solo browser). Lo comparten el provider y los
@@ -27,5 +28,10 @@ export function getQueryClient(): QueryClient {
 }
 
 export default function Providers({ children }: { children: React.ReactNode }) {
-  return <QueryClientProvider client={getQueryClient()}>{children}</QueryClientProvider>
+  return (
+    <QueryClientProvider client={getQueryClient()}>
+      {children}
+      <VersionWatcher />
+    </QueryClientProvider>
+  )
 }
