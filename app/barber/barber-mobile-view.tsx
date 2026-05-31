@@ -206,6 +206,26 @@ export default function BarberMobileView() {
 
   useEffect(() => { loadData() }, [loadData])
 
+  // Realtime: si el admin agrega/edita/borra un corte del barbero, o confirma su
+  // liquidación, la vista se actualiza al instante (sin recargar).
+  useEffect(() => {
+    if (!profile || !week) return
+    const bid = profile.id
+    const wid = week.id
+    const channel = supabase
+      .channel(`barber-${bid}-week-${wid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions', filter: `barber_id=eq.${bid}` }, async () => {
+        const txs = await getBarberTransactionsForWeek(bid, wid)
+        setTransactions(txs)
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settlements', filter: `barber_id=eq.${bid}` }, async () => {
+        const st = await getSettlementStatusForWeek(wid, bid)
+        setWeekClosed(st === 'confirmed' || st === 'paid')
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [profile, week])
+
   async function goToSettlements() {
     setView('settlements')
     if (settlementsLoaded || !profile) return
