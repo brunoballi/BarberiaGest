@@ -1035,15 +1035,14 @@ export async function calculateAllSettlementsForWeek(
   weekId: string,
   barberIds: string[]
 ): Promise<void> {
-  const results = await Promise.allSettled(
-    barberIds.map((id) => calculateSettlement(weekId, id))
-  )
-
-  const failures = results.filter((r) => r.status === 'rejected')
-  if (failures.length > 0) {
-    console.error('[calculateAllSettlementsForWeek] Algunos settlements fallaron:', failures)
-    throw new Error(`${failures.length} settlement(s) no pudieron calcularse`)
-  }
+  if (barberIds.length === 0) return
+  // Un solo RPC server-side itera los barberos dentro de Postgres (1 round-trip,
+  // 1 transacción) en vez de N llamadas calculate_settlement desde el cliente.
+  const { error } = await supabase.rpc('calculate_all_settlements', {
+    p_week_id: weekId,
+    p_barber_ids: barberIds,
+  })
+  if (error) throw new Error(`[calculateAllSettlementsForWeek] ${error.message}`)
 }
 
 export async function getSettlementsForWeek(
