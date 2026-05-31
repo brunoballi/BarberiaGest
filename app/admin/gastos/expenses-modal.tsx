@@ -12,18 +12,25 @@ interface ExpensesModalProps {
 
 export default function ExpensesModal({ expense, onSave, onClose }: ExpensesModalProps) {
   const [form, setForm] = useState<ExpenseForm>(
-    expense || {
-      concept: '',
-      category: 'otros',
-      amount: 0,
-      expense_date: new Date().toISOString().split('T')[0],
-      week_id: null,
-      notes: null,
-      branch_id: '',
-      registered_by: '',
-      paid_by: null,
-      created_at: '',
-    }
+    expense
+      ? {
+          concept: expense.concept,
+          category: (expense.category ?? 'otros') as ExpenseForm['category'],
+          amount: expense.amount,
+          expense_date: expense.expense_date,
+          week_id: expense.week_id,
+          notes: expense.notes,
+          branch_id: expense.branch_id,
+        }
+      : {
+          concept: '',
+          category: 'otros',
+          amount: 0,
+          expense_date: new Date().toISOString().split('T')[0],
+          week_id: null,
+          notes: null,
+          branch_id: '',
+        }
   )
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)

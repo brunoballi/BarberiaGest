@@ -61,6 +61,10 @@ export default function GastosView() {
     const init = async () => {
       try {
         const prof = await getCurrentProfile()
+        if (!prof) {
+          setError('No se pudo cargar el perfil')
+          return
+        }
         setProfile(prof)
         setSelectedBranch(prof.branch_id)
         await loadData(prof.branch_id)
@@ -103,25 +107,18 @@ export default function GastosView() {
           )
         )
       } else {
-        const newId = await createExpense({
-          branchId: selectedBranch,
+        const created = await createExpense({
+          branch_id: selectedBranch,
+          week_id: data.week_id ?? null,
           concept: data.concept,
-          category: data.category,
+          expense_date: data.expense_date,
           amount: data.amount,
-          expenseDate: data.expense_date,
-          weekId: data.week_id || undefined,
-          notes: data.notes || undefined,
+          category: data.category,
+          notes: data.notes ?? null,
+          registered_by: profile!.id,
+          paid_by: null,
         })
-        setExpenses([
-          {
-            ...data,
-            id: newId,
-            branch_id: selectedBranch,
-            registered_by: profile!.id,
-            created_at: new Date().toISOString(),
-          },
-          ...expenses,
-        ])
+        setExpenses([created, ...expenses])
       }
       setShowModal(false)
     } catch (err) {

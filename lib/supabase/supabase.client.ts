@@ -27,6 +27,7 @@ import type {
   AdvanceWithBarber,
   Expense,
   ExpenseInsert,
+  ExpenseUpdate,
   ProfileUpdate,
   WeekUpdate,
   ServiceCatalog,
@@ -1294,23 +1295,6 @@ export async function createExpense(payload: ExpenseInsert): Promise<Expense> {
   return data
 }
 
-export async function getExpensesByBranch(
-  branchId: string,
-  from: string,
-  to: string
-): Promise<Expense[]> {
-  const { data, error } = await supabase
-    .from('expenses')
-    .select('*')
-    .eq('branch_id', branchId)
-    .gte('expense_date', from)
-    .lte('expense_date', to)
-    .order('expense_date', { ascending: false })
-
-  if (error) throw new Error(`[getExpensesByBranch] ${error.message}`)
-  return data
-}
-
 /** Gasto con el nombre del usuario que lo registró (auditoría) */
 export interface ExpenseWithUser extends Expense {
   registered_by_name: string | null
@@ -1444,45 +1428,17 @@ export async function updateBarberProfile(
 // ============================================================
 // EXPENSES CRUD
 // ============================================================
-export async function createExpense(data: {
-  branchId: string
-  concept: string
-  category: string
-  amount: number
-  expenseDate: string
-  weekId?: string
-  notes?: string
-}): Promise<string> {
-  const { data: result, error } = await supabase.rpc('create_expense', {
-    p_branch_id: data.branchId,
-    p_concept: data.concept,
-    p_category: data.category,
-    p_amount: data.amount,
-    p_expense_date: data.expenseDate,
-    p_week_id: data.weekId || null,
-    p_notes: data.notes || null,
-  })
-  if (error) throw new Error(`[createExpense] ${error.message}`)
-  return result
-}
-
 export async function updateExpense(
   expenseId: string,
-  data: {
-    concept: string
-    category: string
-    amount: number
-    expenseDate: string
-    notes?: string
-  }
+  patch: ExpenseUpdate
 ): Promise<void> {
   const { error } = await supabase.rpc('update_expense', {
     p_expense_id: expenseId,
-    p_concept: data.concept,
-    p_category: data.category,
-    p_amount: data.amount,
-    p_expense_date: data.expenseDate,
-    p_notes: data.notes || null,
+    p_concept: patch.concept ?? null,
+    p_category: patch.category ?? null,
+    p_amount: patch.amount ?? null,
+    p_expense_date: patch.expense_date ?? null,
+    p_notes: patch.notes ?? null,
   })
   if (error) throw new Error(`[updateExpense] ${error.message}`)
 }
