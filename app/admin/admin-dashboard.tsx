@@ -334,6 +334,39 @@ export default function AdminDashboard() {
     return () => { supabase.removeChannel(channel) }
   }, [tab, selectedWeek, selectedBranch])
 
+  // ─── Realtime: pestaña liquidaciones (settlements + expenses de la semana) ──
+  // Sin guard de 'open': las liquidaciones se confirman/pagan en semanas cerradas.
+  useEffect(() => {
+    if (tab !== 'liquidaciones' || !selectedWeek) return
+    const reload = async () => {
+      const [settlData, expData] = await Promise.all([
+        getSettlementsForWeek(selectedWeek.id),
+        getExpensesByWeek(selectedWeek.id),
+      ])
+      setSettlements(settlData)
+      setExpenses(expData)
+    }
+    const channel = supabase
+      .channel(`liq-week-${selectedWeek.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settlements', filter: `week_id=eq.${selectedWeek.id}` }, reload)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter: `week_id=eq.${selectedWeek.id}` }, reload)
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [tab, selectedWeek])
+
+  // ─── Realtime: pestaña gastos (expenses de la semana) ──────────────
+  useEffect(() => {
+    if (tab !== 'gastos' || !selectedWeek) return
+    const channel = supabase
+      .channel(`exp-week-${selectedWeek.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter: `week_id=eq.${selectedWeek.id}` }, async () => {
+        const data = await getExpensesByWeek(selectedWeek.id)
+        setExpenses(data)
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [tab, selectedWeek])
+
   // ─── Acciones ──────────────────────────────────────────────────────
 
   async function handleCloseWeek() {

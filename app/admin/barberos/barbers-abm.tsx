@@ -12,6 +12,7 @@ import type {
 import {
   getCurrentProfile,
   getAllBarbersByBranch,
+  supabase,
   updateBarberProfile,
 } from '@/lib/supabase/supabase.client'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
@@ -225,6 +226,16 @@ export default function BarbersAbm() {
   }, [loadBarbers, router, setSelectedBranch])
 
   useEffect(() => { loadInitial() }, [loadInitial])
+
+  // Realtime: cambios en barberos de la sucursal (otro admin edita) → recargar
+  useEffect(() => {
+    if (!selectedBranch) return
+    const channel = supabase
+      .channel(`barbers-branch-${selectedBranch}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles', filter: `branch_id=eq.${selectedBranch}` }, () => { loadBarbers(selectedBranch) })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [selectedBranch, loadBarbers])
 
   // ── Invite ──────────────────────────────────────────────────────────────
   async function handleInvite(e: React.FormEvent) {

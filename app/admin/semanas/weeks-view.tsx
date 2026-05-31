@@ -22,6 +22,7 @@ import {
   confirmSettlement,
   deleteSettlement,
   updateBarberExtraDays,
+  supabase,
 } from '@/lib/supabase/supabase.client'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 
@@ -119,6 +120,31 @@ export default function WeeksView() {
   }, [loadWeeks])
 
   useEffect(() => { loadInitial() }, [loadInitial])
+
+  // Realtime: cambios de semanas/meses de la sucursal → recargar la lista
+  useEffect(() => {
+    if (!selectedBranch) return
+    const channel = supabase
+      .channel(`weeks-branch-${selectedBranch}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'weeks', filter: `branch_id=eq.${selectedBranch}` }, () => { loadWeeks(selectedBranch) })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'months', filter: `branch_id=eq.${selectedBranch}` }, () => { loadWeeks(selectedBranch) })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [selectedBranch, loadWeeks])
+
+  // Realtime: liquidaciones de la semana seleccionada → recargar el detalle
+  useEffect(() => {
+    if (!selectedWeek) return
+    const wid = selectedWeek.id
+    const channel = supabase
+      .channel(`weeks-settl-${wid}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'settlements', filter: `week_id=eq.${wid}` }, async () => {
+        const s = await getSettlementsForWeek(wid)
+        setSettlements(s)
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [selectedWeek])
 
   async function handleBranchChange(branchId: string) {
     setSelectedBranch(branchId)
