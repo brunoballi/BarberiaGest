@@ -1198,6 +1198,55 @@ export async function deleteSettlement(
   return { weekReverted }
 }
 
+/**
+ * Anula una liquidación confirmada o pagada: la devuelve a estado 'draft'
+ * (sin eliminarla) para poder corregirla y volver a confirmar.
+ * - Limpia confirmed_at / paid_at.
+ * - Si estaba 'paid': revierte adelantos deducted → approved.
+ * - Si la semana estaba 'paid': la revierte a 'closed'.
+ */
+export async function cancelSettlement(
+  settlementId: string
+): Promise<{ weekReverted: boolean }> {
+  const { data: s, error: e1 } = await supabase
+    .from('settlements')
+    .select('barber_id, branch_id, week_id, status')
+    .eq('id', settlementId)
+    .single()
+  if (e1 || !s) throw new Error(`[cancelSettlement] ${e1?.message ?? 'no encontrado'}`)
+
+  const { error: e2 } = await supabase
+    .from('settlements')
+    .update({ status: 'draft', confirmed_at: null, paid_at: null } satisfies SettlementUpdate)
+    .eq('id', settlementId)
+  if (e2) throw new Error(`[cancelSettlement] ${e2.message}`)
+
+  // Si estaba pagado: revertir adelantos deducted → approved
+  if (s.status === 'paid') {
+    const { error: advErr } = await supabase
+      .from('advances')
+      .update({ status: 'approved' } satisfies AdvanceUpdate)
+      .eq('barber_id', s.barber_id)
+      .eq('branch_id', s.branch_id)
+      .eq('status', 'deducted')
+    if (advErr) console.error('[cancelSettlement/advances]', advErr.message)
+  }
+
+  // Si la semana era "paid", revertirla a "closed"
+  let weekReverted = false
+  const { data: week } = await supabase
+    .from('weeks')
+    .select('status')
+    .eq('id', s.week_id)
+    .single()
+  if (week?.status === 'paid') {
+    await supabase.from('weeks').update({ status: 'closed' }).eq('id', s.week_id)
+    weekReverted = true
+  }
+
+  return { weekReverted }
+}
+
 // ============================================================
 // ADVANCES
 // ============================================================

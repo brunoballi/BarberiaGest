@@ -13,6 +13,8 @@ import {
   type AdvanceWithBarber,
   type Advance,
   type ExpenseInsert,
+  type ExpenseUpdate,
+  type ExpenseCategory,
   type ServiceCatalog,
   type PaymentMethod,
   PAYMENT_METHOD_LABELS,
@@ -38,7 +40,10 @@ import {
   confirmSettlement,
   markSettlementPaid,
   deleteSettlement,
+  cancelSettlement,
   createExpense,
+  updateExpense,
+  deleteExpense,
   overrideTransactionSplit,
   fullEditTransaction,
   getServicesByBranch,
@@ -104,6 +109,8 @@ export default function AdminDashboard() {
 
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [showExpenseForm, setShowExpenseForm] = useState(false)
+  const [editExpense, setEditExpense] = useState<ExpenseWithUser | null>(null)
+  const [confirmDeleteExpId, setConfirmDeleteExpId] = useState<string | null>(null)
   const [overrideTx, setOverrideTx] = useState<TransactionWithRelations | null>(null)
   const [editTx, setEditTx] = useState<TransactionWithRelations | null>(null)
 
@@ -190,6 +197,7 @@ export default function AdminDashboard() {
   const [settlFilterAPagar, setSettlFilterAPagar] = useState('')
   const [settlFilterEstado, setSettlFilterEstado] = useState('')
   const [confirmDeleteSettlId, setConfirmDeleteSettlId] = useState<string | null>(null)
+  const [confirmCancelSettlId, setConfirmCancelSettlId] = useState<string | null>(null)
 
   // Filtros tab gastos
   const [expFilterDateFrom, setExpFilterDateFrom] = useState('')
@@ -465,6 +473,38 @@ export default function AdminDashboard() {
     }
   }
 
+  async function handleCancelSettlement(settlementId: string) {
+    setConfirmCancelSettlId(null)
+    try {
+      setActionLoading(`cancel-${settlementId}`)
+      const { weekReverted } = await cancelSettlement(settlementId)
+      if (weekReverted && selectedWeek) {
+        const ms = await getMonthsWithWeeks(selectedBranch)
+        setMonths(ms)
+        const updatedWeeks = ms[selectedMonthIdx]?.weeks ?? []
+        setSelectedWeek(updatedWeeks.find((w) => w.id === selectedWeek.id) ?? null)
+      }
+      await loadTabData()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al anular liquidación')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleDeleteExpense(expenseId: string) {
+    setConfirmDeleteExpId(null)
+    try {
+      setActionLoading(`exp-del-${expenseId}`)
+      await deleteExpense(expenseId)
+      await loadTabData()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al eliminar gasto')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
   async function handleLogout() {
     await supabase.auth.signOut()
     window.location.href = '/login'
@@ -641,6 +681,21 @@ export default function AdminDashboard() {
           </div>
         </header>
 
+        {/* ── TABS (dentro del sticky para que no se oculten al scrollear) ── */}
+        <div className="admin-tabs">
+          {((['live', 'liquidaciones', 'transacciones', 'gastos'] as Tab[])
+            .filter((t) => t !== 'live' || selectedWeek?.status === 'open')
+          ).map((t) => (
+            <button
+              key={t}
+              onClick={() => setTab(t)}
+              className={`admin-tab ${tab === t ? 'admin-tab--active' : ''}`}
+            >
+              {TAB_LABELS[t]}
+            </button>
+          ))}
+        </div>
+
       </div>
 
       {/* ── Banner: alerta de año próximo no cargado ── */}
@@ -661,21 +716,6 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
-
-      {/* ── TABS ── */}
-      <div className="admin-tabs">
-        {((['live', 'liquidaciones', 'transacciones', 'gastos'] as Tab[])
-          .filter((t) => t !== 'live' || selectedWeek?.status === 'open')
-        ).map((t) => (
-          <button
-            key={t}
-            onClick={() => setTab(t)}
-            className={`admin-tab ${tab === t ? 'admin-tab--active' : ''}`}
-          >
-            {TAB_LABELS[t]}
-          </button>
-        ))}
-      </div>
 
       {/* ── CONTENT ── */}
       <main className="admin-content">
@@ -884,6 +924,35 @@ export default function AdminDashboard() {
                             )}
                             {s.status === 'paid' && (
                               <span className="action-done">✓ Pagado</span>
+                            )}
+                            {(s.status === 'confirmed' || s.status === 'paid') && (
+                              confirmCancelSettlId === s.id ? (
+                                <span className="flex items-center gap-1 text-xs">
+                                  <span className="td-muted">¿Anular?</span>
+                                  <button
+                                    onClick={() => handleCancelSettlement(s.id)}
+                                    disabled={loadingKey === `cancel-${s.id}`}
+                                    className="action-btn action-btn--warn"
+                                  >
+                                    Sí
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmCancelSettlId(null)}
+                                    className="action-btn"
+                                  >
+                                    No
+                                  </button>
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => setConfirmCancelSettlId(s.id)}
+                                  disabled={!!loadingKey}
+                                  className="action-btn action-btn--warn"
+                                  title="Devolver a borrador para corregir"
+                                >
+                                  Anular
+                                </button>
+                              )
                             )}
                             {confirmDeleteSettlId === s.id ? (
                               <span className="flex items-center gap-1 text-xs">
@@ -1195,6 +1264,7 @@ export default function AdminDashboard() {
                       <th>Monto</th>
                       <th>Notas</th>
                       <th>Registrado por</th>
+                      <th>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1203,11 +1273,52 @@ export default function AdminDashboard() {
                         <td className="td-date">{formatDate(e.expense_date)}</td>
                         <td>{e.concept}</td>
                         <td>
-                          <span className="badge badge--gray">{e.category ?? '—'}</span>
+                          <span className={`badge ${e.category === 'retiro_socio' ? 'badge--violet' : 'badge--gray'}`}>
+                            {e.category
+                              ? (EXPENSE_CATEGORY_LABELS[e.category as ExpenseCategory] ?? e.category)
+                              : '—'}
+                          </span>
                         </td>
                         <td className="td-danger">{formatARS(e.amount)}</td>
                         <td className="td-muted">{e.notes ?? '—'}</td>
                         <td className="td-muted">{e.registered_by_name ?? '—'}</td>
+                        <td>
+                          <div className="action-group">
+                            <button
+                              onClick={() => setEditExpense(e)}
+                              disabled={!!actionLoading}
+                              className="action-btn"
+                            >
+                              Editar
+                            </button>
+                            {confirmDeleteExpId === e.id ? (
+                              <span className="flex items-center gap-1 text-xs">
+                                <span className="td-muted">¿Eliminar?</span>
+                                <button
+                                  onClick={() => handleDeleteExpense(e.id)}
+                                  disabled={actionLoading === `exp-del-${e.id}`}
+                                  className="action-btn action-btn--danger"
+                                >
+                                  Sí
+                                </button>
+                                <button
+                                  onClick={() => setConfirmDeleteExpId(null)}
+                                  className="action-btn"
+                                >
+                                  No
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => setConfirmDeleteExpId(e.id)}
+                                disabled={!!actionLoading}
+                                className="action-btn action-btn--danger"
+                              >
+                                Eliminar
+                              </button>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -1221,14 +1332,16 @@ export default function AdminDashboard() {
       </main>
 
       {/* ── MODALES ── */}
-      {showExpenseForm && selectedWeek && (
+      {(showExpenseForm || editExpense) && selectedWeek && (
         <ExpenseFormModal
+          expense={editExpense}
           branchId={selectedBranch}
           weekId={selectedWeek.id}
           registeredBy={currentUserId}
-          onClose={() => setShowExpenseForm(false)}
+          onClose={() => { setShowExpenseForm(false); setEditExpense(null) }}
           onSaved={async () => {
             setShowExpenseForm(false)
+            setEditExpense(null)
             await loadTabData()
           }}
         />
@@ -1391,26 +1504,29 @@ function AdminErrorScreen({ message, onRetry }: { message: string; onRetry: () =
   )
 }
 
-// ─── Modal: Nuevo gasto ────────────────────────────────────────────────────
+// ─── Modal: Nuevo / Editar gasto ───────────────────────────────────────────
 function ExpenseFormModal({
+  expense,
   branchId,
   weekId,
   registeredBy,
   onClose,
   onSaved,
 }: {
+  expense?: ExpenseWithUser | null
   branchId: string
   weekId: string
   registeredBy: string
   onClose: () => void
   onSaved: () => void
 }) {
+  const isEdit = !!expense
   const [form, setForm] = useState({
-    concept: '',
-    expense_date: todayLocal(),
-    amount: '',
-    category: '',
-    notes: '',
+    concept: expense?.concept ?? '',
+    expense_date: expense?.expense_date ?? todayLocal(),
+    amount: expense ? String(expense.amount) : '',
+    category: expense?.category ?? '',
+    notes: expense?.notes ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -1422,18 +1538,29 @@ function ExpenseFormModal({
     }
     try {
       setSaving(true)
-      const payload: ExpenseInsert = {
-        branch_id: branchId,
-        week_id: weekId,
-        concept: form.concept,
-        expense_date: form.expense_date,
-        amount: parseFloat(form.amount),
-        category: form.category || null,
-        notes: form.notes || null,
-        registered_by: registeredBy,
-        paid_by: null,
+      if (isEdit && expense) {
+        const patch: ExpenseUpdate = {
+          concept: form.concept,
+          expense_date: form.expense_date,
+          amount: parseFloat(form.amount),
+          category: form.category || null,
+          notes: form.notes || null,
+        }
+        await updateExpense(expense.id, patch)
+      } else {
+        const payload: ExpenseInsert = {
+          branch_id: branchId,
+          week_id: weekId,
+          concept: form.concept,
+          expense_date: form.expense_date,
+          amount: parseFloat(form.amount),
+          category: form.category || null,
+          notes: form.notes || null,
+          registered_by: registeredBy,
+          paid_by: null,
+        }
+        await createExpense(payload)
       }
-      await createExpense(payload)
       onSaved()
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Error guardando')
@@ -1446,7 +1573,7 @@ function ExpenseFormModal({
     <div className="modal-overlay">
       <div className="modal-box" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h3>Registrar gasto</h3>
+          <h3>{isEdit ? 'Editar gasto' : 'Registrar gasto'}</h3>
           <button onClick={onClose} className="modal-close">✕</button>
         </div>
         <div className="modal-body">
@@ -1502,7 +1629,7 @@ function ExpenseFormModal({
         <div className="modal-footer">
           <button onClick={onClose} className="admin-btn admin-btn--ghost">Cancelar</button>
           <button onClick={handleSave} disabled={saving} className="admin-btn admin-btn--primary">
-            {saving ? 'Guardando...' : 'Guardar gasto'}
+            {saving ? 'Guardando...' : isEdit ? 'Guardar cambios' : 'Guardar gasto'}
           </button>
         </div>
       </div>
