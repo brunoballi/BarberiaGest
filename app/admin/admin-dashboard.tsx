@@ -520,12 +520,8 @@ export default function AdminDashboard() {
     transferTotal: settlements.reduce((s, x) => s + x.transfer_amount, 0),
     cardTotal: settlements.reduce((s, x) => s + x.card_amount, 0),
     expensesTotal: expenses.reduce((s, x) => s + x.amount, 0),
-    // ── Desgloses para tooltips ──
-    barberGrossTotal: settlements.reduce((s, x) => s + x.barber_gross, 0),
-    bonusPresTotal: settlements.reduce((s, x) => s + x.bonus_presentismo, 0),
-    bonusObjTotal: settlements.reduce((s, x) => s + x.bonus_objetivo, 0),
-    payableCount: settlements.filter((x) => x.net_payable > 0).length,
-    expensesCount: expenses.length,
+    // Gastos operativos (sin retiros de socios) y retiros de socios por separado
+    operationalExpenses: expenses.filter((e) => e.category !== 'retiro_socio').reduce((s, e) => s + e.amount, 0),
     partnerWithdrawals: expenses.filter((e) => e.category === 'retiro_socio').reduce((s, e) => s + e.amount, 0),
   }
 
@@ -760,53 +756,46 @@ export default function AdminDashboard() {
                 label="Facturado bruto"
                 value={formatARS(kpis.grossTotal)}
                 sub={`${kpis.totalCuts} cortes`}
-                tooltip={`Suma del monto facturado en los ${kpis.totalCuts} cortes de la semana (antes de comisiones y descuentos).`}
+                tooltip="Lo facturado en los cortes de la semana."
               />
               <KpiCard
                 label="Para la barbería"
                 value={formatARS(kpis.branchTotal)}
                 accent="positive"
-                tooltip={
-                  `Lo que le queda a la barbería de los cortes:\n` +
-                  `Facturado   ${formatARS(kpis.grossTotal)}\n` +
-                  `− Comisiones  ${formatARS(kpis.barberGrossTotal)}\n` +
-                  `− Presentismo ${formatARS(kpis.bonusPresTotal)}\n` +
-                  `− Objetivo    ${formatARS(kpis.bonusObjTotal)}\n` +
-                  `= ${formatARS(kpis.branchTotal)}`
-                }
+                tooltip="Lo que queda del facturado tras comisiones y bonos."
               />
               <KpiCard
                 label="A pagar barberos"
                 value={formatARS(kpis.totalPayable)}
                 accent="warning"
-                tooltip={`Suma del neto a pagar de ${kpis.payableCount} barbero${kpis.payableCount !== 1 ? 's' : ''} (solo los que cobran; no incluye los que quedaron debiendo).`}
+                tooltip="Neto a pagar a los barberos."
               />
               <KpiCard
                 label="Efectivo"
                 value={formatARS(kpis.cashTotal)}
                 sub="en caja"
-                tooltip="Parte cobrada en efectivo, sumada de todas las liquidaciones de la semana."
+                tooltip="Total cobrado en efectivo."
               />
               <KpiCard
                 label="Transferencias"
                 value={formatARS(kpis.transferTotal)}
-                tooltip="Parte cobrada por transferencia, sumada de todas las liquidaciones de la semana."
+                tooltip="Total cobrado por transferencia."
               />
               <KpiCard
                 label="Tarjetas"
                 value={formatARS(kpis.cardTotal)}
-                tooltip="Parte cobrada con tarjeta, sumada de todas las liquidaciones de la semana."
+                tooltip="Total cobrado con tarjeta."
               />
               <KpiCard
                 label="Gastos semana"
-                value={formatARS(kpis.expensesTotal)}
+                value={formatARS(kpis.operationalExpenses)}
                 accent="negative"
-                tooltip={
-                  `Suma de los ${kpis.expensesCount} gasto${kpis.expensesCount !== 1 ? 's' : ''} registrado${kpis.expensesCount !== 1 ? 's' : ''} en la semana.` +
-                  (kpis.partnerWithdrawals > 0
-                    ? `\nIncluye ${formatARS(kpis.partnerWithdrawals)} de retiros de socios (ganancia x socios).`
-                    : '')
-                }
+                tooltip="Gastos de la semana, sin contar retiros de socios."
+              />
+              <KpiCard
+                label="Retiros socios"
+                value={formatARS(kpis.partnerWithdrawals)}
+                tooltip="Retiros de los socios (ganancia x socios)."
               />
             </div>
           )}
