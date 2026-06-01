@@ -77,6 +77,8 @@ interface EditForm {
   objetivo_min_cuts: string
   box_rental_amount: string
   receives_transfers: boolean
+  advance_enabled: boolean
+  advance_limit: string
 }
 
 function profileToEditForm(p: Profile): EditForm {
@@ -92,6 +94,8 @@ function profileToEditForm(p: Profile): EditForm {
     objetivo_min_cuts: p.objetivo_min_cuts != null ? String(p.objetivo_min_cuts) : '',
     box_rental_amount: p.box_rental_amount != null ? String(p.box_rental_amount) : '',
     receives_transfers: p.receives_transfers,
+    advance_enabled: p.advance_enabled,
+    advance_limit: p.advance_limit != null && p.advance_limit > 0 ? String(p.advance_limit) : '',
   }
 }
 
@@ -332,6 +336,10 @@ export default function BarbersAbm() {
         objetivo_min_cuts: editForm.objetivo_min_cuts ? parseInt(editForm.objetivo_min_cuts, 10) : null,
         box_rental_amount: editForm.box_rental_amount ? parseFloat(editForm.box_rental_amount) : null,
         receives_transfers: editForm.receives_transfers,
+        advance_enabled: editForm.advance_enabled,
+        advance_limit: editForm.advance_enabled && editForm.advance_limit
+          ? parseFloat(editForm.advance_limit)
+          : 0,
       }
 
       await updateBarberProfile(editingBarber.id, updates)
@@ -700,6 +708,46 @@ export default function BarbersAbm() {
                     </span>
                   </span>
                 </label>
+              </div>
+
+              {/* Adelantos: habilitación + tope por solicitud */}
+              <div className="bg-zinc-800/40 border border-zinc-700 rounded-lg px-4 py-3 space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={editForm.advance_enabled}
+                    onChange={(e) => setEditForm((f) => f ? { ...f, advance_enabled: e.target.checked } : f)}
+                    className="mt-0.5 w-4 h-4 accent-amber-500"
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold text-white">Habilitar adelantos</span>
+                    <span className="block text-xs text-zinc-400 mt-0.5">
+                      {editForm.advance_enabled
+                        ? 'El barbero verá el botón "Pedir adelanto" en su vista.'
+                        : 'El botón "Pedir adelanto" queda oculto para el barbero.'}
+                    </span>
+                  </span>
+                </label>
+
+                {editForm.advance_enabled && (
+                  <div>
+                    <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
+                      Límite por adelanto ($)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="1000"
+                      placeholder="0 = sin tope"
+                      value={editForm.advance_limit}
+                      onChange={(e) => patchEditForm('advance_limit', e.target.value)}
+                      className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+                    />
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Monto máximo que puede solicitar por adelanto. Dejalo vacío o en 0 para no imponer tope.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div>

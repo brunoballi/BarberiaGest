@@ -48,6 +48,9 @@ export interface Profile {
   birth_date: string | null
   // Mejora 3: si recibe transferencias en su cuenta (true) o van a Valhalla (false)
   receives_transfers: boolean
+  // Adelantos: si está habilitado para pedir adelantos y su tope por solicitud (0 = sin tope)
+  advance_enabled: boolean
+  advance_limit: number
 }
 
 export interface Benefit {
@@ -193,8 +196,10 @@ export interface Expense {
 // ============================================================
 export type BranchInsert = Omit<Branch, 'id' | 'created_at'>
 
-export type ProfileInsert = Omit<Profile, 'created_at' | 'receives_transfers'> & {
+export type ProfileInsert = Omit<Profile, 'created_at' | 'receives_transfers' | 'advance_enabled' | 'advance_limit'> & {
   receives_transfers?: boolean
+  advance_enabled?: boolean
+  advance_limit?: number
 }
 
 export type BenefitInsert = Omit<Benefit, 'id' | 'created_at' | 'is_active'> & {
@@ -276,6 +281,8 @@ export type ProfileUpdate = Partial<
     | 'dni'
     | 'birth_date'
     | 'receives_transfers'
+    | 'advance_enabled'
+    | 'advance_limit'
   >
 >
 

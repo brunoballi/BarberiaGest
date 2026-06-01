@@ -440,8 +440,13 @@ export default function BarberMobileView() {
 
   async function handleRequestAdvance() {
     if (!profile) return
+    if (!profile.advance_enabled) { setAdvanceError('No tenés adelantos habilitados. Contactá al admin.'); return }
     const amount = parseFloat(advanceAmount)
     if (!amount || amount <= 0) { setAdvanceError('Ingresá un monto válido'); return }
+    if (profile.advance_limit > 0 && amount > profile.advance_limit) {
+      setAdvanceError(`El máximo que podés solicitar es ${formatARS(profile.advance_limit)}`)
+      return
+    }
     setAdvanceSubmitting(true)
     setAdvanceError(null)
     try {
@@ -600,6 +605,9 @@ export default function BarberMobileView() {
                   autoFocus
                 />
               </div>
+              {profile?.advance_limit != null && profile.advance_limit > 0 && (
+                <p className="text-xs text-zinc-500 mt-1.5">Máximo permitido: {formatARS(profile.advance_limit)}</p>
+              )}
             </div>
 
             <div>
@@ -1228,16 +1236,18 @@ export default function BarberMobileView() {
             <span className="text-zinc-600 text-lg">›</span>
           </button>
 
-          <button
-            onClick={() => { setShowAdvanceModal(true); setAdvanceDone(false) }}
-            className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4 flex items-center justify-between text-left hover:border-violet-700 transition-colors"
-          >
-            <div>
-              <p className="text-violet-400 font-semibold text-sm">Pedir adelanto</p>
-              <p className="text-zinc-500 text-xs mt-0.5">Solicitud al admin</p>
-            </div>
-            <IconAdvance />
-          </button>
+          {profile?.advance_enabled && (
+            <button
+              onClick={() => { setShowAdvanceModal(true); setAdvanceDone(false) }}
+              className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4 flex items-center justify-between text-left hover:border-violet-700 transition-colors"
+            >
+              <div>
+                <p className="text-violet-400 font-semibold text-sm">Pedir adelanto</p>
+                <p className="text-zinc-500 text-xs mt-0.5">Solicitud al admin</p>
+              </div>
+              <IconAdvance />
+            </button>
+          )}
         </div>
 
         <section>
