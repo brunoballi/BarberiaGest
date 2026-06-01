@@ -520,6 +520,7 @@ export default function AdminDashboard() {
     transferTotal: settlements.reduce((s, x) => s + x.transfer_amount, 0),
     cardTotal: settlements.reduce((s, x) => s + x.card_amount, 0),
     expensesTotal: expenses.reduce((s, x) => s + x.amount, 0),
+    barberCount: new Set(settlements.map((s) => s.barber_id)).size,
     // Gastos operativos (sin retiros de socios) y retiros de socios por separado
     operationalExpenses: expenses.filter((e) => e.category !== 'retiro_socio').reduce((s, e) => s + e.amount, 0),
     partnerWithdrawals: expenses.filter((e) => e.category === 'retiro_socio').reduce((s, e) => s + e.amount, 0),
@@ -782,9 +783,9 @@ export default function AdminDashboard() {
                 tooltip="Total cobrado por transferencia."
               />
               <KpiCard
-                label="Tarjetas"
-                value={formatARS(kpis.cardTotal)}
-                tooltip="Total cobrado con tarjeta."
+                label="Barberos"
+                value={String(kpis.barberCount)}
+                tooltip="Cantidad de barberos con liquidación esta semana."
               />
               <KpiCard
                 label="Gastos semana"
