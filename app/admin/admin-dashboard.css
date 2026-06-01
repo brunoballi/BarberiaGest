@@ -483,7 +483,7 @@
   gap: 0;
   background: #1a1a1a;
   border-bottom: 1px solid #2d2d2d;
-  overflow-x: auto;
+  overflow: visible;
 }
 
 .kpi-card {
@@ -491,6 +491,51 @@
   min-width: 130px;
   border-right: 1px solid #2d2d2d;
   flex-shrink: 0;
+}
+
+/* ── KPI con tooltip (burbuja con el cálculo) ── */
+.kpi-card--tip { position: relative; cursor: help; }
+.kpi-info {
+  margin-left: 0.3rem;
+  font-size: 0.625rem;
+  color: #52525b;
+  vertical-align: middle;
+}
+.kpi-card--tip:hover .kpi-info { color: #a1a1aa; }
+.kpi-tooltip {
+  position: absolute;
+  top: calc(100% - 2px);
+  left: 0.75rem;
+  z-index: 60;
+  width: max-content;
+  max-width: 300px;
+  background: #232323;
+  border: 1px solid #3a3a3a;
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  font-weight: 400;
+  color: #e4e4e7;
+  white-space: pre-line;
+  text-transform: none;
+  letter-spacing: normal;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.55);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-4px);
+  transition: opacity 0.15s ease, transform 0.15s ease, visibility 0.15s;
+  pointer-events: none;
+}
+.kpi-card--tip:hover .kpi-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+/* Las últimas cards abren la burbuja hacia la izquierda para no salirse de pantalla */
+.kpi-card--tip:nth-last-child(-n+2) .kpi-tooltip {
+  left: auto;
+  right: 0.75rem;
 }
 
 .kpi-label {
@@ -831,6 +876,11 @@
 @media (max-width: 767px) {
   .admin-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; flex-wrap: nowrap; }
   .admin-tab  { white-space: nowrap; padding: 0.5rem 0.75rem; font-size: 0.8rem; }
+}
+
+/* ── KPI strip: scroll horizontal en mobile (en desktop overflow visible para que la burbuja no se recorte) ── */
+@media (max-width: 767px) {
+  .kpi-strip { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
 
 /* ── Liquidaciones: cards apiladas en mobile ─────────────────── */

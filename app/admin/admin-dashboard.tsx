@@ -520,6 +520,13 @@ export default function AdminDashboard() {
     transferTotal: settlements.reduce((s, x) => s + x.transfer_amount, 0),
     cardTotal: settlements.reduce((s, x) => s + x.card_amount, 0),
     expensesTotal: expenses.reduce((s, x) => s + x.amount, 0),
+    // ── Desgloses para tooltips ──
+    barberGrossTotal: settlements.reduce((s, x) => s + x.barber_gross, 0),
+    bonusPresTotal: settlements.reduce((s, x) => s + x.bonus_presentismo, 0),
+    bonusObjTotal: settlements.reduce((s, x) => s + x.bonus_objetivo, 0),
+    payableCount: settlements.filter((x) => x.net_payable > 0).length,
+    expensesCount: expenses.length,
+    partnerWithdrawals: expenses.filter((e) => e.category === 'retiro_socio').reduce((s, e) => s + e.amount, 0),
   }
 
   // ─── RENDER ────────────────────────────────────────────────────────
@@ -749,13 +756,58 @@ export default function AdminDashboard() {
           <div>
           {selectedWeek && (
             <div className="kpi-strip">
-              <KpiCard label="Facturado bruto" value={formatARS(kpis.grossTotal)} sub={`${kpis.totalCuts} cortes`} />
-              <KpiCard label="Para la barbería" value={formatARS(kpis.branchTotal)} accent="positive" />
-              <KpiCard label="A pagar barberos" value={formatARS(kpis.totalPayable)} accent="warning" />
-              <KpiCard label="Efectivo" value={formatARS(kpis.cashTotal)} sub="en caja" />
-              <KpiCard label="Transferencias" value={formatARS(kpis.transferTotal)} />
-              <KpiCard label="Tarjetas" value={formatARS(kpis.cardTotal)} />
-              <KpiCard label="Gastos semana" value={formatARS(kpis.expensesTotal)} accent="negative" />
+              <KpiCard
+                label="Facturado bruto"
+                value={formatARS(kpis.grossTotal)}
+                sub={`${kpis.totalCuts} cortes`}
+                tooltip={`Suma del monto facturado en los ${kpis.totalCuts} cortes de la semana (antes de comisiones y descuentos).`}
+              />
+              <KpiCard
+                label="Para la barbería"
+                value={formatARS(kpis.branchTotal)}
+                accent="positive"
+                tooltip={
+                  `Lo que le queda a la barbería de los cortes:\n` +
+                  `Facturado   ${formatARS(kpis.grossTotal)}\n` +
+                  `− Comisiones  ${formatARS(kpis.barberGrossTotal)}\n` +
+                  `− Presentismo ${formatARS(kpis.bonusPresTotal)}\n` +
+                  `− Objetivo    ${formatARS(kpis.bonusObjTotal)}\n` +
+                  `= ${formatARS(kpis.branchTotal)}`
+                }
+              />
+              <KpiCard
+                label="A pagar barberos"
+                value={formatARS(kpis.totalPayable)}
+                accent="warning"
+                tooltip={`Suma del neto a pagar de ${kpis.payableCount} barbero${kpis.payableCount !== 1 ? 's' : ''} (solo los que cobran; no incluye los que quedaron debiendo).`}
+              />
+              <KpiCard
+                label="Efectivo"
+                value={formatARS(kpis.cashTotal)}
+                sub="en caja"
+                tooltip="Parte cobrada en efectivo, sumada de todas las liquidaciones de la semana."
+              />
+              <KpiCard
+                label="Transferencias"
+                value={formatARS(kpis.transferTotal)}
+                tooltip="Parte cobrada por transferencia, sumada de todas las liquidaciones de la semana."
+              />
+              <KpiCard
+                label="Tarjetas"
+                value={formatARS(kpis.cardTotal)}
+                tooltip="Parte cobrada con tarjeta, sumada de todas las liquidaciones de la semana."
+              />
+              <KpiCard
+                label="Gastos semana"
+                value={formatARS(kpis.expensesTotal)}
+                accent="negative"
+                tooltip={
+                  `Suma de los ${kpis.expensesCount} gasto${kpis.expensesCount !== 1 ? 's' : ''} registrado${kpis.expensesCount !== 1 ? 's' : ''} en la semana.` +
+                  (kpis.partnerWithdrawals > 0
+                    ? `\nIncluye ${formatARS(kpis.partnerWithdrawals)} de retiros de socios (ganancia x socios).`
+                    : '')
+                }
+              />
             </div>
           )}
           {settlements.length > 0 && (
@@ -1456,11 +1508,13 @@ function KpiCard({
   value,
   sub,
   accent,
+  tooltip,
 }: {
   label: string
   value: string
   sub?: string
   accent?: 'positive' | 'negative' | 'warning'
+  tooltip?: string
 }) {
   const colorMap = {
     positive: '#34d399',
@@ -1469,10 +1523,14 @@ function KpiCard({
   }
   const color = accent ? colorMap[accent] : 'inherit'
   return (
-    <div className="kpi-card">
-      <p className="kpi-label">{label}</p>
+    <div className={`kpi-card${tooltip ? ' kpi-card--tip' : ''}`}>
+      <p className="kpi-label">
+        {label}
+        {tooltip && <span className="kpi-info" aria-hidden="true">ⓘ</span>}
+      </p>
       <p className="kpi-value" style={{ color }}>{value}</p>
       {sub && <p className="kpi-sub">{sub}</p>}
+      {tooltip && <span className="kpi-tooltip" role="tooltip">{tooltip}</span>}
     </div>
   )
 }
