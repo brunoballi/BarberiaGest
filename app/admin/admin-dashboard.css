@@ -597,9 +597,12 @@
 }
 
 /* ─── Content / Tables ──────────────────────────────────────── */
+/* overflow visible (no auto): un ancestro con overflow:auto confinaría el
+   position:sticky del strip de KPIs. El scroll vertical lo maneja el body;
+   las tablas anchas se contienen con overflow-x en .admin-table-wrap. */
 .admin-content {
   flex: 1;
-  overflow: auto;
+  overflow: visible;
 }
 
 .admin-table-wrap {
