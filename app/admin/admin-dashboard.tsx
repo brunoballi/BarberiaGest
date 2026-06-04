@@ -37,6 +37,8 @@ import {
   closeWeek,
   calculateAllSettlementsForWeek,
   setPresentismo,
+  setObjetivo,
+  deleteTransaction,
   confirmSettlement,
   markSettlementPaid,
   deleteSettlement,
@@ -113,6 +115,7 @@ export default function AdminDashboard() {
   const [confirmDeleteExpId, setConfirmDeleteExpId] = useState<string | null>(null)
   const [overrideTx, setOverrideTx] = useState<TransactionWithRelations | null>(null)
   const [editTx, setEditTx] = useState<TransactionWithRelations | null>(null)
+  const [confirmDeleteTxId, setConfirmDeleteTxId] = useState<string | null>(null)
 
   // Live view
   const [liveTransactions, setLiveTransactions] = useState<TransactionWithRelations[]>([])
@@ -425,6 +428,36 @@ export default function AdminDashboard() {
       await loadTabData()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error actualizando presentismo')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleObjetivo(
+    settlementId: string,
+    weekId: string,
+    barberId: string,
+    current: boolean
+  ) {
+    try {
+      setActionLoading(`objetivo-${settlementId}`)
+      await setObjetivo(settlementId, weekId, barberId, !current)
+      await loadTabData()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error actualizando objetivo')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleDeleteTransaction(txId: string) {
+    setConfirmDeleteTxId(null)
+    try {
+      setActionLoading(`tx-del-${txId}`)
+      await deleteTransaction(txId)
+      await loadTabData()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al eliminar la transacción')
     } finally {
       setActionLoading(null)
     }
@@ -895,22 +928,38 @@ export default function AdminDashboard() {
                         <td>{formatARS(s.barber_gross)}</td>
                         <td>
                           {isSalary ? (
-                            <button
-                              onClick={() => handlePresentismo(s.id, s.week_id, s.barber_id, s.presentismo_met ?? false)}
-                              disabled={loadingKey === `presentismo-${s.id}`}
-                              className={`toggle-btn ${s.presentismo_met ? 'toggle-btn--on' : 'toggle-btn--off'}`}
-                            >
-                              {s.presentismo_met ? 'Sí' : 'No'} · {formatARS(s.bonus_presentismo)}
-                            </button>
+                            s.status === 'draft' ? (
+                              <button
+                                onClick={() => handlePresentismo(s.id, s.week_id, s.barber_id, s.presentismo_met ?? false)}
+                                disabled={loadingKey === `presentismo-${s.id}`}
+                                className={`toggle-btn ${s.presentismo_met ? 'toggle-btn--on' : 'toggle-btn--off'}`}
+                              >
+                                {s.presentismo_met ? 'Sí' : 'No'} · {formatARS(s.bonus_presentismo)}
+                              </button>
+                            ) : (
+                              <span className={`badge ${s.presentismo_met ? 'badge--green' : 'badge--red'}`}>
+                                {s.presentismo_met ? `Sí · ${formatARS(s.bonus_presentismo)}` : 'No'}
+                              </span>
+                            )
                           ) : (
                             <span className="td-na">—</span>
                           )}
                         </td>
                         <td>
                           {isSalary ? (
-                            <span className={`badge ${s.objetivo_met ? 'badge--green' : 'badge--red'}`}>
-                              {s.objetivo_met ? `Sí · ${formatARS(s.bonus_objetivo)}` : 'No'}
-                            </span>
+                            s.status === 'draft' ? (
+                              <button
+                                onClick={() => handleObjetivo(s.id, s.week_id, s.barber_id, s.objetivo_met ?? false)}
+                                disabled={loadingKey === `objetivo-${s.id}`}
+                                className={`toggle-btn ${s.objetivo_met ? 'toggle-btn--on' : 'toggle-btn--off'}`}
+                              >
+                                {s.objetivo_met ? 'Sí' : 'No'} · {formatARS(s.bonus_objetivo)}
+                              </button>
+                            ) : (
+                              <span className={`badge ${s.objetivo_met ? 'badge--green' : 'badge--red'}`}>
+                                {s.objetivo_met ? `Sí · ${formatARS(s.bonus_objetivo)}` : 'No'}
+                              </span>
+                            )
                           ) : (
                             <span className="td-na">—</span>
                           )}
@@ -1130,7 +1179,7 @@ export default function AdminDashboard() {
                       <td className="td-date">{formatDate(tx.transaction_date)}</td>
                       <td>{tx.barber.full_name}</td>
                       <td>{tx.service?.name ?? '—'}</td>
-                      <td className="td-muted">{tx.client_name ?? '—'}</td>
+                      <td className="td-muted">{[tx.client_name, tx.client_surname].filter(Boolean).join(' ') || '—'}</td>
                       <td>
                         <span className={`dot-badge dot-badge--${tx.payment_method}`}>
                           {PAYMENT_METHOD_LABELS[tx.payment_method]}
@@ -1150,12 +1199,40 @@ export default function AdminDashboard() {
                           : '—'}
                       </td>
                       <td>
-                        <button
-                          onClick={() => setEditTx(tx)}
-                          className="action-btn action-btn--confirm"
-                        >
-                          Editar
-                        </button>
+                        <div className="action-group">
+                          <button
+                            onClick={() => setEditTx(tx)}
+                            className="action-btn action-btn--confirm"
+                          >
+                            Editar
+                          </button>
+                          {confirmDeleteTxId === tx.id ? (
+                            <span className="flex items-center gap-1 text-xs">
+                              <span className="td-muted">¿Eliminar?</span>
+                              <button
+                                onClick={() => handleDeleteTransaction(tx.id)}
+                                disabled={actionLoading === `tx-del-${tx.id}`}
+                                className="action-btn action-btn--danger"
+                              >
+                                Sí
+                              </button>
+                              <button
+                                onClick={() => setConfirmDeleteTxId(null)}
+                                className="action-btn"
+                              >
+                                No
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmDeleteTxId(tx.id)}
+                              disabled={!!actionLoading}
+                              className="action-btn action-btn--danger"
+                            >
+                              Eliminar
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1739,6 +1816,7 @@ function EditTransactionModal({
   const [serviceId,     setServiceId]     = useState(tx.service_id ?? '')
   const [customAmt,     setCustomAmt]     = useState(String(tx.amount + (tx.discount_amount ?? 0)))
   const [clientName,    setClientName]    = useState(tx.client_name ?? '')
+  const [clientSurname, setClientSurname] = useState(tx.client_surname ?? '')
   const [discount,      setDiscount]      = useState(String(tx.discount_amount ?? 0))
   const [discountReason, setDiscountReason] = useState(tx.discount_reason ?? '')
   const [method,        setMethod]        = useState<PaymentMethod | ''>(tx.payment_method === 'mixed' ? '' : tx.payment_method as PaymentMethod)
@@ -1857,6 +1935,7 @@ function EditTransactionModal({
         transfer_amount:  transferAmt,
         card_amount:      0,
         client_name:      clientName.trim() || null,
+        client_surname:   clientSurname.trim() || null,
         barber_share:     barberShareCalc,
         branch_share:     branchShareCalc,
         barber_already_collected: barberAlreadyCollected,
@@ -1952,6 +2031,8 @@ function EditTransactionModal({
                 <label className="form-label">Cliente <span style={{ color: '#52525b', fontWeight: 400 }}>(opcional)</span></label>
                 <input className="form-input" placeholder="Nombre del cliente" value={clientName}
                   onChange={(e) => setClientName(e.target.value)} maxLength={60} />
+                <input className="form-input" placeholder="Apellido del cliente" value={clientSurname}
+                  onChange={(e) => setClientSurname(e.target.value)} maxLength={60} style={{ marginTop: 8 }} />
               </div>
 
               {/* Descuento */}

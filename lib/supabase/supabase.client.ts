@@ -874,6 +874,7 @@ export async function registerCut(
     transfer_amount: transferAmount,
     card_amount: cardAmount,
     client_name: payload.client_name ?? null,
+    client_surname: payload.client_surname ?? null,
     discount_amount: payload.discount_amount ?? 0,
     discount_reason: payload.discount_reason ?? null,
     benefit_id: payload.benefit_id ?? null,
@@ -900,7 +901,7 @@ export async function getBarberTransactionsByDateRange(
 ): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
-    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, discount_amount, discount_reason, benefit_id')
+    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, client_surname, discount_amount, discount_reason, benefit_id')
     .eq('barber_id', barberId)
     .gte('transaction_date', startDate)
     .lte('transaction_date', endDate)
@@ -917,7 +918,7 @@ export async function getBarberTransactionsForWeek(
 ): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
-    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, discount_amount, discount_reason, benefit_id')
+    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, client_surname, discount_amount, discount_reason, benefit_id')
     .eq('barber_id', barberId)
     .eq('week_id', weekId)
     .order('transaction_date', { ascending: false })
@@ -936,7 +937,7 @@ export async function getWeekTransactions(
       amount, payment_method, barber_share, branch_share, barber_already_collected,
       commission_rate_snapshot, is_manual_override, override_notes,
       created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount,
-      client_name, discount_amount, discount_reason, benefit_id,
+      client_name, client_surname, discount_amount, discount_reason, benefit_id,
       barber:profiles!barber_id ( id, full_name, compensation_type ),
       service:service_catalog!service_id ( id, name )
     `)
@@ -1002,6 +1003,7 @@ export async function fullEditTransaction(
     transfer_amount: number
     card_amount: number
     client_name: string | null
+    client_surname: string | null
     barber_share: number
     branch_share: number
     barber_already_collected: number
@@ -1013,6 +1015,18 @@ export async function fullEditTransaction(
     .update({ ...updates, is_manual_override: true })
     .eq('id', txId)
   if (error) throw new Error(`[fullEditTransaction] ${error.message}`)
+}
+
+/**
+ * Mejora 3: elimina una transacción (solo admin, vía RPC SECURITY DEFINER).
+ * El RPC recalcula automáticamente la liquidación en borrador del barbero/semana
+ * si existe; las liquidaciones confirmadas/pagadas no se tocan.
+ */
+export async function deleteTransaction(transactionId: string): Promise<void> {
+  const { error } = await supabase.rpc('delete_transaction_admin', {
+    p_tx_id: transactionId,
+  })
+  if (error) throw new Error(`[deleteTransaction] ${error.message}`)
 }
 
 // ============================================================
@@ -1113,6 +1127,27 @@ export async function setPresentismo(
     .eq('id', settlementId)
 
   if (error) throw new Error(`[setPresentismo] ${error.message}`)
+
+  await calculateSettlement(weekId, barberId)
+}
+
+/**
+ * Mejora 4: marca/desmarca el objetivo cumplido (override manual del admin).
+ * Mismo patrón que setPresentismo: setea el flag y recalcula la liquidación,
+ * que toma objetivo_rate del barbero sobre el total facturado para el bono.
+ */
+export async function setObjetivo(
+  settlementId: string,
+  weekId: string,
+  barberId: string,
+  met: boolean
+): Promise<void> {
+  const { error } = await supabase
+    .from('settlements')
+    .update({ objetivo_met: met } satisfies SettlementUpdate)
+    .eq('id', settlementId)
+
+  if (error) throw new Error(`[setObjetivo] ${error.message}`)
 
   await calculateSettlement(weekId, barberId)
 }

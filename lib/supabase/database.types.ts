@@ -125,6 +125,9 @@ export interface Transaction {
   transfer_amount: number
   card_amount: number
   client_name: string | null
+  // Apellido del cliente: obligatorio cuando la transferencia va a Valhalla
+  // (barbero sin receives_transfers), para verificación contra home banking.
+  client_surname: string | null
   discount_amount: number
   discount_reason: string | null
   // Mejora 1: beneficio aplicado (opcional, para reporting)
@@ -254,6 +257,8 @@ export type SettlementUpdate = Partial<
     Settlement,
     | 'presentismo_met'
     | 'bonus_presentismo'
+    | 'objetivo_met'
+    | 'bonus_objetivo'
     | 'net_payable'
     | 'total_deductions'
     | 'status'
@@ -356,6 +361,8 @@ export interface RegisterCutPayload {
   card_amount?: number
   // ── NEW: descuento + cliente ──
   client_name?: string | null
+  // Apellido del cliente (Mejora 1): requerido si la transferencia va a Valhalla
+  client_surname?: string | null
   discount_amount?: number
   discount_reason?: string | null
   // Mejora 1: beneficio seleccionado (pre-rellena descuento)

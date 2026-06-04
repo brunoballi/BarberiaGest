@@ -137,6 +137,7 @@ export default function BarberMobileView() {
   const [submitting, setSubmitting] = useState(false)
   const [lastRegistered, setLastRegistered] = useState<Transaction | null>(null)
   const [clientName, setClientName] = useState<string>('')
+  const [clientSurname, setClientSurname] = useState<string>('')
   const [discountAmount, setDiscountAmount] = useState<string>('')
   const [discountReason, setDiscountReason] = useState<string>('')
   const benefitsQuery = useActiveBenefits(profile?.branch_id)
@@ -341,6 +342,13 @@ export default function BarberMobileView() {
   // Transferencia → barbero ya tiene su parte; efectivo → queda en caja
   const previewAlreadyCollected = paymentMethod === 'transfer' ? previewBarberShare : 0
 
+  // Mejora 1: si el barbero NO recibe transferencias, las transferencias van a la
+  // cuenta de Valhalla. En ese caso pedimos nombre + apellido del cliente para que
+  // el dueño pueda verificar contra el home banking.
+  const transferGoesToValhalla =
+    !(profile?.receives_transfers ?? true) &&
+    (splitPayment ? (parseFloat(transferPart) || 0) > 0 : paymentMethod === 'transfer')
+
   async function handleSubmit() {
     setFormSubmitError(null)
     if (!profile || !week) return
@@ -350,6 +358,9 @@ export default function BarberMobileView() {
     if (!selectedService) { setFormSubmitError('Seleccioná un servicio antes de continuar'); return }
     if (discountNum > resolvedAmount) { setFormSubmitError('El descuento no puede superar el precio del servicio'); return }
     if (resolvedAmount <= 0)          { setFormSubmitError('Ingresá un monto válido'); return }
+    if (transferGoesToValhalla && (!clientName.trim() || !clientSurname.trim())) {
+      setFormSubmitError('Para transferencias a la barbería ingresá nombre y apellido del cliente'); return
+    }
 
     let paymentMethodFinal: PaymentMethod
     let cashAmt = 0
@@ -396,6 +407,7 @@ export default function BarberMobileView() {
         transfer_amount:  transferAmt,
         card_amount:      0,
         client_name:      clientName.trim() || null,
+        client_surname:   transferGoesToValhalla ? (clientSurname.trim() || null) : null,
         discount_amount:  discountNum > 0 ? discountNum : 0,
         discount_reason:  discountReasonFinal,
         benefit_id:       benefitId || null,
@@ -811,9 +823,11 @@ export default function BarberMobileView() {
             )}
           </section>
 
-          {/* ── Nombre del cliente (opcional) ── */}
+          {/* ── Nombre del cliente (opcional, salvo transferencia a Valhalla) ── */}
           <section>
-            <label className="section-label">Cliente (opcional)</label>
+            <label className="section-label">
+              {transferGoesToValhalla ? 'Cliente (obligatorio)' : 'Cliente (opcional)'}
+            </label>
             <input
               type="text"
               placeholder="Nombre del cliente"
@@ -822,6 +836,22 @@ export default function BarberMobileView() {
               className="client-name-input"
               maxLength={60}
             />
+            {transferGoesToValhalla && (
+              <>
+                <input
+                  type="text"
+                  placeholder="Apellido del cliente (obligatorio)"
+                  value={clientSurname}
+                  onChange={(e) => setClientSurname(e.target.value)}
+                  className="client-name-input"
+                  style={{ marginTop: 8 }}
+                  maxLength={60}
+                />
+                <p className="text-xs text-amber-400" style={{ marginTop: 6 }}>
+                  Esta transferencia va a la cuenta de Valhalla. Cargá nombre y apellido para poder verificarla en el home banking.
+                </p>
+              </>
+            )}
           </section>
 
           {/* ── Beneficio (opcional) — Mejora 1 ── */}
