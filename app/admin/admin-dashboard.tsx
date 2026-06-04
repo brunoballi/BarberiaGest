@@ -159,6 +159,9 @@ export default function AdminDashboard() {
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 })
   const configBtnRef = useRef<HTMLButtonElement>(null)
   const configMenuRef = useRef<HTMLDivElement>(null)
+  // Altura del header sticky, para anclar el strip de KPIs justo debajo
+  const headerRef = useRef<HTMLDivElement>(null)
+  const [headerH, setHeaderH] = useState(0)
 
   function openConfigMenu() {
     if (configBtnRef.current) {
@@ -201,6 +204,9 @@ export default function AdminDashboard() {
   const [settlFilterEstado, setSettlFilterEstado] = useState('')
   const [confirmDeleteSettlId, setConfirmDeleteSettlId] = useState<string | null>(null)
   const [confirmCancelSettlId, setConfirmCancelSettlId] = useState<string | null>(null)
+  // Paginación tab liquidaciones
+  const [settlPage, setSettlPage] = useState(1)
+  const [settlPageSize, setSettlPageSize] = useState(10)
 
   // Filtros tab gastos
   const [expFilterDateFrom, setExpFilterDateFrom] = useState('')
@@ -306,6 +312,18 @@ export default function AdminDashboard() {
   }, [selectedWeek, tab, selectedBranch])
 
   useEffect(() => { loadTabData() }, [loadTabData])
+
+  // ─── Mide la altura del header sticky para anclar el strip de KPIs ───
+  useEffect(() => {
+    const el = headerRef.current
+    if (!el) return
+    const update = () => setHeaderH(el.offsetHeight)
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    window.addEventListener('resize', update)
+    return () => { ro.disconnect(); window.removeEventListener('resize', update) }
+  }, [])
 
   // ─── Realtime: suscripción live cuando la semana está abierta ─────
   useEffect(() => {
@@ -566,7 +584,7 @@ export default function AdminDashboard() {
   return (
     <div className="admin-app">
       {/* ── HEADER WRAPPER (sticky) ── */}
-      <div className="admin-header-wrapper">
+      <div className="admin-header-wrapper" ref={headerRef}>
 
         {/* ── Barra de marca ── */}
         <div className="admin-brand-bar">
@@ -783,10 +801,15 @@ export default function AdminDashboard() {
             if (settlFilterAPagar === 'negative' && s.net_payable >= 0) return false
             return true
           })
+          // Paginación: recorta la grilla a la página actual (los TOTALES siguen sobre todo el filtro)
+          const settlTotalPages = Math.max(1, Math.ceil(filteredSettlements.length / settlPageSize))
+          const settlCurrentPage = Math.min(settlPage, settlTotalPages)
+          const settlStartIdx = (settlCurrentPage - 1) * settlPageSize
+          const pagedSettlements = filteredSettlements.slice(settlStartIdx, settlStartIdx + settlPageSize)
           return (
           <div>
           {selectedWeek && (
-            <div className="kpi-strip">
+            <div className="kpi-strip kpi-strip--sticky" style={{ top: headerH }}>
               <KpiCard
                 label="Facturado bruto"
                 value={formatARS(kpis.grossTotal)}
@@ -870,9 +893,19 @@ export default function AdminDashboard() {
                 <option value="positive">A cobrar</option>
                 <option value="negative">Debe</option>
               </select>
+              <select
+                value={settlPageSize}
+                onChange={(e) => { setSettlPageSize(Number(e.target.value)); setSettlPage(1) }}
+                className="filter-input"
+                title="Cantidad de filas por página"
+              >
+                <option value={10}>10 por página</option>
+                <option value={25}>25 por página</option>
+                <option value={100}>100 por página</option>
+              </select>
               {hasSettlFilters && (
                 <button
-                  onClick={() => { setSettlFilterBarber(''); setSettlFilterObjetivo(''); setSettlFilterPresentismo(''); setSettlFilterAdelantos(''); setSettlFilterAPagar(''); setSettlFilterEstado('') }}
+                  onClick={() => { setSettlFilterBarber(''); setSettlFilterObjetivo(''); setSettlFilterPresentismo(''); setSettlFilterAdelantos(''); setSettlFilterAPagar(''); setSettlFilterEstado(''); setSettlPage(1) }}
                   className="filter-clear"
                 >
                   ✕ Limpiar
@@ -905,7 +938,7 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredSettlements.map((s) => {
+                  {pagedSettlements.map((s) => {
                     const hasBonuses = s.barber.compensation_type !== 'box_rental'
                     const isPositive = s.net_payable >= 0
                     const loadingKey = actionLoading
@@ -1092,6 +1125,38 @@ export default function AdminDashboard() {
               </table>
             )}
           </div>
+          {filteredSettlements.length > settlPageSize && (
+            <div className="pagination-bar">
+              <span className="pagination-info">
+                {settlStartIdx + 1}–{Math.min(settlStartIdx + settlPageSize, filteredSettlements.length)} de {filteredSettlements.length}
+              </span>
+              <div className="pagination-pages">
+                <button
+                  className="pagination-btn"
+                  disabled={settlCurrentPage === 1}
+                  onClick={() => setSettlPage(settlCurrentPage - 1)}
+                >
+                  ‹
+                </button>
+                {Array.from({ length: settlTotalPages }, (_, i) => i + 1).map((p) => (
+                  <button
+                    key={p}
+                    className={`pagination-btn ${p === settlCurrentPage ? 'pagination-btn--active' : ''}`}
+                    onClick={() => setSettlPage(p)}
+                  >
+                    {p}
+                  </button>
+                ))}
+                <button
+                  className="pagination-btn"
+                  disabled={settlCurrentPage === settlTotalPages}
+                  onClick={() => setSettlPage(settlCurrentPage + 1)}
+                >
+                  ›
+                </button>
+              </div>
+            </div>
+          )}
           </div>
           )
         })()}

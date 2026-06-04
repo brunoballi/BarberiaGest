@@ -486,6 +486,13 @@
   overflow: visible;
 }
 
+/* Strip de KPIs fijo: queda anclado debajo del header sticky al scrollear la grilla.
+   El offset `top` se setea inline en JS con la altura real del header. */
+.kpi-strip--sticky {
+  position: sticky;
+  z-index: 9;
+}
+
 .kpi-card {
   padding: 0.875rem 1.25rem;
   min-width: 130px;
@@ -886,6 +893,62 @@
 /* ── Liquidaciones: cards apiladas en mobile ─────────────────── */
 @media (max-width: 639px) {
   .settlement-row { flex-direction: column; gap: 0.5rem; }
+}
+
+/* ─── Paginación de grillas ──────────────────────────────────── */
+.pagination-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0 1.25rem 1.25rem;
+  padding: 0.6rem 0.9rem;
+  background: #171717;
+  border: 1px solid #262626;
+  border-radius: 0.5rem;
+}
+
+.pagination-info {
+  font-size: 0.75rem;
+  color: #a1a1aa;
+}
+
+.pagination-pages {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.pagination-btn {
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.55rem;
+  border-radius: 0.45rem;
+  background: #1f1f1f;
+  border: 1px solid #2f2f2f;
+  color: #d4d4d8;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.pagination-btn:hover:not(:disabled) {
+  background: #2a2a2a;
+  border-color: #3f3f46;
+}
+
+.pagination-btn--active {
+  background: #a78bfa;
+  border-color: #a78bfa;
+  color: #0d0d0d;
+}
+
+.pagination-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
 }
 
 /* ── Forms: stack 2-col grids en mobile ──────────────────────── */
