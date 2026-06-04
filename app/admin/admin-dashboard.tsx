@@ -767,15 +767,16 @@ export default function AdminDashboard() {
           const barberOptsSettl = Array.from(new Map(settlements.map((s) => [s.barber_id, s.barber.full_name])))
           const hasSettlFilters = !!(settlFilterBarber || settlFilterObjetivo || settlFilterPresentismo || settlFilterAdelantos || settlFilterAPagar || settlFilterEstado)
           const filteredSettlements = settlements.filter((s) => {
-            const isSalary = s.barber.compensation_type === 'salary'
+            // Objetivo/presentismo aplican a salary y % comisión (no a alquiler de box)
+            const hasBonuses = s.barber.compensation_type !== 'box_rental'
             if (settlFilterBarber && s.barber_id !== settlFilterBarber) return false
             if (settlFilterEstado && s.status !== settlFilterEstado) return false
-            if (settlFilterObjetivo === 'na' && isSalary) return false
-            if (settlFilterObjetivo === 'met' && (!isSalary || !s.objetivo_met)) return false
-            if (settlFilterObjetivo === 'not_met' && (!isSalary || s.objetivo_met === true)) return false
-            if (settlFilterPresentismo === 'na' && isSalary) return false
-            if (settlFilterPresentismo === 'met' && (!isSalary || !s.presentismo_met)) return false
-            if (settlFilterPresentismo === 'not_met' && (!isSalary || s.presentismo_met === true)) return false
+            if (settlFilterObjetivo === 'na' && hasBonuses) return false
+            if (settlFilterObjetivo === 'met' && (!hasBonuses || !s.objetivo_met)) return false
+            if (settlFilterObjetivo === 'not_met' && (!hasBonuses || s.objetivo_met === true)) return false
+            if (settlFilterPresentismo === 'na' && hasBonuses) return false
+            if (settlFilterPresentismo === 'met' && (!hasBonuses || !s.presentismo_met)) return false
+            if (settlFilterPresentismo === 'not_met' && (!hasBonuses || s.presentismo_met === true)) return false
             if (settlFilterAdelantos === 'with' && s.advances_deducted <= 0) return false
             if (settlFilterAdelantos === 'without' && s.advances_deducted > 0) return false
             if (settlFilterAPagar === 'positive' && s.net_payable < 0) return false
@@ -905,7 +906,7 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody>
                   {filteredSettlements.map((s) => {
-                    const isSalary = s.barber.compensation_type === 'salary'
+                    const hasBonuses = s.barber.compensation_type !== 'box_rental'
                     const isPositive = s.net_payable >= 0
                     const loadingKey = actionLoading
                     return (
@@ -927,7 +928,7 @@ export default function AdminDashboard() {
                         <td>{formatARS(s.gross_amount)}</td>
                         <td>{formatARS(s.barber_gross)}</td>
                         <td>
-                          {isSalary ? (
+                          {hasBonuses ? (
                             s.status === 'draft' ? (
                               <button
                                 onClick={() => handlePresentismo(s.id, s.week_id, s.barber_id, s.presentismo_met ?? false)}
@@ -946,7 +947,7 @@ export default function AdminDashboard() {
                           )}
                         </td>
                         <td>
-                          {isSalary ? (
+                          {hasBonuses ? (
                             s.status === 'draft' ? (
                               <button
                                 onClick={() => handleObjetivo(s.id, s.week_id, s.barber_id, s.objetivo_met ?? false)}
