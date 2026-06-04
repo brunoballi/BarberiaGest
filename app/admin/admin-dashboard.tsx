@@ -159,9 +159,6 @@ export default function AdminDashboard() {
   const [menuPos, setMenuPos] = useState({ top: 0, right: 0 })
   const configBtnRef = useRef<HTMLButtonElement>(null)
   const configMenuRef = useRef<HTMLDivElement>(null)
-  // Altura del header sticky, para anclar el strip de KPIs justo debajo
-  const headerRef = useRef<HTMLDivElement>(null)
-  const [headerH, setHeaderH] = useState(0)
 
   function openConfigMenu() {
     if (configBtnRef.current) {
@@ -312,18 +309,6 @@ export default function AdminDashboard() {
   }, [selectedWeek, tab, selectedBranch])
 
   useEffect(() => { loadTabData() }, [loadTabData])
-
-  // ─── Mide la altura del header sticky para anclar el strip de KPIs ───
-  useEffect(() => {
-    const el = headerRef.current
-    if (!el) return
-    const update = () => setHeaderH(el.offsetHeight)
-    update()
-    const ro = new ResizeObserver(update)
-    ro.observe(el)
-    window.addEventListener('resize', update)
-    return () => { ro.disconnect(); window.removeEventListener('resize', update) }
-  }, [])
 
   // ─── Realtime: suscripción live cuando la semana está abierta ─────
   useEffect(() => {
@@ -584,7 +569,7 @@ export default function AdminDashboard() {
   return (
     <div className="admin-app">
       {/* ── HEADER WRAPPER (sticky) ── */}
-      <div className="admin-header-wrapper" ref={headerRef}>
+      <div className="admin-header-wrapper">
 
         {/* ── Barra de marca ── */}
         <div className="admin-brand-bar">
@@ -751,6 +736,57 @@ export default function AdminDashboard() {
           ))}
         </div>
 
+        {/* ── KPIs de liquidaciones: dentro del header sticky para que queden fijos ── */}
+        {tab === 'liquidaciones' && selectedWeek && (
+          <div className="kpi-strip">
+            <KpiCard
+              label="Facturado bruto"
+              value={formatARS(kpis.grossTotal)}
+              sub={`${kpis.totalCuts} cortes`}
+              tooltip="Lo facturado en los cortes de la semana."
+            />
+            <KpiCard
+              label="Para la barbería"
+              value={formatARS(kpis.branchTotal)}
+              accent="positive"
+              tooltip="Lo que queda del facturado tras comisiones y bonos."
+            />
+            <KpiCard
+              label="A pagar barberos"
+              value={formatARS(kpis.totalPayable)}
+              accent="warning"
+              tooltip="Neto a pagar a los barberos."
+            />
+            <KpiCard
+              label="Efectivo"
+              value={formatARS(kpis.cashTotal)}
+              sub="en caja"
+              tooltip="Total cobrado en efectivo."
+            />
+            <KpiCard
+              label="Transferencias"
+              value={formatARS(kpis.transferTotal)}
+              tooltip="Total cobrado por transferencia."
+            />
+            <KpiCard
+              label="Barberos"
+              value={String(kpis.barberCount)}
+              tooltip="Cantidad de barberos con liquidación esta semana."
+            />
+            <KpiCard
+              label="Gastos semana"
+              value={formatARS(kpis.operationalExpenses)}
+              accent="negative"
+              tooltip="Gastos de la semana, sin contar retiros de socios."
+            />
+            <KpiCard
+              label="Retiros socios"
+              value={formatARS(kpis.partnerWithdrawals)}
+              tooltip="Retiros de los socios (ganancia x socios)."
+            />
+          </div>
+        )}
+
       </div>
 
       {/* ── Banner: alerta de año próximo no cargado ── */}
@@ -808,55 +844,6 @@ export default function AdminDashboard() {
           const pagedSettlements = filteredSettlements.slice(settlStartIdx, settlStartIdx + settlPageSize)
           return (
           <div>
-          {selectedWeek && (
-            <div className="kpi-strip kpi-strip--sticky" style={{ top: headerH }}>
-              <KpiCard
-                label="Facturado bruto"
-                value={formatARS(kpis.grossTotal)}
-                sub={`${kpis.totalCuts} cortes`}
-                tooltip="Lo facturado en los cortes de la semana."
-              />
-              <KpiCard
-                label="Para la barbería"
-                value={formatARS(kpis.branchTotal)}
-                accent="positive"
-                tooltip="Lo que queda del facturado tras comisiones y bonos."
-              />
-              <KpiCard
-                label="A pagar barberos"
-                value={formatARS(kpis.totalPayable)}
-                accent="warning"
-                tooltip="Neto a pagar a los barberos."
-              />
-              <KpiCard
-                label="Efectivo"
-                value={formatARS(kpis.cashTotal)}
-                sub="en caja"
-                tooltip="Total cobrado en efectivo."
-              />
-              <KpiCard
-                label="Transferencias"
-                value={formatARS(kpis.transferTotal)}
-                tooltip="Total cobrado por transferencia."
-              />
-              <KpiCard
-                label="Barberos"
-                value={String(kpis.barberCount)}
-                tooltip="Cantidad de barberos con liquidación esta semana."
-              />
-              <KpiCard
-                label="Gastos semana"
-                value={formatARS(kpis.operationalExpenses)}
-                accent="negative"
-                tooltip="Gastos de la semana, sin contar retiros de socios."
-              />
-              <KpiCard
-                label="Retiros socios"
-                value={formatARS(kpis.partnerWithdrawals)}
-                tooltip="Retiros de los socios (ganancia x socios)."
-              />
-            </div>
-          )}
           {settlements.length > 0 && (
             <div className="filter-bar">
               <select value={settlFilterBarber} onChange={(e) => setSettlFilterBarber(e.target.value)} className="filter-input">
