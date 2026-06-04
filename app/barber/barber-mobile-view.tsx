@@ -508,7 +508,9 @@ export default function BarberMobileView() {
       const rate = profile.commission_rate ?? 0.5
       const barberShare = Number((amount * rate).toFixed(2))
       const branchShare = Number((amount - barberShare).toFixed(2))
-      const alreadyCollected = editMethod === 'cash' ? 0 : barberShare
+      // Si recibe transferencias y el pago es transferencia, retiene el TOTAL del corte
+      // (se reconcilia en la liquidación). Efectivo/transfer-a-Valhalla → 0.
+      const alreadyCollected = (editMethod === 'transfer' && profile.receives_transfers) ? amount : 0
       const svcData = services.find((s) => s.name === editSvc)
       const updates = {
         service_id: svcData?.id ?? null,

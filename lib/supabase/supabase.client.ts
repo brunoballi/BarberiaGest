@@ -843,17 +843,19 @@ export async function registerCut(
     throw new Error(`La suma de los métodos (${splitSum}) no coincide con el total (${payload.amount})`)
   }
 
-  // barber_already_collected:
-  // - Transferencia: el cliente paga directo al barbero → ya cobró su parte
-  // - Efectivo: queda en caja → barbero cobra en la liquidación
-  // barber_already_collected <= amount está garantizado porque barberShare <= payload.amount
-  // Mejora 3: si el barbero NO recibe transferencias, la plata de la transferencia
-  // va a la cuenta de Valhalla → el barbero NO la cobró aún (se le paga en la liquidación).
+  // barber_already_collected = plata que el barbero ya tiene físicamente en su cuenta.
+  // Si el barbero RECIBE transferencias, el cliente le transfiere directo → el barbero
+  // retiene el TOTAL transferido del corte (no solo su comisión). En la liquidación se
+  // compara ese "ya cobrado" contra lo que realmente le corresponde (total_earned):
+  //   - ya cobrado > lo que le corresponde  → el barbero le debe a la barbería
+  //   - ya cobrado < lo que le corresponde  → la barbería le debe al barbero
+  // Si NO recibe transferencias, la plata va a la cuenta de Valhalla → ya cobrado = 0.
+  // Efectivo/tarjeta no se acreditan a la cuenta del barbero → no suman a "ya cobrado".
   const barberAlreadyCollected: number =
     payload.barber_already_collected_override !== undefined
       ? payload.barber_already_collected_override
-      : payload.payment_method === 'transfer' && barber.receives_transfers
-      ? barberShare
+      : barber.receives_transfers
+      ? transferAmount
       : 0
 
   const insert: TransactionInsert = {
@@ -938,7 +940,7 @@ export async function getWeekTransactions(
       commission_rate_snapshot, is_manual_override, override_notes,
       created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount,
       client_name, client_surname, discount_amount, discount_reason, benefit_id,
-      barber:profiles!barber_id ( id, full_name, compensation_type ),
+      barber:profiles!barber_id ( id, full_name, compensation_type, receives_transfers ),
       service:service_catalog!service_id ( id, name )
     `)
     .eq('week_id', weekId)

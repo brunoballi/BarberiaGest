@@ -1972,7 +1972,9 @@ function EditTransactionModal({
       transferAmt = method === 'transfer' ? effectiveAmount : 0
     }
 
-    const barberAlreadyCollected = paymentMethodFinal === 'transfer' ? barberShareCalc : 0
+    // Si el barbero recibe transferencias, retiene el TOTAL transferido (no la comisión);
+    // se reconcilia en la liquidación. Efectivo/tarjeta o transfer-a-Valhalla → 0.
+    const barberAlreadyCollected = tx.barber.receives_transfers ? transferAmt : 0
 
     try {
       setSaving(true)
