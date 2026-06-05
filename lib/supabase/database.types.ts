@@ -196,6 +196,18 @@ export interface Expense {
   created_at: string
 }
 
+/** Saldo inicial del mes por sucursal (capital con el que arranca el mes). */
+export interface RevenueBalance {
+  id: string
+  branch_id: string
+  month_id: string
+  initial_balance: number
+  notes: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
 // ============================================================
 // INSERT TYPES — Para mutations (omite campos auto-generados)
 // ============================================================
@@ -405,6 +417,7 @@ export const EXPENSE_CATEGORIES = [
   'marketing',
   'impuestos',
   'retiro_socio',
+  'inversion',
   'otros',
 ] as const
 
@@ -419,6 +432,7 @@ export const EXPENSE_CATEGORY_LABELS: Record<ExpenseCategory, string> = {
   marketing: 'Marketing',
   impuestos: 'Impuestos',
   retiro_socio: 'Retiro de socios',
+  inversion: 'Inversión',
   otros: 'Otros',
 }
 

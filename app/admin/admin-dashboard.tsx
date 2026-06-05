@@ -15,6 +15,7 @@ import {
   type ExpenseInsert,
   type ExpenseUpdate,
   type ExpenseCategory,
+  type RevenueBalance,
   type ServiceCatalog,
   type PaymentMethod,
   PAYMENT_METHOD_LABELS,
@@ -47,6 +48,8 @@ import {
   createExpense,
   updateExpense,
   deleteExpense,
+  getInitialBalance,
+  setInitialBalance,
   overrideTransactionSplit,
   fullEditTransaction,
   getServicesByBranch,
@@ -104,6 +107,12 @@ export default function AdminDashboard() {
 
   // Semanas del mes seleccionado (derivado)
   const weeks: Week[] = months[selectedMonthIdx]?.weeks ?? []
+  // Saldo inicial del mes seleccionado (capital con el que arranca el mes)
+  const selectedMonthId: string | undefined = months[selectedMonthIdx]?.id
+  const [initialBalance, setInitialBalanceState] = useState<RevenueBalance | null>(null)
+  const [editingBalance, setEditingBalance] = useState(false)
+  const [balanceInput, setBalanceInput] = useState('')
+  const [savingBalance, setSavingBalance] = useState(false)
 
   const [settlements, setSettlements] = useState<SettlementWithBarber[]>([])
   const [transactions, setTransactions] = useState<TransactionWithRelations[]>([])
@@ -311,6 +320,16 @@ export default function AdminDashboard() {
 
   useEffect(() => { loadTabData() }, [loadTabData])
 
+  // ─── Saldo inicial del mes (se recarga al cambiar sucursal/mes) ─────
+  useEffect(() => {
+    if (!selectedBranch || !selectedMonthId) { setInitialBalanceState(null); return }
+    let cancel = false
+    getInitialBalance(selectedBranch, selectedMonthId)
+      .then((rb) => { if (!cancel) setInitialBalanceState(rb) })
+      .catch(() => { if (!cancel) setInitialBalanceState(null) })
+    return () => { cancel = true }
+  }, [selectedBranch, selectedMonthId])
+
   // ─── Realtime: suscripción live cuando la semana está abierta ─────
   useEffect(() => {
     if (tab !== 'live' || !selectedWeek || selectedWeek.status !== 'open') return
@@ -481,6 +500,22 @@ export default function AdminDashboard() {
       setError(e instanceof Error ? e.message : 'Error actualizando alquiler de box')
     } finally {
       setActionLoading(null)
+    }
+  }
+
+  async function handleSaveInitialBalance() {
+    if (!selectedBranch || !selectedMonthId) return
+    const amount = parseFloat(balanceInput)
+    if (Number.isNaN(amount)) { setError('Ingresá un monto válido (puede ser negativo)'); return }
+    try {
+      setSavingBalance(true)
+      const rb = await setInitialBalance(selectedBranch, selectedMonthId, amount)
+      setInitialBalanceState(rb)
+      setEditingBalance(false)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error guardando el saldo inicial')
+    } finally {
+      setSavingBalance(false)
     }
   }
 
@@ -1414,6 +1449,42 @@ export default function AdminDashboard() {
           const filteredTotal = filteredExpenses.reduce((s, e) => s + e.amount, 0)
           return (
           <div>
+            {/* Saldo inicial del mes (capital con el que arranca) */}
+            <div className="balance-panel">
+              <span className="balance-panel__label">
+                Saldo inicial de {MONTH_NAMES[(months[selectedMonthIdx]?.month ?? 1) - 1]} {months[selectedMonthIdx]?.year}
+              </span>
+              {editingBalance ? (
+                <span className="balance-panel__edit">
+                  <input
+                    type="number"
+                    inputMode="numeric"
+                    value={balanceInput}
+                    onChange={(e) => setBalanceInput(e.target.value)}
+                    className="filter-input"
+                    placeholder="0 (puede ser negativo)"
+                    autoFocus
+                    style={{ width: 180 }}
+                  />
+                  <button onClick={handleSaveInitialBalance} disabled={savingBalance} className="admin-btn admin-btn--primary">
+                    {savingBalance ? 'Guardando…' : 'Guardar'}
+                  </button>
+                  <button onClick={() => setEditingBalance(false)} className="admin-btn admin-btn--ghost">Cancelar</button>
+                </span>
+              ) : (
+                <span className="balance-panel__value">
+                  <strong className={(initialBalance?.initial_balance ?? 0) < 0 ? 'net-payable--neg' : ''}>
+                    {formatARS(initialBalance?.initial_balance ?? 0)}
+                  </strong>
+                  <button
+                    onClick={() => { setBalanceInput(String(initialBalance?.initial_balance ?? '')); setEditingBalance(true) }}
+                    className="admin-btn admin-btn--ghost"
+                  >
+                    {initialBalance ? 'Editar' : 'Cargar'}
+                  </button>
+                </span>
+              )}
+            </div>
             <div className="table-toolbar">
               <span className="toolbar-total">
                 Total gastos: <strong>{formatARS(hasExpFilters ? filteredTotal : kpis.expensesTotal)}</strong>

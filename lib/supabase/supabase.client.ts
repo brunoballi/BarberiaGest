@@ -28,6 +28,7 @@ import type {
   Expense,
   ExpenseInsert,
   ExpenseUpdate,
+  RevenueBalance,
   ProfileUpdate,
   WeekUpdate,
   ServiceCatalog,
@@ -1438,6 +1439,53 @@ export async function getExpensesByWeek(weekId: string): Promise<ExpenseWithUser
     ...r,
     registered_by_name: userMap[r.registered_by] ?? null,
   }))
+}
+
+// ============================================================
+// REVENUE BALANCES (Saldo inicial del mes)
+// ============================================================
+/** Saldo inicial del mes para una sucursal (null si no se cargó aún). */
+export async function getInitialBalance(
+  branchId: string,
+  monthId: string
+): Promise<RevenueBalance | null> {
+  const { data, error } = await supabase
+    .from('revenue_balances')
+    .select('*')
+    .eq('branch_id', branchId)
+    .eq('month_id', monthId)
+    .maybeSingle()
+
+  if (error) throw new Error(`[getInitialBalance] ${error.message}`)
+  return data
+}
+
+/** Crea o actualiza el saldo inicial del mes (upsert por branch_id + month_id). */
+export async function setInitialBalance(
+  branchId: string,
+  monthId: string,
+  amount: number,
+  notes?: string | null
+): Promise<RevenueBalance> {
+  const { data: auth } = await supabase.auth.getUser()
+  const { data, error } = await supabase
+    .from('revenue_balances')
+    .upsert(
+      {
+        branch_id: branchId,
+        month_id: monthId,
+        initial_balance: amount,
+        notes: notes ?? null,
+        created_by: auth.user?.id ?? null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'branch_id,month_id' }
+    )
+    .select()
+    .single()
+
+  if (error) throw new Error(`[setInitialBalance] ${error.message}`)
+  return data
 }
 
 // ============================================================
