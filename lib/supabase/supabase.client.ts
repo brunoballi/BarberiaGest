@@ -1488,6 +1488,41 @@ export async function setInitialBalance(
   return data
 }
 
+/** Resumen financiero del mes (Ganancia neta = saldo inicial + ingresos barbería - gastos). */
+export interface MonthFinancials {
+  branchShareCuts: number // comisión de la barbería en cortes
+  boxRentTotal: number    // alquileres de box cobrados
+  branchIncome: number    // branchShareCuts + boxRentTotal
+  totalExpenses: number   // gastos del mes (excluye retiro de socios)
+  initialBalance: number  // saldo inicial del mes
+  netProfit: number       // initialBalance + branchIncome - totalExpenses
+}
+
+export async function getMonthFinancials(
+  branchId: string,
+  monthId: string
+): Promise<MonthFinancials> {
+  const { data, error } = await supabase.rpc('month_financials', {
+    p_branch_id: branchId,
+    p_month_id: monthId,
+  })
+  if (error) throw new Error(`[getMonthFinancials] ${error.message}`)
+
+  type Row = {
+    branch_share_cuts: number; box_rent_total: number; branch_income: number
+    total_expenses: number; initial_balance: number; net_profit: number
+  }
+  const r = (data as Row[] | null)?.[0]
+  return {
+    branchShareCuts: Number(r?.branch_share_cuts ?? 0),
+    boxRentTotal:    Number(r?.box_rent_total ?? 0),
+    branchIncome:    Number(r?.branch_income ?? 0),
+    totalExpenses:   Number(r?.total_expenses ?? 0),
+    initialBalance:  Number(r?.initial_balance ?? 0),
+    netProfit:       Number(r?.net_profit ?? 0),
+  }
+}
+
 // ============================================================
 // REPORTS
 // ============================================================

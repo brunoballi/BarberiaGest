@@ -694,6 +694,35 @@
 }
 .balance-panel__value strong { font-size: 1.05rem; color: #e5e5e5; }
 
+/* ─── Panel de Ganancia neta del mes (P&L) ───────────────────── */
+.pnl-panel {
+  margin: 0.75rem 1.25rem 0;
+  padding: 0.5rem 1rem;
+  background: #141414;
+  border: 1px solid #262626;
+  border-radius: 0.5rem;
+  max-width: 520px;
+}
+.pnl-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.3rem 0;
+  font-size: 0.85rem;
+  color: #d4d4d8;
+}
+.pnl-row em { color: #71717a; font-style: normal; font-size: 0.72rem; }
+.pnl-row--muted { font-size: 0.75rem; color: #71717a; padding: 0.1rem 0; }
+.pnl-row--total {
+  margin-top: 0.35rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #2d2d2d;
+  font-weight: 700;
+  font-size: 0.95rem;
+  color: #e5e5e5;
+}
+
 /* Filter bar */
 .filter-bar {
   display: flex;

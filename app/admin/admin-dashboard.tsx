@@ -50,6 +50,8 @@ import {
   deleteExpense,
   getInitialBalance,
   setInitialBalance,
+  getMonthFinancials,
+  type MonthFinancials,
   overrideTransactionSplit,
   fullEditTransaction,
   getServicesByBranch,
@@ -113,6 +115,8 @@ export default function AdminDashboard() {
   const [editingBalance, setEditingBalance] = useState(false)
   const [balanceInput, setBalanceInput] = useState('')
   const [savingBalance, setSavingBalance] = useState(false)
+  // Resumen financiero del mes (Ganancia neta)
+  const [monthFin, setMonthFin] = useState<MonthFinancials | null>(null)
 
   const [settlements, setSettlements] = useState<SettlementWithBarber[]>([])
   const [transactions, setTransactions] = useState<TransactionWithRelations[]>([])
@@ -329,6 +333,17 @@ export default function AdminDashboard() {
       .catch(() => { if (!cancel) setInitialBalanceState(null) })
     return () => { cancel = true }
   }, [selectedBranch, selectedMonthId])
+
+  // ─── Resumen financiero del mes (Ganancia neta). Se recalcula al cambiar
+  // sucursal/mes, saldo inicial, gastos o liquidaciones (box_rent). ─────
+  useEffect(() => {
+    if (!selectedBranch || !selectedMonthId) { setMonthFin(null); return }
+    let cancel = false
+    getMonthFinancials(selectedBranch, selectedMonthId)
+      .then((f) => { if (!cancel) setMonthFin(f) })
+      .catch(() => { if (!cancel) setMonthFin(null) })
+    return () => { cancel = true }
+  }, [selectedBranch, selectedMonthId, initialBalance, expenses, settlements])
 
   // ─── Realtime: suscripción live cuando la semana está abierta ─────
   useEffect(() => {
@@ -1484,6 +1499,37 @@ export default function AdminDashboard() {
                   </button>
                 </span>
               )}
+            </div>
+            {/* Ganancia neta del mes = saldo inicial + ingresos barbería − gastos */}
+            <div className="pnl-panel">
+              <div className="pnl-row">
+                <span>Saldo inicial</span>
+                <span className={(monthFin?.initialBalance ?? 0) < 0 ? 'net-payable--neg' : ''}>
+                  {formatARS(monthFin?.initialBalance ?? 0)}
+                </span>
+              </div>
+              <div className="pnl-row">
+                <span>+ Ingresos barbería <em>(comisiones + alquileres box)</em></span>
+                <span className="net-payable--pos">{formatARS(monthFin?.branchIncome ?? 0)}</span>
+              </div>
+              <div className="pnl-row pnl-row--muted">
+                <span style={{ paddingLeft: '1rem' }}>· Comisiones de cortes</span>
+                <span>{formatARS(monthFin?.branchShareCuts ?? 0)}</span>
+              </div>
+              <div className="pnl-row pnl-row--muted">
+                <span style={{ paddingLeft: '1rem' }}>· Alquileres de box</span>
+                <span>{formatARS(monthFin?.boxRentTotal ?? 0)}</span>
+              </div>
+              <div className="pnl-row">
+                <span>− Gastos del mes</span>
+                <span className="net-payable--neg">{formatARS(monthFin?.totalExpenses ?? 0)}</span>
+              </div>
+              <div className="pnl-row pnl-row--total">
+                <span>= Ganancia neta del mes</span>
+                <span className={(monthFin?.netProfit ?? 0) < 0 ? 'net-payable--neg' : 'net-payable--pos'}>
+                  {formatARS(monthFin?.netProfit ?? 0)}
+                </span>
+              </div>
             </div>
             <div className="table-toolbar">
               <span className="toolbar-total">
