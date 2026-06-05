@@ -506,11 +506,15 @@ export default function BarberMobileView() {
     setEditError(null)
     try {
       const rate = profile.commission_rate ?? 0.5
-      const barberShare = Number((amount * rate).toFixed(2))
-      const branchShare = Number((amount - barberShare).toFixed(2))
-      // Si recibe transferencias y el pago es transferencia, retiene el TOTAL del corte
-      // (se reconcilia en la liquidación). Efectivo/transfer-a-Valhalla → 0.
-      const alreadyCollected = (editMethod === 'transfer' && profile.receives_transfers) ? amount : 0
+      // Alquiler de box: el barbero se queda el 100% del corte.
+      const isBox = profile.compensation_type === 'box_rental'
+      const barberShare = isBox ? amount : Number((amount * rate).toFixed(2))
+      const branchShare = isBox ? 0 : Number((amount - barberShare).toFixed(2))
+      // box_rental ya tiene el 100%. Si recibe transferencias y paga por transferencia,
+      // retiene el TOTAL (se reconcilia en la liquidación). Efectivo/transfer-a-Valhalla → 0.
+      const alreadyCollected = isBox
+        ? amount
+        : ((editMethod === 'transfer' && profile.receives_transfers) ? amount : 0)
       const svcData = services.find((s) => s.name === editSvc)
       const updates = {
         service_id: svcData?.id ?? null,

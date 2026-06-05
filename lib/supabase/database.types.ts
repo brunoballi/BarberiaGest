@@ -173,6 +173,8 @@ export interface Settlement {
   objetivo_min_cuts_snap: number | null
   objetivo_met: boolean | null
   presentismo_met: boolean | null
+  // Alquiler de box que el barbero (box_rental) paga a la barbería esa semana (editable en borrador)
+  box_rent: number
   status: SettlementStatus
   confirmed_at: string | null
   paid_at: string | null
@@ -259,6 +261,7 @@ export type SettlementUpdate = Partial<
     | 'bonus_presentismo'
     | 'objetivo_met'
     | 'bonus_objetivo'
+    | 'box_rent'
     | 'net_payable'
     | 'total_deductions'
     | 'status'

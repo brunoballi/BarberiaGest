@@ -822,14 +822,17 @@ export async function registerCut(
   createdBy?: string,
 ): Promise<Transaction> {
   const commissionRate = barber.commission_rate ?? 0.5
+  // Alquiler de box: el barbero se queda el 100% de cada corte; la barbería no toma
+  // nada del corte (su ingreso es el alquiler, que se carga en la liquidación).
+  const isBoxRental = barber.compensation_type === 'box_rental'
   // El descuento se divide 50/50: barbero absorbe la mitad, barbería la otra mitad.
   // La comisión del barbero sigue calculándose sobre el precio original.
   const discountAmt    = payload.discount_amount ?? 0
   const fullPrice      = payload.amount + discountAmt
   const barberShareRaw = Number((fullPrice * commissionRate - discountAmt * 0.5).toFixed(2))
   // Constraints DB: barber_share >= 0, branch_share >= 0, branch_share + barber_share = amount.
-  const barberShare = Math.max(0, Math.min(barberShareRaw, payload.amount))
-  const branchShare = Number((payload.amount - barberShare).toFixed(2))
+  const barberShare = isBoxRental ? payload.amount : Math.max(0, Math.min(barberShareRaw, payload.amount))
+  const branchShare = isBoxRental ? 0 : Number((payload.amount - barberShare).toFixed(2))
 
   // ── Split payment: si vienen montos parciales, los usamos.
   // Si no, cae todo al payment_method principal.
@@ -851,9 +854,12 @@ export async function registerCut(
   //   - ya cobrado < lo que le corresponde  → la barbería le debe al barbero
   // Si NO recibe transferencias, la plata va a la cuenta de Valhalla → ya cobrado = 0.
   // Efectivo/tarjeta no se acreditan a la cuenta del barbero → no suman a "ya cobrado".
+  // box_rental: ya tiene el 100% del corte (efectivo o transferencia).
   const barberAlreadyCollected: number =
     payload.barber_already_collected_override !== undefined
       ? payload.barber_already_collected_override
+      : isBoxRental
+      ? payload.amount
       : barber.receives_transfers
       ? transferAmount
       : 0
@@ -1150,6 +1156,26 @@ export async function setObjetivo(
     .eq('id', settlementId)
 
   if (error) throw new Error(`[setObjetivo] ${error.message}`)
+
+  await calculateSettlement(weekId, barberId)
+}
+
+/**
+ * Alquiler de box: monto que el barbero (box_rental) le paga a la barbería esa
+ * semana. Se setea en borrador y se descuenta del neto. Recalcula la liquidación.
+ */
+export async function setBoxRent(
+  settlementId: string,
+  weekId: string,
+  barberId: string,
+  amount: number
+): Promise<void> {
+  const { error } = await supabase
+    .from('settlements')
+    .update({ box_rent: amount } satisfies SettlementUpdate)
+    .eq('id', settlementId)
+
+  if (error) throw new Error(`[setBoxRent] ${error.message}`)
 
   await calculateSettlement(weekId, barberId)
 }

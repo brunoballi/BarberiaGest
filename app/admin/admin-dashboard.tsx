@@ -38,6 +38,7 @@ import {
   calculateAllSettlementsForWeek,
   setPresentismo,
   setObjetivo,
+  setBoxRent,
   deleteTransaction,
   confirmSettlement,
   markSettlementPaid,
@@ -461,6 +462,23 @@ export default function AdminDashboard() {
       await loadTabData()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al eliminar la transacción')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleSetBoxRent(
+    settlementId: string,
+    weekId: string,
+    barberId: string,
+    amount: number
+  ) {
+    try {
+      setActionLoading(`boxrent-${settlementId}`)
+      await setBoxRent(settlementId, weekId, barberId, amount)
+      await loadTabData()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error actualizando alquiler de box')
     } finally {
       setActionLoading(null)
     }
@@ -916,6 +934,7 @@ export default function AdminDashboard() {
                     <th>Comisión base</th>
                     <th>Presentismo</th>
                     <th>Objetivo</th>
+                    <th>Alquiler box</th>
                     <th>Total ganado</th>
                     <th>Ya cobrado</th>
                     <th>Adelantos</th>
@@ -980,6 +999,30 @@ export default function AdminDashboard() {
                               <span className={`badge ${s.objetivo_met ? 'badge--green' : 'badge--red'}`}>
                                 {s.objetivo_met ? `Sí · ${formatARS(s.bonus_objetivo)}` : 'No'}
                               </span>
+                            )
+                          ) : (
+                            <span className="td-na">—</span>
+                          )}
+                        </td>
+                        <td>
+                          {s.barber.compensation_type === 'box_rental' ? (
+                            s.status === 'draft' ? (
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                defaultValue={s.box_rent || ''}
+                                placeholder="0"
+                                disabled={loadingKey === `boxrent-${s.id}`}
+                                onBlur={(e) => {
+                                  const v = parseFloat(e.target.value) || 0
+                                  if (v !== s.box_rent) handleSetBoxRent(s.id, s.week_id, s.barber_id, v)
+                                }}
+                                className="filter-input"
+                                style={{ width: 90 }}
+                                title="Alquiler del box que paga el barbero esta semana"
+                              />
+                            ) : (
+                              <span className="td-muted">{formatARS(s.box_rent)}</span>
                             )
                           ) : (
                             <span className="td-na">—</span>
@@ -1102,7 +1145,7 @@ export default function AdminDashboard() {
                   <tr className="tfoot-row">
                     <td colSpan={2}><strong>TOTALES</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.gross_amount, 0))}</strong></td>
-                    <td colSpan={4}></td>
+                    <td colSpan={5}></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.already_collected, 0))}</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.advances_deducted, 0))}</strong></td>
                     <td><strong className="net-payable--pos">{formatARS(filteredSettlements.reduce((s, x) => s + Math.max(x.net_payable, 0), 0))}</strong></td>
@@ -1191,7 +1234,6 @@ export default function AdminDashboard() {
                 <option value="cash">Efectivo</option>
                 <option value="transfer">Transferencia</option>
                 <option value="mixed">Mixto</option>
-                <option value="card">Tarjeta</option>
               </select>
               <select value={filterService} onChange={(e) => setFilterService(e.target.value)} className="filter-input">
                 <option value="">Todos los servicios</option>
@@ -1972,9 +2014,15 @@ function EditTransactionModal({
       transferAmt = method === 'transfer' ? effectiveAmount : 0
     }
 
-    // Si el barbero recibe transferencias, retiene el TOTAL transferido (no la comisión);
-    // se reconcilia en la liquidación. Efectivo/tarjeta o transfer-a-Valhalla → 0.
-    const barberAlreadyCollected = tx.barber.receives_transfers ? transferAmt : 0
+    // Alquiler de box: el barbero se queda el 100%; la barbería no toma nada del corte.
+    const isBox = tx.barber.compensation_type === 'box_rental'
+    const barberShareFinal = isBox ? effectiveAmount : barberShareCalc
+    const branchShareFinal = isBox ? 0 : branchShareCalc
+    // box_rental ya tiene el 100%. Si recibe transferencias, retiene el TOTAL transferido;
+    // efectivo/tarjeta o transfer-a-Valhalla → 0.
+    const barberAlreadyCollected = isBox
+      ? effectiveAmount
+      : (tx.barber.receives_transfers ? transferAmt : 0)
 
     try {
       setSaving(true)
@@ -1991,8 +2039,8 @@ function EditTransactionModal({
         card_amount:      0,
         client_name:      clientName.trim() || null,
         client_surname:   clientSurname.trim() || null,
-        barber_share:     barberShareCalc,
-        branch_share:     branchShareCalc,
+        barber_share:     barberShareFinal,
+        branch_share:     branchShareFinal,
         barber_already_collected: barberAlreadyCollected,
         override_notes:   'Editado manualmente',
       })
