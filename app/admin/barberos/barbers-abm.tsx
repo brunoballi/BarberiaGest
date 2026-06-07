@@ -200,6 +200,9 @@ export default function BarbersAbm() {
   // Toggle active confirmation
   const [togglingId, setTogglingId] = useState<string | null>(null)
 
+  // Hard delete (eliminar definitivamente) confirmation
+  const [hardDeletingId, setHardDeletingId] = useState<string | null>(null)
+
   const loadBarbers = useCallback(async (branchId: string) => {
     const data = await getAllBarbersByBranch(branchId)
     setBarbers(data)
@@ -453,6 +456,21 @@ export default function BarbersAbm() {
       setError(e instanceof Error ? e.message : 'Error al eliminar')
     } finally {
       setDeletingId(null)
+    }
+  }
+
+  // ── Hard delete (eliminar definitivamente, solo inactivos sin datos) ───────
+  async function handleHardDelete(barber: Profile) {
+    if (hardDeletingId !== barber.id) { setHardDeletingId(barber.id); return }
+    try {
+      const res = await fetch(`/api/barbers/${barber.id}`, { method: 'DELETE' })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(json.error ?? 'Error al eliminar')
+      setBarbers((prev) => prev.filter((b) => b.id !== barber.id))
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error al eliminar')
+    } finally {
+      setHardDeletingId(null)
     }
   }
 
@@ -820,6 +838,9 @@ export default function BarbersAbm() {
                 onCancelDelete={() => setDeletingId(null)}
                 onToggleActive={handleToggleActive}
                 onCancelToggle={() => setTogglingId(null)}
+                hardDeletingId={hardDeletingId}
+                onHardDelete={handleHardDelete}
+                onCancelHardDelete={() => setHardDeletingId(null)}
               />
             ))}
           </div>
@@ -846,6 +867,9 @@ export default function BarbersAbm() {
                 onCancelDelete={() => setDeletingId(null)}
                 onToggleActive={handleToggleActive}
                 onCancelToggle={() => setTogglingId(null)}
+                hardDeletingId={hardDeletingId}
+                onHardDelete={handleHardDelete}
+                onCancelHardDelete={() => setHardDeletingId(null)}
               />
             ))}
           </div>
@@ -989,6 +1013,9 @@ function BarberRow({
   onCancelDelete,
   onToggleActive,
   onCancelToggle,
+  hardDeletingId,
+  onHardDelete,
+  onCancelHardDelete,
 }: {
   barber: Profile
   deletingId: string | null
@@ -1000,6 +1027,9 @@ function BarberRow({
   onCancelDelete: () => void
   onToggleActive: (b: Profile) => void
   onCancelToggle: () => void
+  hardDeletingId: string | null
+  onHardDelete: (b: Profile) => void
+  onCancelHardDelete: () => void
 }) {
   function rateLabel(b: Profile): string {
     if (b.compensation_type === 'percentage')
@@ -1013,8 +1043,9 @@ function BarberRow({
       : '—'
   }
 
-  const isDeleting  = deletingId  === barber.id
-  const isToggling  = togglingId  === barber.id
+  const isDeleting     = deletingId     === barber.id
+  const isToggling     = togglingId     === barber.id
+  const isHardDeleting = hardDeletingId === barber.id
 
   return (
     <div className={`bg-zinc-900 border rounded-xl px-5 py-4 flex items-center justify-between gap-4 ${barber.is_active ? 'border-zinc-800' : 'border-zinc-800/50 opacity-60'}`}>
@@ -1076,6 +1107,30 @@ function BarberRow({
                 <path d="M12 5v14M5 12l7-7 7 7"/>
               </svg>
               Activar
+            </button>
+          )
+        )}
+
+        {/* Eliminar definitivamente — solo inactivos */}
+        {!barber.is_active && (
+          isHardDeleting ? (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-zinc-400">¿Eliminar definitivo?</span>
+              <button onClick={() => onHardDelete(barber)} className="text-xs text-red-400 hover:text-red-300 font-bold">Sí</button>
+              <button onClick={onCancelHardDelete} className="text-xs text-zinc-500 hover:text-zinc-300">No</button>
+            </div>
+          ) : (
+            <button
+              onClick={() => onHardDelete(barber)}
+              title="Eliminar definitivamente (solo inactivos sin datos)"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-zinc-500 hover:text-red-400 border border-zinc-700 hover:border-red-500/40 bg-zinc-800 hover:bg-zinc-700 px-3 py-1.5 rounded-lg transition-colors"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3.5 h-3.5">
+                <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/>
+                <path d="M10 11v6"/><path d="M14 11v6"/>
+                <path d="M9 6V4h6v2"/>
+              </svg>
+              Eliminar definitivo
             </button>
           )
         )}
