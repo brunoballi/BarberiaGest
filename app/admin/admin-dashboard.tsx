@@ -40,6 +40,8 @@ import {
   setPresentismo,
   setObjetivo,
   setBoxRent,
+  setBonusPresentismoOverride,
+  setBonusObjetivoOverride,
   deleteTransaction,
   confirmSettlement,
   markSettlementPaid,
@@ -516,6 +518,40 @@ export default function AdminDashboard() {
       await loadTabData()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error actualizando alquiler de box')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleSetPresentismoOverride(
+    settlementId: string,
+    weekId: string,
+    barberId: string,
+    amount: number | null
+  ) {
+    try {
+      setActionLoading(`presentismo-${settlementId}`)
+      await setBonusPresentismoOverride(settlementId, weekId, barberId, amount)
+      await loadTabData()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error ajustando presentismo')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleSetObjetivoOverride(
+    settlementId: string,
+    weekId: string,
+    barberId: string,
+    amount: number | null
+  ) {
+    try {
+      setActionLoading(`objetivo-${settlementId}`)
+      await setBonusObjetivoOverride(settlementId, weekId, barberId, amount)
+      await loadTabData()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error ajustando objetivo')
     } finally {
       setActionLoading(null)
     }
@@ -1021,13 +1057,45 @@ export default function AdminDashboard() {
                         <td>
                           {hasBonuses ? (
                             s.status === 'draft' ? (
-                              <button
-                                onClick={() => handlePresentismo(s.id, s.week_id, s.barber_id, s.presentismo_met ?? false)}
-                                disabled={loadingKey === `presentismo-${s.id}`}
-                                className={`toggle-btn ${s.presentismo_met ? 'toggle-btn--on' : 'toggle-btn--off'}`}
-                              >
-                                {s.presentismo_met ? 'Sí' : 'No'} · {formatARS(s.bonus_presentismo)}
-                              </button>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                <button
+                                  onClick={() => handlePresentismo(s.id, s.week_id, s.barber_id, s.presentismo_met ?? false)}
+                                  disabled={loadingKey === `presentismo-${s.id}`}
+                                  className={`toggle-btn ${s.presentismo_met ? 'toggle-btn--on' : 'toggle-btn--off'}`}
+                                >
+                                  {s.presentismo_met ? 'Sí' : 'No'}
+                                </button>
+                                {s.presentismo_met && (
+                                  <>
+                                    <input
+                                      key={`pres-${s.id}-${s.bonus_presentismo}`}
+                                      type="number"
+                                      inputMode="numeric"
+                                      defaultValue={s.bonus_presentismo || ''}
+                                      disabled={loadingKey === `presentismo-${s.id}`}
+                                      onBlur={(e) => {
+                                        const v = parseFloat(e.target.value)
+                                        const next = isNaN(v) ? 0 : v
+                                        if (Math.abs(next - s.bonus_presentismo) > 0.001) {
+                                          handleSetPresentismoOverride(s.id, s.week_id, s.barber_id, next)
+                                        }
+                                      }}
+                                      className="filter-input"
+                                      style={{ width: 96 }}
+                                      title="Monto del bono (editable a mano)"
+                                    />
+                                    {s.bonus_presentismo_override != null && (
+                                      <button
+                                        type="button"
+                                        title="Volver al cálculo automático"
+                                        onClick={() => handleSetPresentismoOverride(s.id, s.week_id, s.barber_id, null)}
+                                        className="admin-btn admin-btn--ghost"
+                                        style={{ padding: '0.25rem 0.5rem' }}
+                                      >↺ auto</button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
                             ) : (
                               <span className={`badge ${s.presentismo_met ? 'badge--green' : 'badge--red'}`}>
                                 {s.presentismo_met ? `Sí · ${formatARS(s.bonus_presentismo)}` : 'No'}
@@ -1040,13 +1108,45 @@ export default function AdminDashboard() {
                         <td>
                           {hasBonuses ? (
                             s.status === 'draft' ? (
-                              <button
-                                onClick={() => handleObjetivo(s.id, s.week_id, s.barber_id, s.objetivo_met ?? false)}
-                                disabled={loadingKey === `objetivo-${s.id}`}
-                                className={`toggle-btn ${s.objetivo_met ? 'toggle-btn--on' : 'toggle-btn--off'}`}
-                              >
-                                {s.objetivo_met ? 'Sí' : 'No'} · {formatARS(s.bonus_objetivo)}
-                              </button>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                <button
+                                  onClick={() => handleObjetivo(s.id, s.week_id, s.barber_id, s.objetivo_met ?? false)}
+                                  disabled={loadingKey === `objetivo-${s.id}`}
+                                  className={`toggle-btn ${s.objetivo_met ? 'toggle-btn--on' : 'toggle-btn--off'}`}
+                                >
+                                  {s.objetivo_met ? 'Sí' : 'No'}
+                                </button>
+                                {s.objetivo_met && (
+                                  <>
+                                    <input
+                                      key={`obj-${s.id}-${s.bonus_objetivo}`}
+                                      type="number"
+                                      inputMode="numeric"
+                                      defaultValue={s.bonus_objetivo || ''}
+                                      disabled={loadingKey === `objetivo-${s.id}`}
+                                      onBlur={(e) => {
+                                        const v = parseFloat(e.target.value)
+                                        const next = isNaN(v) ? 0 : v
+                                        if (Math.abs(next - s.bonus_objetivo) > 0.001) {
+                                          handleSetObjetivoOverride(s.id, s.week_id, s.barber_id, next)
+                                        }
+                                      }}
+                                      className="filter-input"
+                                      style={{ width: 96 }}
+                                      title="Monto del bono (editable a mano)"
+                                    />
+                                    {s.bonus_objetivo_override != null && (
+                                      <button
+                                        type="button"
+                                        title="Volver al cálculo automático"
+                                        onClick={() => handleSetObjetivoOverride(s.id, s.week_id, s.barber_id, null)}
+                                        className="admin-btn admin-btn--ghost"
+                                        style={{ padding: '0.25rem 0.5rem' }}
+                                      >↺ auto</button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
                             ) : (
                               <span className={`badge ${s.objetivo_met ? 'badge--green' : 'badge--red'}`}>
                                 {s.objetivo_met ? `Sí · ${formatARS(s.bonus_objetivo)}` : 'No'}

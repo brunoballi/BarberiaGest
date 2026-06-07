@@ -1181,6 +1181,46 @@ export async function setBoxRent(
   await calculateSettlement(weekId, barberId)
 }
 
+/**
+ * Override manual del monto de bono de presentismo. `amount = null` vuelve al
+ * cálculo automático por tasa. Recalcula la liquidación (que respeta el override).
+ */
+export async function setBonusPresentismoOverride(
+  settlementId: string,
+  weekId: string,
+  barberId: string,
+  amount: number | null
+): Promise<void> {
+  const { error } = await supabase
+    .from('settlements')
+    .update({ bonus_presentismo_override: amount } satisfies SettlementUpdate)
+    .eq('id', settlementId)
+
+  if (error) throw new Error(`[setBonusPresentismoOverride] ${error.message}`)
+
+  await calculateSettlement(weekId, barberId)
+}
+
+/**
+ * Override manual del monto de bono de objetivo. `amount = null` vuelve al
+ * cálculo automático por tasa. Recalcula la liquidación.
+ */
+export async function setBonusObjetivoOverride(
+  settlementId: string,
+  weekId: string,
+  barberId: string,
+  amount: number | null
+): Promise<void> {
+  const { error } = await supabase
+    .from('settlements')
+    .update({ bonus_objetivo_override: amount } satisfies SettlementUpdate)
+    .eq('id', settlementId)
+
+  if (error) throw new Error(`[setBonusObjetivoOverride] ${error.message}`)
+
+  await calculateSettlement(weekId, barberId)
+}
+
 export async function confirmSettlement(settlementId: string): Promise<void> {
   const { error } = await supabase
     .from('settlements')

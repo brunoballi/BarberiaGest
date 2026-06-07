@@ -175,6 +175,9 @@ export interface Settlement {
   presentismo_met: boolean | null
   // Alquiler de box que el barbero (box_rental) paga a la barbería esa semana (editable en borrador)
   box_rent: number
+  // Override manual de los montos de bono (null = usar el calculado por tasa)
+  bonus_presentismo_override: number | null
+  bonus_objetivo_override: number | null
   status: SettlementStatus
   confirmed_at: string | null
   paid_at: string | null
@@ -274,6 +277,8 @@ export type SettlementUpdate = Partial<
     | 'objetivo_met'
     | 'bonus_objetivo'
     | 'box_rent'
+    | 'bonus_presentismo_override'
+    | 'bonus_objetivo_override'
     | 'net_payable'
     | 'total_deductions'
     | 'status'
