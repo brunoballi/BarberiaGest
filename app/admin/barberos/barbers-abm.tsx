@@ -16,6 +16,8 @@ import {
   updateBarberProfile,
 } from '@/lib/supabase/supabase.client'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
+import { CurrencyInput } from '@/app/components/currency-input'
+import { TextInput } from '@/app/components/text-input'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 const COMP_LABELS: Record<CompensationType, string> = {
@@ -133,9 +135,23 @@ function CompensationFields({
     </div>
   )
 
+  const moneyInput = (label: string, field: string, value: string, placeholder?: string) => (
+    <div>
+      <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
+        {label}
+      </label>
+      <CurrencyInput
+        value={value}
+        onChange={(v) => onChange(field, v)}
+        placeholder={placeholder ?? '0,00'}
+        className="w-full bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-600 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+      />
+    </div>
+  )
+
   const salaryFields = (
     <div className="grid grid-cols-2 gap-3">
-      {input('Sueldo base ($)', 'base_salary_rate', form.base_salary_rate)}
+      {moneyInput('Sueldo base ($)', 'base_salary_rate', form.base_salary_rate)}
       {input('Presentismo (% del total)', 'presentismo_rate', form.presentismo_rate, '5')}
       {input('Objetivo (% del total)', 'objetivo_rate', form.objetivo_rate, '5')}
       {input('Cortes p/objetivo', 'objetivo_min_cuts', form.objetivo_min_cuts)}
@@ -156,7 +172,7 @@ function CompensationFields({
     return salaryFields
   }
 
-  return input('Alquiler mensual ($)', 'box_rental_amount', form.box_rental_amount)
+  return moneyInput('Alquiler mensual ($)', 'box_rental_amount', form.box_rental_amount)
 }
 
 // ─── Main component ────────────────────────────────────────────────────────
@@ -522,11 +538,10 @@ export default function BarbersAbm() {
                 <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
                   Nombre completo
                 </label>
-                <input
+                <TextInput
                   required
-                  type="text"
                   value={inviteForm.full_name}
-                  onChange={(e) => setInviteForm((f) => ({ ...f, full_name: e.target.value }))}
+                  onChange={(v) => setInviteForm((f) => ({ ...f, full_name: v }))}
                   className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
@@ -651,11 +666,10 @@ export default function BarbersAbm() {
                 <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
                   Nombre completo
                 </label>
-                <input
+                <TextInput
                   required
-                  type="text"
                   value={editForm.full_name}
-                  onChange={(e) => patchEditForm('full_name', e.target.value)}
+                  onChange={(v) => patchEditForm('full_name', v)}
                   className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
@@ -752,13 +766,10 @@ export default function BarbersAbm() {
                     <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
                       Límite por adelanto ($)
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="1000"
+                    <CurrencyInput
                       placeholder="0 = sin tope"
                       value={editForm.advance_limit}
-                      onChange={(e) => patchEditForm('advance_limit', e.target.value)}
+                      onChange={(v) => patchEditForm('advance_limit', v)}
                       className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
                     />
                     <p className="text-xs text-zinc-500 mt-1">

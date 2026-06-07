@@ -11,6 +11,7 @@ import {
   updateService,
 } from '@/lib/supabase/supabase.client'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
+import { CurrencyInput } from '@/app/components/currency-input'
 
 function formatARS(n: number): string {
   return new Intl.NumberFormat('es-AR', {
@@ -199,15 +200,12 @@ export default function ServicesView() {
               </div>
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">Precio base ($)</label>
-                <input
+                <CurrencyInput
                   required
-                  type="number"
-                  inputMode="numeric"
-                  min="0"
-                  placeholder="0"
+                  placeholder="0,00"
                   value={formPrice}
-                  onChange={(e) => setFormPrice(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-600 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  onChange={setFormPrice}
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-600 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
             </div>
@@ -327,13 +325,11 @@ function ServiceRow({
               onChange={(e) => onEditName(e.target.value)}
               className="bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
             />
-            <input
-              type="number"
-              inputMode="numeric"
-              min="0"
+            <CurrencyInput
               value={editPrice}
-              onChange={(e) => onEditPrice(e.target.value)}
-              className="bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              onChange={onEditPrice}
+              placeholder="0,00"
+              className="bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
             />
           </div>
           {editError && <p className="text-red-400 text-xs">{editError}</p>}

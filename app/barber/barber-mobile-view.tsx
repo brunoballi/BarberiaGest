@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
+import { CurrencyInput } from '@/app/components/currency-input'
 import {
   type Profile,
   type Transaction,
@@ -613,12 +614,10 @@ export default function BarberMobileView() {
               <p className="section-label mb-2">Monto solicitado</p>
               <div className="amount-input-wrapper">
                 <span className="amount-prefix">$</span>
-                <input
-                  type="number"
-                  inputMode="numeric"
-                  placeholder="0"
+                <CurrencyInput
+                  placeholder="0,00"
                   value={advanceAmount}
-                  onChange={(e) => setAdvanceAmount(e.target.value)}
+                  onChange={setAdvanceAmount}
                   className="amount-input"
                   autoFocus
                 />
@@ -686,8 +685,7 @@ export default function BarberMobileView() {
           <p className="section-label mb-2">Monto</p>
           <div className="amount-input-wrapper">
             <span className="amount-prefix">$</span>
-            <input type="number" inputMode="numeric" value={editAmount}
-              onChange={(e) => setEditAmount(e.target.value)} className="amount-input" />
+            <CurrencyInput value={editAmount} onChange={setEditAmount} className="amount-input" />
           </div>
         </div>
 
