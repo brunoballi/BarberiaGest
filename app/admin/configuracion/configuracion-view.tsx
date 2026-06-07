@@ -442,20 +442,9 @@ export default function ConfiguracionView() {
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-          <button
-            className="admin-btn admin-btn--ghost"
-            onClick={() => setShowManualWeekModal(true)}
-            title="Crear una semana suelta con fechas arbitrarias"
-          >
-            + Semana manual
-          </button>
-          <button
-            className="admin-btn admin-btn--ghost"
-            onClick={() => setShowNewMonthModal(true)}
-            title="Crear solo un mes (uso avanzado)"
-          >
-            + Nuevo mes
-          </button>
+          {/* Botones "+ Semana manual" y "+ Nuevo mes" ocultados a pedido:
+              el alta de semana/mes individual queda deshabilitada desde la UI.
+              La carga se hace vía "Crear año". */}
           <button
             className="admin-btn admin-btn--primary"
             onClick={() => setShowNewYearModal(true)}
