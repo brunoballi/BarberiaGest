@@ -83,12 +83,13 @@ function formatDate(d: string): string {
 }
 
 // ─── Tipos de tab ──────────────────────────────────────────────────────────
-type Tab = 'live' | 'liquidaciones' | 'transacciones' | 'gastos' | 'adelantos'
+type Tab = 'live' | 'liquidaciones' | 'transacciones' | 'gastos' | 'saldo' | 'adelantos'
 const TAB_LABELS: Record<Tab, string> = {
   live: '🔴 En vivo',
   liquidaciones: 'Liquidaciones',
   transacciones: 'Transacciones',
   gastos: 'Gastos',
+  saldo: '💵 Saldo inicial',
   adelantos: '💰 Adelantos',
 }
 
@@ -792,7 +793,7 @@ export default function AdminDashboard() {
 
         {/* ── TABS (dentro del sticky para que no se oculten al scrollear) ── */}
         <div className="admin-tabs">
-          {((['live', 'liquidaciones', 'transacciones', 'gastos', 'adelantos'] as Tab[])
+          {((['live', 'liquidaciones', 'transacciones', 'gastos', 'saldo', 'adelantos'] as Tab[])
             .filter((t) => t !== 'live' || selectedWeek?.status === 'open')
           ).map((t) => (
             <button
@@ -1458,18 +1459,9 @@ export default function AdminDashboard() {
           <AdvancesTab branchId={selectedBranch} />
         )}
 
-        {tab === 'gastos' && (() => {
-          const hasExpFilters = !!(expFilterDateFrom || expFilterDateTo || expFilterCategory)
-          const filteredExpenses = expenses.filter((e) => {
-            if (expFilterDateFrom && e.expense_date < expFilterDateFrom) return false
-            if (expFilterDateTo && e.expense_date > expFilterDateTo) return false
-            if (expFilterCategory && e.category !== expFilterCategory) return false
-            return true
-          })
-          const filteredTotal = filteredExpenses.reduce((s, e) => s + e.amount, 0)
-          return (
+        {/* ─── TAB: SALDO INICIAL ─── */}
+        {tab === 'saldo' && (
           <div>
-            {/* Saldo inicial del mes (capital con el que arranca) */}
             <div className="balance-panel">
               <span className="balance-panel__label">
                 Saldo inicial de {MONTH_NAMES[(months[selectedMonthIdx]?.month ?? 1) - 1]} {months[selectedMonthIdx]?.year}
@@ -1505,37 +1497,24 @@ export default function AdminDashboard() {
                 </span>
               )}
             </div>
-            {/* Ganancia neta del mes = saldo inicial + ingresos barbería − gastos */}
-            <div className="pnl-panel">
-              <div className="pnl-row">
-                <span>Saldo inicial</span>
-                <span className={(monthFin?.initialBalance ?? 0) < 0 ? 'net-payable--neg' : ''}>
-                  {formatARS(monthFin?.initialBalance ?? 0)}
-                </span>
-              </div>
-              <div className="pnl-row">
-                <span>+ Ingresos barbería <em>(comisiones + alquileres box)</em></span>
-                <span className="net-payable--pos">{formatARS(monthFin?.branchIncome ?? 0)}</span>
-              </div>
-              <div className="pnl-row pnl-row--muted">
-                <span style={{ paddingLeft: '1rem' }}>· Comisiones de cortes</span>
-                <span>{formatARS(monthFin?.branchShareCuts ?? 0)}</span>
-              </div>
-              <div className="pnl-row pnl-row--muted">
-                <span style={{ paddingLeft: '1rem' }}>· Alquileres de box</span>
-                <span>{formatARS(monthFin?.boxRentTotal ?? 0)}</span>
-              </div>
-              <div className="pnl-row">
-                <span>− Gastos del mes</span>
-                <span className="net-payable--neg">{formatARS(monthFin?.totalExpenses ?? 0)}</span>
-              </div>
-              <div className="pnl-row pnl-row--total">
-                <span>= Ganancia neta del mes</span>
-                <span className={(monthFin?.netProfit ?? 0) < 0 ? 'net-payable--neg' : 'net-payable--pos'}>
-                  {formatARS(monthFin?.netProfit ?? 0)}
-                </span>
-              </div>
-            </div>
+            <p className="text-sm text-zinc-500 mt-3">
+              Capital con el que arranca el mes. El detalle de ganancia neta (saldo + ingresos − gastos)
+              se ve en el módulo <strong>Reportes</strong>.
+            </p>
+          </div>
+        )}
+
+        {tab === 'gastos' && (() => {
+          const hasExpFilters = !!(expFilterDateFrom || expFilterDateTo || expFilterCategory)
+          const filteredExpenses = expenses.filter((e) => {
+            if (expFilterDateFrom && e.expense_date < expFilterDateFrom) return false
+            if (expFilterDateTo && e.expense_date > expFilterDateTo) return false
+            if (expFilterCategory && e.category !== expFilterCategory) return false
+            return true
+          })
+          const filteredTotal = filteredExpenses.reduce((s, e) => s + e.amount, 0)
+          return (
+          <div>
             <div className="table-toolbar">
               <span className="toolbar-total">
                 Total gastos: <strong>{formatARS(hasExpFilters ? filteredTotal : kpis.expensesTotal)}</strong>

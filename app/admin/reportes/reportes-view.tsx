@@ -15,7 +15,12 @@ import {
   Cell,
 } from 'recharts'
 import type { BranchReport } from '@/lib/supabase/database.types'
-import { getReportByPeriod } from '@/lib/supabase/supabase.client'
+import {
+  getReportByPeriod,
+  getMonthsWithWeeks,
+  getMonthFinancials,
+  type MonthFinancials,
+} from '@/lib/supabase/supabase.client'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import { MONTH_NAMES } from '@/lib/supabase/supabase.client'
 import './reportes.css'
@@ -84,6 +89,7 @@ export default function ReportesView() {
   const [year, setYear]   = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth() + 1)  // 1-12
   const [reports, setReports]   = useState<BranchReport[]>([])
+  const [monthFins, setMonthFins] = useState<{ branchId: string; branchName: string; fin: MonthFinancials }[]>([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
 
@@ -96,15 +102,27 @@ export default function ReportesView() {
       setLoading(true)
       setError(null)
       const myBranches = await getMyBranchesCached()
-      if (myBranches.length === 0) { setReports([]); return }
+      if (myBranches.length === 0) { setReports([]); setMonthFins([]); return }
       const data = await getReportByPeriod(myBranches, startDate, endDate)
       setReports(data)
+
+      // Detalle mensual (saldo inicial + comisiones + box − gastos = ganancia neta)
+      const fins = await Promise.all(
+        myBranches.map(async (b) => {
+          const ms = await getMonthsWithWeeks(b.id)
+          const mrow = ms.find((m) => m.year === year && m.month === month)
+          if (!mrow) return null
+          const fin = await getMonthFinancials(b.id, mrow.id)
+          return { branchId: b.id, branchName: b.name, fin }
+        })
+      )
+      setMonthFins(fins.filter((x): x is { branchId: string; branchName: string; fin: MonthFinancials } => x !== null))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar reportes')
     } finally {
       setLoading(false)
     }
-  }, [startDate, endDate])
+  }, [startDate, endDate, year, month])
 
   useEffect(() => { load() }, [load])
 
@@ -189,6 +207,48 @@ export default function ReportesView() {
           >›</button>
         </div>
       </div>
+
+      {/* ── Ganancia neta del mes (saldo inicial + ingresos − gastos) ── */}
+      {monthFins.length > 0 && (
+        <section className="mb-6">
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-3">
+            Ganancia neta del mes
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
+            {monthFins.map(({ branchId, branchName, fin }) => (
+              <div key={branchId} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                <p className="font-bold text-zinc-100 mb-3">{branchName}</p>
+                <div className="space-y-1.5 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">Saldo inicial</span>
+                    <span className={fin.initialBalance < 0 ? 'text-red-400' : 'text-zinc-200'}>{formatARS(fin.initialBalance)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">+ Ingresos barbería <em className="text-zinc-600 not-italic">(comisiones + box)</em></span>
+                    <span className="text-emerald-400">{formatARS(fin.branchIncome)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-zinc-500">
+                    <span className="pl-4">· Comisiones de cortes</span>
+                    <span>{formatARS(fin.branchShareCuts)}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-zinc-500">
+                    <span className="pl-4">· Alquileres de box</span>
+                    <span>{formatARS(fin.boxRentTotal)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-zinc-400">− Gastos del mes</span>
+                    <span className="text-red-400">{formatARS(fin.totalExpenses)}</span>
+                  </div>
+                  <div className="flex justify-between pt-2 border-t border-zinc-800 font-bold">
+                    <span className="text-zinc-200">= Ganancia neta del mes</span>
+                    <span className={fin.netProfit < 0 ? 'text-red-400' : 'text-emerald-400'}>{formatARS(fin.netProfit)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {reports.every((r) => r.cutCount === 0 && r.totalIncome === 0) ? (
         <div className="report-empty">Sin datos para este período</div>
