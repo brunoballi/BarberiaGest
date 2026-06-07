@@ -66,6 +66,7 @@ import {
 import './admin-dashboard.css'
 import ManualCutModal from './manual-cut-modal'
 import AdvancesTab from './advances-tab'
+import { PaginationControls } from '@/app/components/pagination-controls'
 
 // ─── Utilidades ────────────────────────────────────────────────────────────
 function formatARS(n: number): string {
@@ -106,6 +107,11 @@ export default function AdminDashboard() {
   const [selectedMonthIdx, setSelectedMonthIdx] = useState<number>(0)
   const [selectedWeek, setSelectedWeek] = useState<Week | null>(null)
   const [tab, setTab] = useState<Tab>('liquidaciones')
+  // Paginación grillas dashboard (default 20)
+  const [txPage, setTxPage] = useState(1)
+  const [txPageSize, setTxPageSize] = useState(20)
+  const [gastosPage, setGastosPage] = useState(1)
+  const [gastosPageSize, setGastosPageSize] = useState(20)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string>('')
@@ -1357,6 +1363,9 @@ export default function AdminDashboard() {
             if (filterService && (tx.service?.name ?? '') !== filterService) return false
             return true
           })
+          const txTotalPages = Math.max(1, Math.ceil(filtered.length / txPageSize))
+          const txCurrent = Math.min(txPage, txTotalPages)
+          const txPaged = filtered.slice((txCurrent - 1) * txPageSize, txCurrent * txPageSize)
           return (
           <div>
             {/* Barra de filtros */}
@@ -1421,7 +1430,7 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((tx) => (
+                  {txPaged.map((tx) => (
                     <tr key={tx.id} className={tx.is_manual_override ? 'tr-override' : ''}>
                       <td className="td-date">{formatDate(tx.transaction_date)}</td>
                       <td>{tx.barber.full_name}</td>
@@ -1497,6 +1506,19 @@ export default function AdminDashboard() {
               </table>
             )}
             </div>{/* /admin-table-wrap */}
+            <PaginationControls
+              currentPage={txCurrent}
+              totalPages={txTotalPages}
+              pageSize={txPageSize}
+              totalItems={filtered.length}
+              startIdx={filtered.length === 0 ? 0 : (txCurrent - 1) * txPageSize + 1}
+              endIdx={Math.min(txCurrent * txPageSize, filtered.length)}
+              canGoPrevious={txCurrent > 1}
+              canGoNext={txCurrent < txTotalPages}
+              onPageChange={setTxPage}
+              onPageSizeChange={(s) => { setTxPageSize(s); setTxPage(1) }}
+              itemLabel="transacciones"
+            />
 
             {/* ── Adelantos del período ─────────────────────────── */}
             {weekAdvances.length > 0 && (
@@ -1613,6 +1635,9 @@ export default function AdminDashboard() {
             return true
           })
           const filteredTotal = filteredExpenses.reduce((s, e) => s + e.amount, 0)
+          const gTotalPages = Math.max(1, Math.ceil(filteredExpenses.length / gastosPageSize))
+          const gCurrent = Math.min(gastosPage, gTotalPages)
+          const gPaged = filteredExpenses.slice((gCurrent - 1) * gastosPageSize, gCurrent * gastosPageSize)
           return (
           <div>
             <div className="table-toolbar">
@@ -1683,7 +1708,7 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {filteredExpenses.map((e) => (
+                    {gPaged.map((e) => (
                       <tr key={e.id}>
                         <td className="td-date">{formatDate(e.expense_date)}</td>
                         <td>{e.concept}</td>
@@ -1740,6 +1765,19 @@ export default function AdminDashboard() {
                 </table>
               )}
             </div>
+            <PaginationControls
+              currentPage={gCurrent}
+              totalPages={gTotalPages}
+              pageSize={gastosPageSize}
+              totalItems={filteredExpenses.length}
+              startIdx={filteredExpenses.length === 0 ? 0 : (gCurrent - 1) * gastosPageSize + 1}
+              endIdx={Math.min(gCurrent * gastosPageSize, filteredExpenses.length)}
+              canGoPrevious={gCurrent > 1}
+              canGoNext={gCurrent < gTotalPages}
+              onPageChange={setGastosPage}
+              onPageSizeChange={(s) => { setGastosPageSize(s); setGastosPage(1) }}
+              itemLabel="gastos"
+            />
           </div>
           )
         })()}
