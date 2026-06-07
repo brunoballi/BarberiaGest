@@ -228,7 +228,7 @@ export default function AdminDashboard() {
   const [confirmCancelSettlId, setConfirmCancelSettlId] = useState<string | null>(null)
   // Paginación tab liquidaciones
   const [settlPage, setSettlPage] = useState(1)
-  const [settlPageSize, setSettlPageSize] = useState(10)
+  const [settlPageSize, setSettlPageSize] = useState(20)
 
   // Filtros tab gastos
   const [expFilterDateFrom, setExpFilterDateFrom] = useState('')
@@ -998,8 +998,9 @@ export default function AdminDashboard() {
                 className="filter-input"
                 title="Cantidad de filas por página"
               >
-                <option value={10}>10 por página</option>
-                <option value={25}>25 por página</option>
+                <option value={20}>20 por página</option>
+                <option value={30}>30 por página</option>
+                <option value={50}>50 por página</option>
                 <option value={100}>100 por página</option>
               </select>
               {hasSettlFilters && (

@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { getAuditLog, type AuditLogWithUser, type AuditFilters } from '@/lib/supabase/supabase.client'
+import { usePagination } from '@/lib/hooks/usePagination'
+import { PaginationControls } from '@/app/components/pagination-controls'
 import './auditoria.css'
 
 const TABLE_LABELS: Record<string, string> = {
@@ -70,6 +72,7 @@ function shortDate(iso: string): string {
 
 export default function AuditView() {
   const [logs, setLogs] = useState<AuditLogWithUser[]>([])
+  const pagination = usePagination(logs, 20)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [expandedId, setExpandedId] = useState<string | null>(null)
@@ -142,8 +145,9 @@ export default function AuditView() {
       )}
 
       {!loading && !error && logs.length > 0 && (
+        <>
         <div className="audit-list">
-          {logs.map((log) => {
+          {pagination.paginatedData.map((log) => {
             const isOpen = expandedId === log.id
             const actionMeta = ACTION_LABELS[log.action]
             const summary = log.action === 'INSERT'
@@ -193,6 +197,20 @@ export default function AuditView() {
             )
           })}
         </div>
+        <PaginationControls
+          currentPage={pagination.currentPage}
+          totalPages={pagination.totalPages}
+          pageSize={pagination.pageSize}
+          totalItems={pagination.totalItems}
+          startIdx={pagination.startIdx}
+          endIdx={pagination.endIdx}
+          canGoPrevious={pagination.canGoPrevious}
+          canGoNext={pagination.canGoNext}
+          onPageChange={pagination.goToPage}
+          onPageSizeChange={pagination.setPageSize}
+          itemLabel="registros"
+        />
+        </>
       )}
     </div>
   )
