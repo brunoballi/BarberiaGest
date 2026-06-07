@@ -63,6 +63,7 @@ import {
 } from '@/lib/supabase/supabase.client'
 import './admin-dashboard.css'
 import ManualCutModal from './manual-cut-modal'
+import AdvancesTab from './advances-tab'
 
 // ─── Utilidades ────────────────────────────────────────────────────────────
 function formatARS(n: number): string {
@@ -82,12 +83,13 @@ function formatDate(d: string): string {
 }
 
 // ─── Tipos de tab ──────────────────────────────────────────────────────────
-type Tab = 'live' | 'liquidaciones' | 'transacciones' | 'gastos'
+type Tab = 'live' | 'liquidaciones' | 'transacciones' | 'gastos' | 'adelantos'
 const TAB_LABELS: Record<Tab, string> = {
   live: '🔴 En vivo',
   liquidaciones: 'Liquidaciones',
   transacciones: 'Transacciones',
   gastos: 'Gastos',
+  adelantos: '💰 Adelantos',
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -784,14 +786,13 @@ export default function AdminDashboard() {
             )}
 
 
-            <Link href="/admin/adelantos" className="admin-btn admin-btn--ghost">Adelantos</Link>
             <button onClick={handleLogout} className="admin-btn admin-btn--danger">Cerrar sesión</button>
           </div>
         </header>
 
         {/* ── TABS (dentro del sticky para que no se oculten al scrollear) ── */}
         <div className="admin-tabs">
-          {((['live', 'liquidaciones', 'transacciones', 'gastos'] as Tab[])
+          {((['live', 'liquidaciones', 'transacciones', 'gastos', 'adelantos'] as Tab[])
             .filter((t) => t !== 'live' || selectedWeek?.status === 'open')
           ).map((t) => (
             <button
@@ -1453,6 +1454,10 @@ export default function AdminDashboard() {
         })()}
 
         {/* ─── TAB: GASTOS ─── */}
+        {tab === 'adelantos' && selectedBranch && (
+          <AdvancesTab branchId={selectedBranch} />
+        )}
+
         {tab === 'gastos' && (() => {
           const hasExpFilters = !!(expFilterDateFrom || expFilterDateTo || expFilterCategory)
           const filteredExpenses = expenses.filter((e) => {
