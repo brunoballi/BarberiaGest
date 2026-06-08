@@ -18,6 +18,8 @@ export interface CurrencyInputProps
   onChange: (value: string) => void
   /** Cantidad máxima de decimales permitidos (default 2). */
   decimals?: number
+  /** Permite valores negativos (default false). Útil para saldos. */
+  allowNegative?: boolean
 }
 
 /** "100000.5" → "100.000,5"  ·  "100000." → "100.000,"  ·  "" → "" */
@@ -40,7 +42,8 @@ export function formatToDisplay(value: string | number | null | undefined): stri
 }
 
 /** Texto tipeado (cualquier formato) → string numérico normalizado "100000.5". */
-export function parseFromInput(raw: string, decimals = 2): string {
+export function parseFromInput(raw: string, decimals = 2, allowNegative = false): string {
+  const negative = allowNegative && raw.trim().startsWith('-')
   // Solo dígitos, punto, coma (el punto se trata como separador de miles → se descarta)
   let s = raw.replace(/[^\d.,]/g, '')
   s = s.replace(/\./g, '') // quitar separadores de miles
@@ -58,15 +61,15 @@ export function parseFromInput(raw: string, decimals = 2): string {
     const iClean = (i.replace(/^0+(?=\d)/, '')) || '0'
     s = d !== undefined ? `${iClean}.${d}` : iClean
   }
-  return s
+  return negative ? '-' + s : s
 }
 
-export function CurrencyInput({ value, onChange, decimals = 2, className, ...rest }: CurrencyInputProps) {
+export function CurrencyInput({ value, onChange, decimals = 2, allowNegative = false, className, ...rest }: CurrencyInputProps) {
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      onChange(parseFromInput(e.target.value, decimals))
+      onChange(parseFromInput(e.target.value, decimals, allowNegative))
     },
-    [onChange, decimals]
+    [onChange, decimals, allowNegative]
   )
 
   return (
