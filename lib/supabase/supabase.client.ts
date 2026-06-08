@@ -1425,12 +1425,15 @@ export async function approveAdvance(advanceId: string): Promise<void> {
   if (error) throw new Error(`[approveAdvance] ${error.message}`)
 }
 
+/**
+ * Cancela un adelanto vía RPC server-side:
+ *  - Bloquea si la liquidación de la semana del adelanto está confirmada/pagada
+ *    (hay que volver la liquidación a borrador para poder borrarlo).
+ *  - Marca el adelanto como cancelled y recalcula las liquidaciones en borrador
+ *    del barbero (así el monto descontado se actualiza al instante).
+ */
 export async function cancelAdvance(advanceId: string): Promise<void> {
-  const { error } = await supabase
-    .from('advances')
-    .update({ status: 'cancelled' } satisfies AdvanceUpdate)
-    .eq('id', advanceId)
-
+  const { error } = await supabase.rpc('cancel_advance', { p_advance_id: advanceId })
   if (error) throw new Error(`[cancelAdvance] ${error.message}`)
 }
 

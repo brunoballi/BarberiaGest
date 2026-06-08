@@ -64,6 +64,7 @@ export default function AdvancesTab({ branchId }: { branchId: string }) {
   const [formError, setFormError] = useState<string | null>(null)
 
   // Acciones
+  const [actionError, setActionError] = useState<string | null>(null)
   const [cancelingId, setCancelingId] = useState<string | null>(null)
   const [approvingId, setApprovingId] = useState<string | null>(null)
 
@@ -151,12 +152,13 @@ export default function AdvancesTab({ branchId }: { branchId: string }) {
   }
 
   async function handleCancel(advanceId: string) {
-    if (cancelingId !== advanceId) { setCancelingId(advanceId); return }
+    if (cancelingId !== advanceId) { setActionError(null); setCancelingId(advanceId); return }
     try {
       await cancelAdvance(advanceId)
       setAdvances((prev) => prev.filter((a) => a.id !== advanceId))
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al cancelar')
+      // Mensaje no destructivo (no reemplaza la pestaña): p.ej. liquidación cerrada
+      setActionError(e instanceof Error ? e.message : 'Error al cancelar')
     } finally {
       setCancelingId(null)
     }
@@ -179,6 +181,24 @@ export default function AdvancesTab({ branchId }: { branchId: string }) {
 
   return (
     <div className="tab-panel">
+      {actionError && (
+        <div
+          role="alert"
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem',
+            margin: '0 0 0.75rem', padding: '0.6rem 0.9rem',
+            background: 'rgba(220,38,38,0.08)', border: '1px solid #7f1d1d',
+            borderRadius: '0.5rem', color: '#fca5a5', fontSize: '0.8125rem',
+          }}
+        >
+          <span>{actionError}</span>
+          <button
+            onClick={() => setActionError(null)}
+            style={{ background: 'none', border: 'none', color: '#fca5a5', cursor: 'pointer', fontSize: '1rem', lineHeight: 1 }}
+            title="Cerrar"
+          >✕</button>
+        </div>
+      )}
       <div className="filter-bar">
         <select value={filterBarber} onChange={(e) => setFilterBarber(e.target.value)} className="filter-input">
           <option value="">Todos los barberos</option>
