@@ -67,6 +67,10 @@ import './admin-dashboard.css'
 import ManualCutModal from './manual-cut-modal'
 import AdvancesTab from './advances-tab'
 import { PaginationControls } from '@/app/components/pagination-controls'
+import { CurrencyInput } from '@/app/components/currency-input'
+import { CurrencyInputInline } from '@/app/components/currency-input-inline'
+import { TextInput } from '@/app/components/text-input'
+import { AdminSideDrawer } from '@/app/components/admin-side-drawer'
 
 // ─── Utilidades ────────────────────────────────────────────────────────────
 function formatARS(n: number): string {
@@ -117,6 +121,7 @@ export default function AdminDashboard() {
   const [currentUserId, setCurrentUserId] = useState<string>('')
   const [adminName, setAdminName]         = useState<string>('')
   const [showManualCut, setShowManualCut] = useState(false)
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 
   // Semanas del mes seleccionado (derivado)
   const weeks: Week[] = months[selectedMonthIdx]?.weeks ?? []
@@ -695,6 +700,13 @@ export default function AdminDashboard() {
 
   return (
     <div className="admin-app">
+      <AdminSideDrawer
+        isOpen={isDrawerOpen}
+        onClose={() => setIsDrawerOpen(false)}
+        onLogout={handleLogout}
+        onRegisterCut={() => { setIsDrawerOpen(false); setShowManualCut(true) }}
+        adminName={adminName}
+      />
       {/* ── HEADER WRAPPER (sticky) ── */}
       <div className="admin-header-wrapper">
 
@@ -804,46 +816,15 @@ export default function AdminDashboard() {
                 + Registrar corte
               </button>
             )}
-            <Link href="/admin/reportes" className="admin-btn admin-btn--ghost">Reportes</Link>
-
-            {/* Dropdown Configuración */}
+            {/* Botón hamburguesa para menú lateral */}
             <button
-              ref={configBtnRef}
-              onClick={openConfigMenu}
-              className={`admin-btn admin-btn--ghost admin-dropdown-trigger${showConfigMenu ? ' admin-btn--active' : ''}`}
+              onClick={() => setIsDrawerOpen(true)}
+              className="admin-btn admin-btn--ghost"
+              aria-label="Abrir menú"
+              title="Menú"
             >
-              Configuración
-              <span className="admin-dropdown-arrow">{showConfigMenu ? '▴' : '▾'}</span>
+              ≡
             </button>
-            {showConfigMenu && (
-              <div
-                ref={configMenuRef}
-                className="admin-dropdown-menu"
-                style={{ position: 'fixed', top: menuPos.top, right: menuPos.right }}
-              >
-                <Link href="/admin/configuracion" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
-                  Calendario
-                </Link>
-                <Link href="/admin/barberos" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
-                  Barberos
-                </Link>
-                <Link href="/admin/servicios" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
-                  Servicios
-                </Link>
-                <Link href="/admin/beneficios" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
-                  Beneficios
-                </Link>
-                <Link href="/admin/auditoria" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
-                  Auditoría
-                </Link>
-                <Link href="/admin/admins" onClick={() => setShowConfigMenu(false)} className="admin-dropdown-item">
-                  Administradores
-                </Link>
-              </div>
-            )}
-
-
-            <button onClick={handleLogout} className="admin-btn admin-btn--danger">Cerrar sesión</button>
           </div>
         </header>
 
@@ -1084,15 +1065,11 @@ export default function AdminDashboard() {
                                 </button>
                                 {s.presentismo_met && (
                                   <>
-                                    <input
+                                    <CurrencyInputInline
                                       key={`pres-${s.id}-${s.bonus_presentismo}`}
-                                      type="number"
-                                      inputMode="numeric"
                                       defaultValue={s.bonus_presentismo || ''}
                                       disabled={loadingKey === `presentismo-${s.id}`}
-                                      onBlur={(e) => {
-                                        const v = parseFloat(e.target.value)
-                                        const next = isNaN(v) ? 0 : v
+                                      onCommit={(next) => {
                                         if (Math.abs(next - s.bonus_presentismo) > 0.001) {
                                           handleSetPresentismoOverride(s.id, s.week_id, s.barber_id, next)
                                         }
@@ -1135,15 +1112,11 @@ export default function AdminDashboard() {
                                 </button>
                                 {s.objetivo_met && (
                                   <>
-                                    <input
+                                    <CurrencyInputInline
                                       key={`obj-${s.id}-${s.bonus_objetivo}`}
-                                      type="number"
-                                      inputMode="numeric"
                                       defaultValue={s.bonus_objetivo || ''}
                                       disabled={loadingKey === `objetivo-${s.id}`}
-                                      onBlur={(e) => {
-                                        const v = parseFloat(e.target.value)
-                                        const next = isNaN(v) ? 0 : v
+                                      onCommit={(next) => {
                                         if (Math.abs(next - s.bonus_objetivo) > 0.001) {
                                           handleSetObjetivoOverride(s.id, s.week_id, s.barber_id, next)
                                         }
@@ -1176,14 +1149,11 @@ export default function AdminDashboard() {
                         <td>
                           {s.barber.compensation_type === 'box_rental' ? (
                             s.status === 'draft' ? (
-                              <input
-                                type="number"
-                                inputMode="numeric"
+                              <CurrencyInputInline
                                 defaultValue={s.box_rent || ''}
                                 placeholder="0"
                                 disabled={loadingKey === `boxrent-${s.id}`}
-                                onBlur={(e) => {
-                                  const v = parseFloat(e.target.value) || 0
+                                onCommit={(v) => {
                                   if (v !== s.box_rent) handleSetBoxRent(s.id, s.week_id, s.barber_id, v)
                                 }}
                                 className="filter-input"
@@ -1585,11 +1555,10 @@ export default function AdminDashboard() {
               </span>
               {editingBalance ? (
                 <span className="balance-panel__edit">
-                  <input
-                    type="number"
-                    inputMode="numeric"
+                  <CurrencyInput
                     value={balanceInput}
-                    onChange={(e) => setBalanceInput(e.target.value)}
+                    onChange={setBalanceInput}
+                    allowNegative
                     className="filter-input"
                     placeholder="0 (puede ser negativo)"
                     autoFocus
@@ -2056,11 +2025,10 @@ function ExpenseFormModal({
             </div>
             <div className="form-group">
               <label className="form-label">Monto *</label>
-              <input
-                type="number"
+              <CurrencyInput
                 className="form-input"
                 value={form.amount}
-                onChange={(e) => setForm({ ...form, amount: e.target.value })}
+                onChange={(v) => setForm({ ...form, amount: v })}
                 placeholder="0"
               />
             </div>
@@ -2363,26 +2331,26 @@ function EditTransactionModal({
               {/* Monto */}
               <div>
                 <label className="form-label">Monto cobrado</label>
-                <input type="number" inputMode="numeric" className="form-input"
+                <CurrencyInput className="form-input"
                   placeholder={selectedService ? String(selectedService.base_price) : '0'}
-                  value={customAmt} onChange={(e) => setCustomAmt(e.target.value)} />
+                  value={customAmt} onChange={setCustomAmt} />
               </div>
 
               {/* Cliente */}
               <div>
                 <label className="form-label">Cliente <span style={{ color: '#52525b', fontWeight: 400 }}>(opcional)</span></label>
-                <input className="form-input" placeholder="Nombre del cliente" value={clientName}
-                  onChange={(e) => setClientName(e.target.value)} maxLength={60} />
-                <input className="form-input" placeholder="Apellido del cliente" value={clientSurname}
-                  onChange={(e) => setClientSurname(e.target.value)} maxLength={60} style={{ marginTop: 8 }} />
+                <TextInput className="form-input" placeholder="Nombre del cliente" value={clientName}
+                  onChange={setClientName} maxLength={60} />
+                <TextInput className="form-input" placeholder="Apellido del cliente" value={clientSurname}
+                  onChange={setClientSurname} maxLength={60} style={{ marginTop: 8 }} />
               </div>
 
               {/* Descuento */}
               <div>
                 <label className="form-label">Descuento <span style={{ color: '#52525b', fontWeight: 400 }}>(opcional)</span></label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '0.5rem' }}>
-                  <input type="number" inputMode="numeric" className="form-input" placeholder="$0"
-                    value={discount} onChange={(e) => setDiscount(e.target.value)} />
+                  <CurrencyInput className="form-input" placeholder="$0"
+                    value={discount} onChange={setDiscount} />
                   <input className="form-input" placeholder="Motivo del descuento" value={discountReason}
                     onChange={(e) => setDiscountReason(e.target.value)} disabled={discountNum <= 0} maxLength={80} />
                 </div>
@@ -2418,13 +2386,13 @@ function EditTransactionModal({
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.5rem' }}>
                     <div>
                       <p style={{ fontSize: '0.72rem', color: '#71717a', marginBottom: '0.25rem' }}>Efectivo $</p>
-                      <input type="number" inputMode="numeric" className="form-input" placeholder="0" value={cashPart}
-                        onChange={(e) => { setCashPart(e.target.value); const r = effectiveAmount - (parseFloat(e.target.value) || 0); if (r >= 0) setTransferPart(String(Math.round(r))) }} />
+                      <CurrencyInput className="form-input" placeholder="0" value={cashPart}
+                        onChange={(v) => { setCashPart(v); const r = effectiveAmount - (parseFloat(v) || 0); if (r >= 0) setTransferPart(String(Math.round(r))) }} />
                     </div>
                     <div>
                       <p style={{ fontSize: '0.72rem', color: '#71717a', marginBottom: '0.25rem' }}>Transferencia $</p>
-                      <input type="number" inputMode="numeric" className="form-input" placeholder="0" value={transferPart}
-                        onChange={(e) => { setTransferPart(e.target.value); const r = effectiveAmount - (parseFloat(e.target.value) || 0); if (r >= 0) setCashPart(String(Math.round(r))) }} />
+                      <CurrencyInput className="form-input" placeholder="0" value={transferPart}
+                        onChange={(v) => { setTransferPart(v); const r = effectiveAmount - (parseFloat(v) || 0); if (r >= 0) setCashPart(String(Math.round(r))) }} />
                     </div>
                     {(cashNum + transferNum) > 0 && (
                       <p style={{ gridColumn: '1/-1', fontSize: '0.75rem', textAlign: 'right', color: Math.abs(cashNum + transferNum - effectiveAmount) <= 1 ? '#34d399' : '#f87171' }}>
@@ -2537,20 +2505,18 @@ function OverrideSplitModal({
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">Parte barbería</label>
-              <input
-                type="number"
+              <CurrencyInput
                 className="form-input"
                 value={branchShare}
-                onChange={(e) => setBranchShare(e.target.value)}
+                onChange={setBranchShare}
               />
             </div>
             <div className="form-group">
               <label className="form-label">Parte barbero</label>
-              <input
-                type="number"
+              <CurrencyInput
                 className="form-input"
                 value={barberShare}
-                onChange={(e) => setBarberShare(e.target.value)}
+                onChange={setBarberShare}
               />
             </div>
           </div>
@@ -2558,11 +2524,10 @@ function OverrideSplitModal({
             <p className="form-error">Suma actual: {formatARS(bShop + bBarber)} · Diferencia: {formatARS(bShop + bBarber - total)}</p>
           )}
           <label className="form-label">Ya cobrado por barbero</label>
-          <input
-            type="number"
+          <CurrencyInput
             className="form-input"
             value={alreadyCollected}
-            onChange={(e) => setAlreadyCollected(e.target.value)}
+            onChange={setAlreadyCollected}
           />
           <label className="form-label">Motivo del ajuste *</label>
           <textarea

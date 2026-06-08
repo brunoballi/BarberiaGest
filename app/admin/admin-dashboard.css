@@ -1254,3 +1254,28 @@
   border-radius: 0.375rem;
   border: 1px solid rgba(239, 68, 68, 0.2);
 }
+
+/* ─── Admin Drawer styles ────────────────────────────────────── */
+.drawer-submenu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: all 0.2s ease-in-out;
+}
+
+.drawer-submenu-item:hover {
+  color: #e5e5e5;
+}
+
+.drawer-logout-btn {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.2), rgba(185, 28, 28, 0.15));
+  border: 1px solid rgba(220, 38, 38, 0.4);
+  color: #f87171;
+  transition: all 0.2s ease-in-out;
+}
+
+.drawer-logout-btn:hover {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.3), rgba(185, 28, 28, 0.25));
+  border-color: rgba(220, 38, 38, 0.6);
+  color: #fca5a5;
+}

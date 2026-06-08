@@ -18,6 +18,8 @@ import type {
   Benefit,
 } from '@/lib/supabase/database.types'
 import './admin-dashboard.css'
+import { CurrencyInput } from '@/app/components/currency-input'
+import { TextInput } from '@/app/components/text-input'
 
 interface Props {
   branchId:       string
@@ -279,7 +281,7 @@ export default function ManualCutModal({
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="modal-overlay">
+    <div className="modal-overlay" onClick={onClose}>
       <div className="modal-box" style={{ maxWidth: '540px' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Registrar corte (admin)</h3>
@@ -358,22 +360,22 @@ export default function ManualCutModal({
               {/* ── Monto ── */}
               <div>
                 <label className="form-label">Monto cobrado</label>
-                <input
-                  type="number" inputMode="numeric" className="form-input"
+                <CurrencyInput
+                  className="form-input"
                   placeholder={selectedService ? String(selectedService.base_price) : '0'}
                   value={customAmt}
-                  onChange={(e) => setCustomAmt(e.target.value)}
+                  onChange={setCustomAmt}
                 />
               </div>
 
               {/* ── Cliente ── */}
               <div>
                 <label className="form-label">Cliente <span style={{ color: '#52525b', fontWeight: 400 }}>(opcional)</span></label>
-                <input
+                <TextInput
                   className="form-input"
                   placeholder="Nombre del cliente"
                   value={clientName}
-                  onChange={(e) => setClientName(e.target.value)}
+                  onChange={setClientName}
                   maxLength={60}
                 />
               </div>
@@ -417,11 +419,11 @@ export default function ManualCutModal({
               <div>
                 <label className="form-label">Descuento <span style={{ color: '#52525b', fontWeight: 400 }}>(opcional)</span></label>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.6fr', gap: '0.5rem' }}>
-                  <input
-                    type="number" inputMode="numeric" className="form-input"
+                  <CurrencyInput
+                    className="form-input"
                     placeholder="$0"
                     value={discount}
-                    onChange={(e) => { setBenefitId(''); setDiscount(e.target.value) }}
+                    onChange={(v) => { setBenefitId(''); setDiscount(v) }}
                   />
                   <input
                     className="form-input"
@@ -490,24 +492,24 @@ export default function ManualCutModal({
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.5rem' }}>
                     <div>
                       <p style={{ fontSize: '0.72rem', color: '#71717a', marginBottom: '0.25rem' }}>Efectivo $</p>
-                      <input
-                        type="number" inputMode="numeric" className="form-input"
+                      <CurrencyInput
+                        className="form-input"
                         placeholder="0" value={cashPart}
-                        onChange={(e) => {
-                          setCashPart(e.target.value)
-                          const rest = effectiveAmount - (parseFloat(e.target.value) || 0)
+                        onChange={(v) => {
+                          setCashPart(v)
+                          const rest = effectiveAmount - (parseFloat(v) || 0)
                           if (rest >= 0) setTransferPart(String(Math.round(rest)))
                         }}
                       />
                     </div>
                     <div>
                       <p style={{ fontSize: '0.72rem', color: '#71717a', marginBottom: '0.25rem' }}>Transferencia $</p>
-                      <input
-                        type="number" inputMode="numeric" className="form-input"
+                      <CurrencyInput
+                        className="form-input"
                         placeholder="0" value={transferPart}
-                        onChange={(e) => {
-                          setTransferPart(e.target.value)
-                          const rest = effectiveAmount - (parseFloat(e.target.value) || 0)
+                        onChange={(v) => {
+                          setTransferPart(v)
+                          const rest = effectiveAmount - (parseFloat(v) || 0)
                           if (rest >= 0) setCashPart(String(Math.round(rest)))
                         }}
                       />

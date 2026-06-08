@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { CurrencyInput } from '@/app/components/currency-input'
+import { TextInput } from '@/app/components/text-input'
 import {
   type Profile,
   type Transaction,
@@ -28,6 +29,7 @@ import {
   supabase,
 } from '@/lib/supabase/supabase.client'
 import { useServices, useActiveBenefits } from '@/lib/hooks/use-catalogs'
+import { BarberSideDrawer } from '@/app/components/barber-side-drawer'
 import './barber.css'
 
 // ─── Utilidades ───────────────────────────────────────────────────────────
@@ -122,6 +124,7 @@ export default function BarberMobileView() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 
   // Servicios desde React Query (cache 10 min, compartido). Fallback a defaults.
   const servicesQuery = useServices(profile?.branch_id)
@@ -594,8 +597,8 @@ export default function BarberMobileView() {
 
   // ── ADVANCE REQUEST MODAL ────────────────────────────────────────────────
   const advanceModal = showAdvanceModal && (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-0">
-      <div className="bg-zinc-900 border-t border-zinc-700 rounded-t-2xl w-full max-w-lg p-5 space-y-5 animate-fadein">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-0" onClick={closeAdvanceModal}>
+      <div className="bg-zinc-900 border-t border-zinc-700 rounded-t-2xl w-full max-w-lg p-5 space-y-5 animate-fadein" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h2 className="text-white font-bold text-base">Pedir adelanto</h2>
           <button onClick={closeAdvanceModal} className="icon-btn"><span className="text-lg leading-none">✕</span></button>
@@ -629,11 +632,10 @@ export default function BarberMobileView() {
 
             <div>
               <p className="section-label mb-2">Motivo <span className="text-zinc-600 font-normal normal-case">(opcional)</span></p>
-              <input
-                type="text"
+              <TextInput
                 placeholder="ej: gastos personales"
                 value={advanceReason}
-                onChange={(e) => setAdvanceReason(e.target.value)}
+                onChange={setAdvanceReason}
                 className="amount-input"
                 style={{ paddingLeft: '0.875rem' }}
               />
@@ -656,8 +658,8 @@ export default function BarberMobileView() {
 
   // ── EDIT TRANSACTION MODAL ───────────────────────────────────────────────
   const editModal = editingTx && (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-0">
-      <div className="bg-zinc-900 border-t border-zinc-700 rounded-t-2xl w-full max-w-lg p-5 space-y-5 animate-fadein">
+    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-0" onClick={() => setEditingTx(null)}>
+      <div className="bg-zinc-900 border-t border-zinc-700 rounded-t-2xl w-full max-w-lg p-5 space-y-5 animate-fadein" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h2 className="text-white font-bold text-base">Editar corte</h2>
           <button onClick={() => setEditingTx(null)} className="icon-btn"><span className="text-lg leading-none">✕</span></button>
@@ -832,21 +834,19 @@ export default function BarberMobileView() {
             <label className="section-label">
               {transferGoesToValhalla ? 'Cliente (obligatorio)' : 'Cliente (opcional)'}
             </label>
-            <input
-              type="text"
+            <TextInput
               placeholder="Nombre del cliente"
               value={clientName}
-              onChange={(e) => setClientName(e.target.value)}
+              onChange={setClientName}
               className="client-name-input"
               maxLength={60}
             />
             {transferGoesToValhalla && (
               <>
-                <input
-                  type="text"
+                <TextInput
                   placeholder="Apellido del cliente (obligatorio)"
                   value={clientSurname}
-                  onChange={(e) => setClientSurname(e.target.value)}
+                  onChange={setClientSurname}
                   className="client-name-input"
                   style={{ marginTop: 8 }}
                   maxLength={60}
@@ -911,11 +911,10 @@ export default function BarberMobileView() {
           {/* ── Observaciones (opcional) ── */}
           <section>
             <label className="section-label">Observaciones <span className="text-zinc-600 font-normal normal-case">(opcional)</span></label>
-            <input
-              type="text"
+            <TextInput
               placeholder="Detalle adicional del servicio..."
               value={observations}
-              onChange={(e) => setObservations(e.target.value)}
+              onChange={setObservations}
               className="client-name-input"
               maxLength={120}
             />
@@ -977,12 +976,12 @@ export default function BarberMobileView() {
                   <p className="text-xs text-zinc-500 mb-1">Efectivo</p>
                   <div className="amount-input-wrapper">
                     <span className="amount-prefix">$</span>
-                    <input
-                      type="number" inputMode="numeric" placeholder="0"
+                    <CurrencyInput
+                      placeholder="0"
                       value={cashPart}
-                      onChange={(e) => {
-                        setCashPart(e.target.value)
-                        const rest = effectiveAmount - (parseFloat(e.target.value) || 0)
+                      onChange={(v) => {
+                        setCashPart(v)
+                        const rest = effectiveAmount - (parseFloat(v) || 0)
                         if (rest >= 0) setTransferPart(String(Math.round(rest)))
                       }}
                       className="amount-input"
@@ -993,12 +992,12 @@ export default function BarberMobileView() {
                   <p className="text-xs text-zinc-500 mb-1">Transferencia</p>
                   <div className="amount-input-wrapper">
                     <span className="amount-prefix">$</span>
-                    <input
-                      type="number" inputMode="numeric" placeholder="0"
+                    <CurrencyInput
+                      placeholder="0"
                       value={transferPart}
-                      onChange={(e) => {
-                        setTransferPart(e.target.value)
-                        const rest = effectiveAmount - (parseFloat(e.target.value) || 0)
+                      onChange={(v) => {
+                        setTransferPart(v)
+                        const rest = effectiveAmount - (parseFloat(v) || 0)
                         if (rest >= 0) setCashPart(String(Math.round(rest)))
                       }}
                       className="amount-input"
@@ -1162,6 +1161,12 @@ export default function BarberMobileView() {
                     {s.advances_deducted > 0 && <SettlRow label="– Adelantos" value={formatARS(s.advances_deducted)} valueClass="text-red-400" />}
                     <div className="h-px bg-zinc-800 my-0.5" />
                     <SettlRow label="A recibir" value={formatARS(s.net_payable)} bold />
+                    {s.net_payable < 0 && (
+                      <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                        <span>ℹ️</span>
+                        <span>Se debe a la barbería</span>
+                      </p>
+                    )}
                     {s.presentismo_met !== null && (
                       <p className="text-xs text-zinc-600 mt-1">
                         Presentismo: {s.presentismo_met ? 'marcado' : 'no marcado'}
@@ -1183,6 +1188,15 @@ export default function BarberMobileView() {
     <>
     {editModal}
     {advanceModal}
+    <BarberSideDrawer
+      isOpen={isDrawerOpen}
+      onClose={() => setIsDrawerOpen(false)}
+      onLogout={handleLogout}
+      onRegisterCut={() => { setIsDrawerOpen(false); goToRegister() }}
+      onViewLiquidations={() => { setIsDrawerOpen(false); goToSettlements() }}
+      onRequestAdvance={() => { setIsDrawerOpen(false); setShowAdvanceModal(true) }}
+      barberName={profile?.full_name || 'Barbero'}
+    />
     <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
       <header className="barber-header">
         <div className="barber-header__brand">
@@ -1200,8 +1214,8 @@ export default function BarberMobileView() {
               </p>
             </div>
           </div>
-          <button onClick={handleLogout} className="icon-btn" aria-label="Salir">
-            <IconLogout />
+          <button onClick={() => setIsDrawerOpen(true)} className="icon-btn" aria-label="Abrir menú" title="Menú">
+            <span className="text-xl">≡</span>
           </button>
         </div>
       </header>
@@ -1328,21 +1342,31 @@ export default function BarberMobileView() {
           {(showRangeFilter || filterMode === 'range') && (
             <div className="date-filter">
               <div className="date-filter__inputs">
-                <div>
-                  <label className="date-filter__label">Desde</label>
-                  <input type="date" value={filterFrom} onChange={(e) => setFilterFrom(e.target.value)} className="date-filter__input" />
+                <div className="flex-1">
+                  <label className="date-filter__label block text-xs text-zinc-400 mb-1.5 font-medium">Desde</label>
+                  <input
+                    type="date"
+                    value={filterFrom}
+                    onChange={(e) => setFilterFrom(e.target.value)}
+                    className="date-filter__input w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm"
+                  />
                 </div>
-                <div>
-                  <label className="date-filter__label">Hasta</label>
-                  <input type="date" value={filterTo} onChange={(e) => setFilterTo(e.target.value)} className="date-filter__input" />
+                <div className="flex-1">
+                  <label className="date-filter__label block text-xs text-zinc-400 mb-1.5 font-medium">Hasta</label>
+                  <input
+                    type="date"
+                    value={filterTo}
+                    onChange={(e) => setFilterTo(e.target.value)}
+                    className="date-filter__input w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm"
+                  />
                 </div>
               </div>
               <button
                 onClick={applyDateFilter}
                 disabled={!filterFrom || !filterTo || filterLoading}
-                className="date-filter__apply"
+                className="date-filter__apply btn-primary w-full mt-3 disabled:opacity-40 disabled:cursor-not-allowed"
               >
-                {filterLoading ? '...' : 'Buscar'}
+                {filterLoading ? '⏳ Buscando...' : '🔍 Buscar'}
               </button>
             </div>
           )}

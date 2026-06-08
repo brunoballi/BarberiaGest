@@ -880,3 +880,20 @@
   color: #34d399;
   font-weight: 600;
 }
+
+/* ─── Drawer styles ────────────────────────────────────── */
+.drawer-item {
+  transition: all 0.2s ease-in-out;
+}
+
+.drawer-item:active {
+  opacity: 0.7;
+}
+
+.drawer-item-logout {
+  transition: all 0.2s ease-in-out;
+}
+
+.drawer-item-logout:hover {
+  background-color: rgba(127, 29, 29, 0.2);
+}
