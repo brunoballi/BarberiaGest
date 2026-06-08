@@ -11,6 +11,7 @@ import {
   updateBenefit,
 } from '@/lib/supabase/supabase.client'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
+import { CurrencyInput } from '@/app/components/currency-input'
 
 function formatARS(n: number): string {
   return new Intl.NumberFormat('es-AR', {
@@ -180,7 +181,7 @@ export default function BenefitsView() {
   if (error)   return <div className="p-6 text-red-400">{error}</div>
 
   return (
-    <div className="max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 py-8 space-y-6">
+    <div className="w-full px-4 py-8 space-y-6">
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -243,15 +244,12 @@ export default function BenefitsView() {
                 <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
                   {formType === 'percentage' ? 'Porcentaje (1-100)' : 'Monto ($)'}
                 </label>
-                <input
+                <CurrencyInput
                   required
-                  type="number"
-                  inputMode="numeric"
-                  min="0"
                   placeholder="0"
                   value={formValue}
-                  onChange={(e) => setFormValue(e.target.value)}
-                  className="w-full bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-600 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  onChange={setFormValue}
+                  className="w-full bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-600 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
                 />
               </div>
             </div>
@@ -368,9 +366,9 @@ function BenefitRow({
               <option value="percentage">%</option>
               <option value="fixed">$</option>
             </select>
-            <input
-              type="number" inputMode="numeric" min="0" value={editValue} onChange={(e) => onEditValue(e.target.value)}
-              className="bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            <CurrencyInput
+              value={editValue} onChange={onEditValue}
+              className="bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
             />
           </div>
           {editError && <p className="text-red-400 text-xs">{editError}</p>}

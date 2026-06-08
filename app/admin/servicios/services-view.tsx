@@ -158,7 +158,7 @@ export default function ServicesView() {
   if (error)   return <div className="p-6 text-red-400">{error}</div>
 
   return (
-    <div className="max-w-2xl lg:max-w-4xl xl:max-w-5xl mx-auto px-4 py-8 space-y-6">
+    <div className="w-full px-4 py-8 space-y-6">
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">

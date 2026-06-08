@@ -420,7 +420,7 @@ export default function ConfiguracionView() {
 
   return (
     <div className="admin-app">
-      <div style={{ maxWidth: '1400px', margin: '0 auto', width: '100%' }}>
+      <div style={{ width: '100%' }}>
       {/* Header */}
       <div
         style={{

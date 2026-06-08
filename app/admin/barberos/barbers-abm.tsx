@@ -124,13 +124,11 @@ function CompensationFields({
       <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
         {label}
       </label>
-      <input
-        type="number"
-        inputMode="numeric"
+      <CurrencyInput
         placeholder={placeholder ?? '0'}
         value={value}
-        onChange={(e) => onChange(field, e.target.value)}
-        className="w-full bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-600 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+        onChange={(v) => onChange(field, v)}
+        className="w-full bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-600 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
       />
     </div>
   )
@@ -507,7 +505,7 @@ export default function BarbersAbm() {
   const inactive = barbers.filter((b) => !b.is_active)
 
   return (
-    <div className="max-w-3xl lg:max-w-5xl xl:max-w-6xl mx-auto px-4 py-8 space-y-6">
+    <div className="w-full px-4 py-8 space-y-6">
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
