@@ -992,17 +992,6 @@ export default function AdminDashboard() {
                 <option value="positive">A cobrar</option>
                 <option value="negative">Debe</option>
               </select>
-              <select
-                value={settlPageSize}
-                onChange={(e) => { setSettlPageSize(Number(e.target.value)); setSettlPage(1) }}
-                className="filter-input"
-                title="Cantidad de filas por página"
-              >
-                <option value={20}>20 por página</option>
-                <option value={30}>30 por página</option>
-                <option value={50}>50 por página</option>
-                <option value={100}>100 por página</option>
-              </select>
               {hasSettlFilters && (
                 <button
                   onClick={() => { setSettlFilterBarber(''); setSettlFilterObjetivo(''); setSettlFilterPresentismo(''); setSettlFilterAdelantos(''); setSettlFilterAPagar(''); setSettlFilterEstado(''); setSettlPage(1) }}
@@ -1314,38 +1303,19 @@ export default function AdminDashboard() {
               </table>
             )}
           </div>
-          {filteredSettlements.length > settlPageSize && (
-            <div className="pagination-bar">
-              <span className="pagination-info">
-                {settlStartIdx + 1}–{Math.min(settlStartIdx + settlPageSize, filteredSettlements.length)} de {filteredSettlements.length}
-              </span>
-              <div className="pagination-pages">
-                <button
-                  className="pagination-btn"
-                  disabled={settlCurrentPage === 1}
-                  onClick={() => setSettlPage(settlCurrentPage - 1)}
-                >
-                  ‹
-                </button>
-                {Array.from({ length: settlTotalPages }, (_, i) => i + 1).map((p) => (
-                  <button
-                    key={p}
-                    className={`pagination-btn ${p === settlCurrentPage ? 'pagination-btn--active' : ''}`}
-                    onClick={() => setSettlPage(p)}
-                  >
-                    {p}
-                  </button>
-                ))}
-                <button
-                  className="pagination-btn"
-                  disabled={settlCurrentPage === settlTotalPages}
-                  onClick={() => setSettlPage(settlCurrentPage + 1)}
-                >
-                  ›
-                </button>
-              </div>
-            </div>
-          )}
+          <PaginationControls
+            currentPage={settlCurrentPage}
+            totalPages={settlTotalPages}
+            pageSize={settlPageSize}
+            totalItems={filteredSettlements.length}
+            startIdx={filteredSettlements.length === 0 ? 0 : settlStartIdx + 1}
+            endIdx={Math.min(settlStartIdx + settlPageSize, filteredSettlements.length)}
+            canGoPrevious={settlCurrentPage > 1}
+            canGoNext={settlCurrentPage < settlTotalPages}
+            onPageChange={setSettlPage}
+            onPageSizeChange={(s) => { setSettlPageSize(s); setSettlPage(1) }}
+            itemLabel="liquidaciones"
+          />
           </div>
           )
         })()}
@@ -1417,26 +1387,29 @@ export default function AdminDashboard() {
               <table className="admin-table">
                 <thead>
                   <tr>
-                    <th>Fecha</th>
-                    <th>Barbero</th>
-                    <th>Servicio</th>
-                    <th>Cliente</th>
-                    <th>Método</th>
-                    <th>Total</th>
-                    <th>Barbería</th>
-                    <th>Barbero</th>
-                    <th>Ya cobrado</th>
-                    <th>Modificado</th>
-                    <th></th>
+                    <th rowSpan={2}>Fecha</th>
+                    <th rowSpan={2}>Barbero</th>
+                    <th rowSpan={2}>Servicio</th>
+                    <th rowSpan={2}>Cliente</th>
+                    <th rowSpan={2}>Método</th>
+                    <th rowSpan={2}>Total</th>
+                    <th colSpan={2} style={{ textAlign: 'center' }}>Detalle</th>
+                    <th rowSpan={2}>Ya cobrado</th>
+                    <th rowSpan={2}>Modificado</th>
+                    <th rowSpan={2}></th>
+                  </tr>
+                  <tr>
+                    <th>Comisión Barbería</th>
+                    <th>Comisión Barbero</th>
                   </tr>
                 </thead>
                 <tbody>
                   {txPaged.map((tx) => (
                     <tr key={tx.id} className={tx.is_manual_override ? 'tr-override' : ''}>
-                      <td className="td-date">{formatDate(tx.transaction_date)}</td>
-                      <td>{tx.barber.full_name}</td>
-                      <td>{tx.service?.name ?? '—'}</td>
-                      <td className="td-muted">{[tx.client_name, tx.client_surname].filter(Boolean).join(' ') || '—'}</td>
+                      <td className="td-date td-left">{formatDate(tx.transaction_date)}</td>
+                      <td className="td-left">{tx.barber.full_name}</td>
+                      <td className="td-left">{tx.service?.name ?? '—'}</td>
+                      <td className="td-muted td-left">{[tx.client_name, tx.client_surname].filter(Boolean).join(' ') || '—'}</td>
                       <td>
                         <span className={`dot-badge dot-badge--${tx.payment_method}`}>
                           {PAYMENT_METHOD_LABELS[tx.payment_method]}
