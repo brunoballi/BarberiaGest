@@ -1426,7 +1426,7 @@ export default function AdminDashboard() {
                     <th>Barbería</th>
                     <th>Barbero</th>
                     <th>Ya cobrado</th>
-                    <th>Override</th>
+                    <th>Modificado</th>
                     <th></th>
                   </tr>
                 </thead>
@@ -1641,22 +1641,6 @@ export default function AdminDashboard() {
           const gPaged = filteredExpenses.slice((gCurrent - 1) * gastosPageSize, gCurrent * gastosPageSize)
           return (
           <div>
-            <div className="table-toolbar">
-              <span className="toolbar-total">
-                Total gastos: <strong>{formatARS(hasExpFilters ? filteredTotal : kpis.expensesTotal)}</strong>
-                {hasExpFilters && expenses.length !== filteredExpenses.length && (
-                  <span style={{ color: '#a1a1aa', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
-                    ({filteredExpenses.length} de {expenses.length})
-                  </span>
-                )}
-              </span>
-              <button
-                onClick={() => setShowExpenseForm(true)}
-                className="admin-btn admin-btn--primary"
-              >
-                + Registrar gasto
-              </button>
-            </div>
             <div className="filter-bar">
               <input
                 type="date"
@@ -1689,6 +1673,13 @@ export default function AdminDashboard() {
               {hasExpFilters && (
                 <span className="filter-count">{filteredExpenses.length} resultado{filteredExpenses.length !== 1 ? 's' : ''}</span>
               )}
+              <button
+                onClick={() => setShowExpenseForm(true)}
+                className="admin-btn admin-btn--primary"
+                style={{ marginLeft: 'auto' }}
+              >
+                + Registrar gasto
+              </button>
             </div>
             <div className="admin-table-wrap">
               {expenses.length === 0 ? (
@@ -1763,6 +1754,20 @@ export default function AdminDashboard() {
                       </tr>
                     ))}
                   </tbody>
+                  <tfoot>
+                    <tr className="tfoot-row">
+                      <td colSpan={3}>
+                        <strong>{filteredExpenses.length} gasto{filteredExpenses.length !== 1 ? 's' : ''}</strong>
+                        {hasExpFilters && expenses.length !== filteredExpenses.length && (
+                          <span style={{ color: '#a1a1aa', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                            (de {expenses.length})
+                          </span>
+                        )}
+                      </td>
+                      <td><strong className="td-danger">{formatARS(hasExpFilters ? filteredTotal : kpis.expensesTotal)}</strong></td>
+                      <td colSpan={3}></td>
+                    </tr>
+                  </tfoot>
                 </table>
               )}
             </div>
@@ -2627,7 +2632,7 @@ function LiveDashboard({
   return (
     <div className="space-y-5">
       {/* KPIs globales */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 mx-5 mt-5">
         {[
           { label: 'Hoy — cortes', value: String(totalTodayCuts) },
           { label: 'Hoy — facturado', value: formatARS(totalToday) },
@@ -2673,7 +2678,7 @@ function LiveDashboard({
         </div>
       )}
 
-      <p className="text-xs text-zinc-500 text-right">
+      <p className="text-xs text-zinc-500 text-right mx-5 mb-5">
         Actualización automática · {transactions.length} transacciones cargadas
       </p>
     </div>

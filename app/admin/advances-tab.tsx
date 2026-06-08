@@ -247,17 +247,6 @@ export default function AdvancesTab({ branchId }: { branchId: string }) {
       )}
 
       <div className="admin-table-wrap">
-        <div className="table-toolbar">
-          <span className="toolbar-total">
-            Total: <strong>{formatARS(filteredTotal)}</strong>
-            {hasFilters && advances.length !== filteredAdvances.length && (
-              <span style={{ color: '#a1a1aa', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
-                ({filteredAdvances.length} de {advances.length})
-              </span>
-            )}
-          </span>
-        </div>
-
         {advances.length === 0 ? (
           <div className="empty-state"><p>No hay adelantos pendientes registrados.</p></div>
         ) : filteredAdvances.length === 0 ? (
@@ -323,6 +312,20 @@ export default function AdvancesTab({ branchId }: { branchId: string }) {
                   )
                 })}
               </tbody>
+              <tfoot>
+                <tr className="tfoot-row">
+                  <td colSpan={2}>
+                    <strong>{filteredAdvances.length} adelanto{filteredAdvances.length !== 1 ? 's' : ''}</strong>
+                    {hasFilters && advances.length !== filteredAdvances.length && (
+                      <span style={{ color: '#a1a1aa', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
+                        (de {advances.length})
+                      </span>
+                    )}
+                  </td>
+                  <td><strong className="td-amber">{formatARS(filteredTotal)}</strong></td>
+                  <td colSpan={4}></td>
+                </tr>
+              </tfoot>
             </table>
             <PaginationControls
               currentPage={pagination.currentPage}

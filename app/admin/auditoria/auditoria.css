@@ -77,7 +77,7 @@
 }
 
 .audit-row {
-  background: #18181b;
+  background: var(--grid-body-bg);
   border: 1px solid #27272a;
   border-radius: 10px;
   overflow: hidden;
@@ -175,10 +175,11 @@
   font-size: 0.7rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #71717a;
+  color: var(--grid-header-text);
+  background: var(--grid-header-bg);
   font-weight: 600;
   padding: 0.4rem 0.5rem;
-  border-bottom: 1px solid #27272a;
+  border-bottom: 1px solid var(--grid-header-border);
 }
 .audit-diff td {
   padding: 0.45rem 0.5rem;

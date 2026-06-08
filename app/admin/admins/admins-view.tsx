@@ -207,11 +207,7 @@ export default function AdminsView() {
           <span className="admin-brand-branch">Gestión de administradores</span>
         </div>
         <header className="admin-topbar">
-          <div className="admin-topbar-left">
-            <button onClick={() => router.push('/admin')} className="admin-btn admin-btn--ghost">
-              ← Volver al dashboard
-            </button>
-          </div>
+          <div className="admin-topbar-left"></div>
           <div className="admin-topbar-right">
             <button onClick={() => { setShowForm(true); setFormError(null) }} className="admin-btn admin-btn--primary">
               + Nuevo administrador

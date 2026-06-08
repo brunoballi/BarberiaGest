@@ -608,7 +608,7 @@
 .admin-table-wrap {
   margin: 1.25rem;
   padding: 0.5rem 1rem 0.75rem;
-  background: #171717;
+  background: var(--grid-body-bg);
   border: 1px solid #2a2a2a;
   border-radius: 0.75rem;
   overflow-x: auto;
@@ -624,12 +624,12 @@
 .admin-table th {
   text-align: left;
   padding: 0.625rem 0.75rem;
-  color: #f59e0b;
+  color: var(--grid-header-text);
   font-size: 0.6875rem;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  border-bottom: 2px solid #78350f;
-  background: #1c1505;
+  border-bottom: 2px solid var(--grid-header-border);
+  background: var(--grid-header-bg);
   white-space: nowrap;
 }
 .admin-table thead tr th:first-child { border-radius: 0.5rem 0 0 0; }
@@ -643,7 +643,7 @@
 }
 
 .admin-table tbody tr:hover {
-  background: #212121;
+  background: var(--grid-row-hover);
 }
 
 .th-highlight {
@@ -1087,6 +1087,8 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   margin-bottom: 1rem;
 }
 .toolbar-total { color: #a1a1aa; font-size: 0.875rem; }

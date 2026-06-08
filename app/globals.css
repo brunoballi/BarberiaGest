@@ -3,6 +3,14 @@
 :root {
   --background: #0a0a0a;
   --foreground: #ededed;
+
+  /* ── Grillas: encabezados y cuerpo ──────────────────────────── */
+  --grid-header-bg: #3f3f46;     /* gris grafito */
+  --grid-header-text: #f4f4f5;   /* texto blanco */
+  --grid-header-border: #52525b; /* borde inferior del header */
+  --grid-body-bg: #1f1f23;       /* fondo del cuerpo (más claro) */
+  --grid-row-hover: #2a2a30;     /* hover de fila */
+  --grid-row-border: #2a2a2a;    /* separador de filas */
 }
 
 @theme inline {
