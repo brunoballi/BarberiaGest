@@ -733,6 +733,19 @@
   padding: 1rem 1.25rem 0.75rem;
   border-bottom: 1px solid #1f1f1f;
 }
+.week-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.7rem;
+  background: var(--grid-header-bg);
+  border: 1px solid var(--grid-header-border);
+  border-radius: 999px;
+  color: var(--grid-header-text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
 .filter-input {
   background: #111;
   border: 1px solid #2d2d2d;

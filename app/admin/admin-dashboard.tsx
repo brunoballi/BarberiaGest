@@ -335,6 +335,20 @@ export default function AdminDashboard() {
 
   useEffect(() => { loadTabData() }, [loadTabData])
 
+  // ─── Al cambiar de semana: pre-cargar el filtro de fechas de Transacciones
+  // con el rango de la semana, para que el usuario vea que la grilla ya está
+  // filtrada por la semana seleccionada (evita confusión con el filtro vacío). ─
+  useEffect(() => {
+    if (selectedWeek) {
+      setFilterDateFrom(selectedWeek.start_date)
+      setFilterDateTo(selectedWeek.end_date)
+    } else {
+      setFilterDateFrom('')
+      setFilterDateTo('')
+    }
+    setTxPage(1)
+  }, [selectedWeek?.id, selectedWeek?.start_date, selectedWeek?.end_date])
+
   // ─── Saldo inicial del mes (se recarga al cambiar sucursal/mes) ─────
   useEffect(() => {
     if (!selectedBranch || !selectedMonthId) { setInitialBalanceState(null); return }
@@ -954,10 +968,17 @@ export default function AdminDashboard() {
           const settlCurrentPage = Math.min(settlPage, settlTotalPages)
           const settlStartIdx = (settlCurrentPage - 1) * settlPageSize
           const pagedSettlements = filteredSettlements.slice(settlStartIdx, settlStartIdx + settlPageSize)
+          // Número de semana visible (igual que en las pills "S{n}")
+          const settlWeekNumber = selectedWeek ? weeks.findIndex((w) => w.id === selectedWeek.id) + 1 : 0
           return (
           <div>
           {settlements.length > 0 && (
             <div className="filter-bar">
+              {selectedWeek && (
+                <span className="week-chip" title={`Liquidaciones de la Semana ${settlWeekNumber}`}>
+                  📅 Semana {settlWeekNumber} · {formatDate(selectedWeek.start_date)}–{formatDate(selectedWeek.end_date)}
+                </span>
+              )}
               <select value={settlFilterBarber} onChange={(e) => setSettlFilterBarber(e.target.value)} className="filter-input">
                 <option value="">Todos los barberos</option>
                 {barberOptsSettl.map(([id, name]) => (

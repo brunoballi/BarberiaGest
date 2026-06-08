@@ -92,9 +92,10 @@ function getWeekActiveRange(
 }
 
 function previewWeeksForMonth(year: number, month: number): Array<{ start: string; end: string }> {
-  const { firstDay, lastDay } = getMonthDateRange(year, month)
-  const first = new Date(firstDay)
-  const last = new Date(lastDay)
+  // Construir Date desde componentes locales (evita el bug de timezone de new Date('YYYY-MM-DD'),
+  // que se interpreta en UTC y retrocede un día en zonas con offset negativo, p.ej. Argentina UTC-3).
+  const first = new Date(year, month - 1, 1)
+  const last = new Date(year, month, 0)
   const weeks: Array<{ start: string; end: string }> = []
 
   // Mejora 2: arrancar en el primer martes anterior o igual al primer día (semana martes-sábado)
