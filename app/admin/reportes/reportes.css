@@ -2,7 +2,7 @@
 
 .report-page {
   width: 100%;
-  max-width: 1400px;
+  max-width: none;
   margin: 0 auto;
   padding: 1.5rem 1rem 4rem;
   background: #0f0f0f;
