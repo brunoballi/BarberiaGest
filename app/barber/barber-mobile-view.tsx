@@ -598,7 +598,7 @@ export default function BarberMobileView() {
   // ── ADVANCE REQUEST MODAL ────────────────────────────────────────────────
   const advanceModal = showAdvanceModal && (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-0" onClick={closeAdvanceModal}>
-      <div className="bg-zinc-900 border-t border-zinc-700 rounded-t-2xl w-full max-w-lg p-5 space-y-5 animate-fadein" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-zinc-900 border-t border-zinc-700 rounded-t-2xl w-full max-w-lg p-6 space-y-6 animate-fadein" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h2 className="text-white font-bold text-base">Pedir adelanto</h2>
           <button onClick={closeAdvanceModal} className="icon-btn"><span className="text-lg leading-none">✕</span></button>
@@ -612,9 +612,9 @@ export default function BarberMobileView() {
             <button onClick={closeAdvanceModal} className="btn-primary w-full mt-2">Cerrar</button>
           </div>
         ) : (
-          <>
+          <div className="flex flex-col gap-6">
             <div>
-              <p className="section-label mb-2">Monto solicitado</p>
+              <p className="section-label mb-2.5">Monto solicitado</p>
               <div className="amount-input-wrapper">
                 <span className="amount-prefix">$</span>
                 <CurrencyInput
@@ -626,18 +626,17 @@ export default function BarberMobileView() {
                 />
               </div>
               {profile?.advance_limit != null && profile.advance_limit > 0 && (
-                <p className="text-xs text-zinc-500 mt-1.5">Máximo permitido: {formatARS(profile.advance_limit)}</p>
+                <p className="text-xs text-zinc-500 mt-2">Máximo permitido: {formatARS(profile.advance_limit)}</p>
               )}
             </div>
 
             <div>
-              <p className="section-label mb-2">Motivo <span className="text-zinc-600 font-normal normal-case">(opcional)</span></p>
+              <p className="section-label mb-2.5">Motivo <span className="text-zinc-600 font-normal normal-case">(opcional)</span></p>
               <TextInput
                 placeholder="ej: gastos personales"
                 value={advanceReason}
                 onChange={setAdvanceReason}
-                className="amount-input"
-                style={{ paddingLeft: '0.875rem' }}
+                className="reason-input"
               />
             </div>
 
@@ -646,11 +645,11 @@ export default function BarberMobileView() {
             <button
               onClick={handleRequestAdvance}
               disabled={advanceSubmitting || !advanceAmount}
-              className="btn-primary disabled:opacity-40"
+              className="btn-primary w-full disabled:opacity-40"
             >
               {advanceSubmitting ? 'Enviando...' : 'Enviar solicitud'}
             </button>
-          </>
+          </div>
         )}
       </div>
     </div>
@@ -1342,29 +1341,29 @@ export default function BarberMobileView() {
           {(showRangeFilter || filterMode === 'range') && (
             <div className="date-filter">
               <div className="date-filter__inputs">
-                <div className="flex-1">
-                  <label className="date-filter__label block text-xs text-zinc-400 mb-1.5 font-medium">Desde</label>
+                <div>
+                  <label className="date-filter__label">Desde</label>
                   <input
                     type="date"
                     value={filterFrom}
                     onChange={(e) => setFilterFrom(e.target.value)}
-                    className="date-filter__input w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm"
+                    className="date-filter__input"
                   />
                 </div>
-                <div className="flex-1">
-                  <label className="date-filter__label block text-xs text-zinc-400 mb-1.5 font-medium">Hasta</label>
+                <div>
+                  <label className="date-filter__label">Hasta</label>
                   <input
                     type="date"
                     value={filterTo}
                     onChange={(e) => setFilterTo(e.target.value)}
-                    className="date-filter__input w-full px-3 py-2 bg-zinc-800 border border-zinc-700 rounded text-white text-sm"
+                    className="date-filter__input"
                   />
                 </div>
               </div>
               <button
                 onClick={applyDateFilter}
                 disabled={!filterFrom || !filterTo || filterLoading}
-                className="date-filter__apply btn-primary w-full mt-3 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="date-filter__apply"
               >
                 {filterLoading ? '⏳ Buscando...' : '🔍 Buscar'}
               </button>
