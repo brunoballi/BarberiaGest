@@ -244,7 +244,7 @@ export default function AdminsView() {
                 {admins.map((a) => (
                   <tr key={a.id}>
                     <td>
-                      <div className="barber-cell" style={{ justifyContent: 'center' }}>
+                      <div className="barber-cell" style={{ justifyContent: 'flex-start' }}>
                         <div className="barber-avatar">
                           {a.full_name.split(' ').map((n) => n[0]).join('').slice(0, 2)}
                         </div>

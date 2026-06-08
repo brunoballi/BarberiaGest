@@ -1,8 +1,10 @@
 /* ── Auditoría ──────────────────────────────────────────────── */
 .audit-page {
+  width: 100%;
   max-width: none;
   margin: 0 auto;
   padding: 1.5rem 1.25rem 4rem;
+  box-sizing: border-box;
   background: #0f0f0f;
   min-height: 100vh;
   color: #e5e5e5;

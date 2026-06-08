@@ -231,6 +231,11 @@
   grid-template-columns: 1fr 1fr;
   gap: 0.625rem;
 }
+/* Permite que los inputs de fecha (que tienen ancho intrínseco) achiquen
+   dentro de las columnas 1fr y no se pisen entre sí. */
+.date-filter__inputs > div {
+  min-width: 0;
+}
 .date-filter__label {
   font-size: 0.65rem;
   font-weight: 600;
@@ -242,6 +247,7 @@
 }
 .date-filter__input {
   width: 100%;
+  min-width: 0;
   background: #27272a;
   border: 1px solid #3f3f46;
   color: #fafafa;
