@@ -16,10 +16,16 @@
   box-shadow:
     0 4px 12px rgba(124, 58, 237, 0.45),
     0 2px 4px rgba(0, 0, 0, 0.3);
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: transform 0.15s, box-shadow 0.15s, right 0.3s ease;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* Cuando el drawer lateral está abierto (ancho 16rem), el FAB se corre
+   a la izquierda del panel para no tapar el botón "Cerrar sesión". */
+body.drawer-open .help-fab {
+  right: 17rem;
 }
 
 .help-fab:hover {

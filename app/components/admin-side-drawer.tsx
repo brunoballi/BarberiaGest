@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 
 interface AdminSideDrawerProps {
@@ -19,6 +19,15 @@ export function AdminSideDrawer({
   adminName = 'Admin',
 }: AdminSideDrawerProps) {
   const [showConfigSubmenu, setShowConfigSubmenu] = useState(false)
+
+  // Marca el body cuando el drawer está abierto, para que el FAB de ayuda
+  // se desplace junto con el panel y no quede tapando "Cerrar sesión".
+  useEffect(() => {
+    if (isOpen) document.body.classList.add('drawer-open')
+    else document.body.classList.remove('drawer-open')
+    return () => document.body.classList.remove('drawer-open')
+  }, [isOpen])
+
   return (
     <>
       {/* Overlay semitransparente */}
@@ -36,15 +45,17 @@ export function AdminSideDrawer({
         }`}
       >
         {/* Header con nombre del admin */}
-        <div className="border-b border-zinc-800 p-5">
-          <h3 className="text-white font-bold text-base mb-1">Hola, {adminName}</h3>
-          <p className="text-xs text-zinc-500">Administrador</p>
+        <div className="border-b border-zinc-800 p-5 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-white font-bold text-base mb-1 truncate">Hola, {adminName}</h3>
+            <p className="text-xs text-zinc-500">Administrador</p>
+          </div>
           <button
             onClick={onClose}
-            className="absolute top-5 right-5 icon-btn"
+            className="shrink-0 w-8 h-8 flex items-center justify-center rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors text-lg leading-none"
             aria-label="Cerrar menú"
           >
-            <span className="text-lg leading-none">✕</span>
+            ✕
           </button>
         </div>
 

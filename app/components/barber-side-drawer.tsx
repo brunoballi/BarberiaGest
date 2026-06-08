@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useEffect } from 'react'
 
 interface BarberSideDrawerProps {
   isOpen: boolean
@@ -21,6 +21,14 @@ export function BarberSideDrawer({
   onRequestAdvance,
   barberName = 'Barbero',
 }: BarberSideDrawerProps) {
+  // Marca el body cuando el drawer está abierto, para que el FAB de ayuda
+  // se desplace junto con el panel y no quede tapando "Cerrar sesión".
+  useEffect(() => {
+    if (isOpen) document.body.classList.add('drawer-open')
+    else document.body.classList.remove('drawer-open')
+    return () => document.body.classList.remove('drawer-open')
+  }, [isOpen])
+
   return (
     <>
       {/* Overlay semitransparente */}
