@@ -9,6 +9,8 @@ interface BarberSideDrawerProps {
   onRegisterCut: () => void
   onViewLiquidations: () => void
   onRequestAdvance: () => void
+  /** Igual que el botón principal: solo muestra "Pedir adelanto" si está habilitado. */
+  advanceEnabled?: boolean
   barberName?: string
 }
 
@@ -19,6 +21,7 @@ export function BarberSideDrawer({
   onRegisterCut,
   onViewLiquidations,
   onRequestAdvance,
+  advanceEnabled = false,
   barberName = 'Barbero',
 }: BarberSideDrawerProps) {
   // Marca el body cuando el drawer está abierto, para que el FAB de ayuda
@@ -77,16 +80,18 @@ export function BarberSideDrawer({
             <span className="font-medium">Mis liquidaciones</span>
           </button>
 
-          <button
-            onClick={() => {
-              onRequestAdvance()
-              onClose()
-            }}
-            className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
-          >
-            <span className="text-xl">📤</span>
-            <span className="font-medium">Pedir adelanto</span>
-          </button>
+          {advanceEnabled && (
+            <button
+              onClick={() => {
+                onRequestAdvance()
+                onClose()
+              }}
+              className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
+            >
+              <span className="text-xl">📤</span>
+              <span className="font-medium">Pedir adelanto</span>
+            </button>
+          )}
         </div>
 
         {/* Footer - Cerrar sesión */}

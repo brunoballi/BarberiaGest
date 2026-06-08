@@ -1193,7 +1193,8 @@ export default function BarberMobileView() {
       onLogout={handleLogout}
       onRegisterCut={() => { setIsDrawerOpen(false); goToRegister() }}
       onViewLiquidations={() => { setIsDrawerOpen(false); goToSettlements() }}
-      onRequestAdvance={() => { setIsDrawerOpen(false); setShowAdvanceModal(true) }}
+      onRequestAdvance={() => { setIsDrawerOpen(false); setShowAdvanceModal(true); setAdvanceDone(false) }}
+      advanceEnabled={profile?.advance_enabled ?? false}
       barberName={profile?.full_name || 'Barbero'}
     />
     <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
