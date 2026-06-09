@@ -597,8 +597,8 @@ export default function BarberMobileView() {
 
   // ── ADVANCE REQUEST MODAL ────────────────────────────────────────────────
   const advanceModal = showAdvanceModal && (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-0" onClick={closeAdvanceModal}>
-      <div className="bg-zinc-900 border-t border-zinc-700 rounded-t-2xl w-full max-w-lg p-6 space-y-6 animate-fadein" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 overflow-y-auto" onClick={closeAdvanceModal}>
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg p-6 space-y-6 animate-fadein max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
           <h2 className="text-white font-bold text-base">Pedir adelanto</h2>
           <button onClick={closeAdvanceModal} className="icon-btn"><span className="text-lg leading-none">✕</span></button>
