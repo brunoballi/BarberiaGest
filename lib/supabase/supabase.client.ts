@@ -1069,6 +1069,24 @@ export async function calculateAllSettlementsForWeek(
   if (error) throw new Error(`[calculateAllSettlementsForWeek] ${error.message}`)
 }
 
+/**
+ * Recálculo COMPLETO de una liquidación en borrador desde el ABM del barbero.
+ * Recomputa el barber_share/branch_share de cada corte de la semana con la
+ * comisión ACTUAL (no la congelada al registrar) y luego recalcula la
+ * liquidación (comisión base + bonos de presentismo/objetivo con las tasas
+ * vigentes). Solo opera sobre liquidaciones en estado 'draft'.
+ */
+export async function recalculateSettlementFull(
+  weekId: string,
+  barberId: string,
+): Promise<void> {
+  const { error } = await supabase.rpc('recalculate_settlement_full', {
+    p_week_id: weekId,
+    p_barber_id: barberId,
+  })
+  if (error) throw new Error(`[recalculateSettlementFull] ${error.message}`)
+}
+
 export async function getSettlementsForWeek(
   weekId: string
 ): Promise<SettlementWithBarber[]> {

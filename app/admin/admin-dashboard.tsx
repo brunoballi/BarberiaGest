@@ -38,6 +38,7 @@ import {
   closeWeek,
   calculateAllSettlementsForWeek,
   setPresentismo,
+  recalculateSettlementFull,
   setObjetivo,
   setBoxRent,
   setBonusPresentismoOverride,
@@ -479,6 +480,22 @@ export default function AdminDashboard() {
       await loadTabData()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error recalculando')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleRecalcularSettlement(
+    settlementId: string,
+    weekId: string,
+    barberId: string
+  ) {
+    try {
+      setActionLoading(`recalc-${settlementId}`)
+      await recalculateSettlementFull(weekId, barberId)
+      await loadTabData()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error recalculando la liquidación')
     } finally {
       setActionLoading(null)
     }
@@ -1198,6 +1215,16 @@ export default function AdminDashboard() {
                         </td>
                         <td>
                           <div className="action-group">
+                            {s.status === 'draft' && (
+                              <button
+                                onClick={() => handleRecalcularSettlement(s.id, s.week_id, s.barber_id)}
+                                disabled={loadingKey === `recalc-${s.id}`}
+                                className="action-btn"
+                                title="Recalcular con los datos actuales del barbero (comisión, presentismo, objetivo)"
+                              >
+                                {loadingKey === `recalc-${s.id}` ? 'Recalculando…' : 'Recalcular'}
+                              </button>
+                            )}
                             {s.status === 'draft' && (
                               <button
                                 onClick={() => handleConfirmSettlement(s.id)}
