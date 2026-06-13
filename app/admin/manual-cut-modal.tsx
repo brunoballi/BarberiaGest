@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   getAllBarbersByBranch,
   getServicesByBranch,
@@ -31,9 +31,6 @@ interface Props {
   onSuccess:      () => void
 }
 
-const DAY_NAMES   = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
-const MONTH_NAMES = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
-
 function formatARS(n: number): string {
   return new Intl.NumberFormat('es-AR', {
     style: 'currency', currency: 'ARS', maximumFractionDigits: 0,
@@ -45,13 +42,85 @@ function todayStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
-function buildScrollDays(center: string, back = 7, forward = 7) {
-  const [y, m, d] = center.split('-').map(Number)
-  return Array.from({ length: back + forward + 1 }, (_, i) => {
-    const dt  = new Date(y, m - 1, d - back + i)
-    const str = `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
-    return { date: str, label: DAY_NAMES[dt.getDay()], dayNum: dt.getDate(), month: MONTH_NAMES[dt.getMonth()] }
-  })
+// ── Mini Calendar ─────────────────────────────────────────────────────────
+const CAL_MONTH_LABELS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
+const CAL_DOW          = ['Dom','Lun','Mar','Mié','Jue','Vie','Sáb']
+
+function MiniCalendar({ selected, onSelect }: { selected: string; onSelect: (d: string) => void }) {
+  const today = todayStr()
+  const [viewYear,  setViewYear]  = useState(() => Number(selected.slice(0, 4)))
+  const [viewMonth, setViewMonth] = useState(() => Number(selected.slice(5, 7)))
+
+  function prevMonth() {
+    if (viewMonth === 1) { setViewYear(y => y - 1); setViewMonth(12) }
+    else setViewMonth(m => m - 1)
+  }
+  function nextMonth() {
+    if (viewMonth === 12) { setViewYear(y => y + 1); setViewMonth(1) }
+    else setViewMonth(m => m + 1)
+  }
+
+  const todayY = Number(today.slice(0, 4))
+  const todayM = Number(today.slice(5, 7))
+  const isNextMonthInFuture = viewYear > todayY || (viewYear === todayY && viewMonth >= todayM)
+
+  const firstDow    = new Date(viewYear, viewMonth - 1, 1).getDay()
+  const daysInMonth = new Date(viewYear, viewMonth, 0).getDate()
+  const cells: (number | null)[] = [
+    ...Array(firstDow).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ]
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  return (
+    <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '0.75rem', padding: '0.65rem 0.75rem 0.5rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.45rem' }}>
+        <button type="button" onClick={prevMonth}
+          style={{ width: '1.8rem', height: '1.8rem', borderRadius: '50%', background: '#27272a', border: '1px solid #3f3f46', color: '#a1a1aa', fontSize: '1.1rem', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          ‹
+        </button>
+        <span style={{ fontWeight: 600, fontSize: '0.88rem', color: '#e4e4e7' }}>
+          {CAL_MONTH_LABELS[viewMonth - 1]} {viewYear}
+        </span>
+        <button type="button" onClick={nextMonth} disabled={isNextMonthInFuture}
+          style={{ width: '1.8rem', height: '1.8rem', borderRadius: '50%', background: isNextMonthInFuture ? 'transparent' : '#27272a', border: `1px solid ${isNextMonthInFuture ? 'transparent' : '#3f3f46'}`, color: isNextMonthInFuture ? '#3f3f46' : '#a1a1aa', fontSize: '1.1rem', cursor: isNextMonthInFuture ? 'default' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          ›
+        </button>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px', marginBottom: '3px' }}>
+        {CAL_DOW.map(d => (
+          <div key={d} style={{ textAlign: 'center', fontSize: '0.6rem', fontWeight: 600, color: '#52525b', padding: '0.1rem 0' }}>{d}</div>
+        ))}
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '2px' }}>
+        {cells.map((day, i) => {
+          if (!day) return <div key={`b${i}`} />
+          const ds       = `${viewYear}-${String(viewMonth).padStart(2,'0')}-${String(day).padStart(2,'0')}`
+          const isSel    = ds === selected
+          const isToday  = ds === today
+          const isFuture = ds > today
+          return (
+            <button key={ds} type="button"
+              onClick={() => { if (!isFuture) onSelect(ds) }}
+              style={{
+                padding: '0.3rem 0.1rem',
+                borderRadius: '0.4rem',
+                textAlign: 'center',
+                cursor: isFuture ? 'default' : 'pointer',
+                background: isSel ? '#a78bfa' : 'transparent',
+                border: `1px solid ${isSel ? '#a78bfa' : isToday ? '#52525b' : 'transparent'}`,
+                color: isSel ? '#0d0d0d' : isFuture ? '#3f3f46' : isToday ? '#a78bfa' : '#e4e4e7',
+                fontSize: '0.78rem',
+                fontWeight: isSel || isToday ? 700 : 400,
+              }}
+            >
+              {day}
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 // ── Chip de servicio ──────────────────────────────────────────────────────
@@ -104,7 +173,7 @@ function PayChip({ label, active, onClick }: { label: string; active: boolean; o
 }
 
 export default function ManualCutModal({
-  branchId, weekId, weekStartDate, adminId, onClose, onSuccess,
+  branchId, weekId, adminId, onClose, onSuccess,
 }: Props) {
   const [barbers,    setBarbers]   = useState<Profile[]>([])
   const [services,   setServices]  = useState<ServiceCatalog[]>([])
@@ -132,19 +201,6 @@ export default function ManualCutModal({
   const [effectiveWeekId,   setEffectiveWeekId]   = useState(weekId)
   const [effectiveWeekLabel, setEffectiveWeekLabel] = useState<string | null>(null)
   const [allWeeks,          setAllWeeks]           = useState<Week[]>([])
-
-  const today      = todayStr()
-  // Días hacia atrás: cubrir desde el inicio de la semana seleccionada + buffer
-  const daysBack   = Math.max(30, Math.round(
-    (new Date(today + 'T12:00:00').getTime() - new Date(weekStartDate + 'T12:00:00').getTime())
-    / (1000 * 60 * 60 * 24)
-  ) + 3)
-  const scrollDays = buildScrollDays(today, daysBack, 7)
-  const todayRef   = useRef<HTMLButtonElement>(null)
-  const stripRef   = useRef<HTMLDivElement>(null)
-
-  function slideLeft()  { stripRef.current?.scrollBy({ left: -132, behavior: 'smooth' }) }
-  function slideRight() { stripRef.current?.scrollBy({ left:  132, behavior: 'smooth' }) }
 
   useEffect(() => {
     async function load() {
@@ -181,10 +237,6 @@ export default function ManualCutModal({
       setEffectiveWeekLabel('⚠️ Esta fecha no pertenece a ninguna semana registrada')
     }
   }, [date, allWeeks, weekId])
-
-  useEffect(() => {
-    todayRef.current?.scrollIntoView({ behavior: 'instant', block: 'nearest', inline: 'center' })
-  }, [loading])
 
   const selectedService = services.find((s) => s.id === serviceId)
   const resolvedAmount  = customAmt ? parseFloat(customAmt) : (selectedService?.base_price ?? 0)
@@ -308,32 +360,10 @@ export default function ManualCutModal({
                 </select>
               </div>
 
-              {/* ── Día (slider) ── */}
+              {/* ── Día (calendario) ── */}
               <div>
                 <label className="form-label">Día *</label>
-                <div style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <button type="button" onClick={slideLeft} style={{ flexShrink: 0, width: '1.6rem', height: '1.6rem', borderRadius: '50%', background: '#27272a', border: '1px solid #3f3f46', color: '#a1a1aa', fontSize: '1rem', lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>‹</button>
-                  <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
-                    <div style={{ position: 'absolute', left: 0, top: 0, bottom: 0, width: '1.25rem', zIndex: 1, background: 'linear-gradient(to right, #1a1a1a, transparent)', pointerEvents: 'none' }} />
-                    <div style={{ position: 'absolute', right: 0, top: 0, bottom: 0, width: '1.25rem', zIndex: 1, background: 'linear-gradient(to left, #1a1a1a, transparent)', pointerEvents: 'none' }} />
-                    <div ref={stripRef} style={{ display: 'flex', gap: '0.3rem', overflowX: 'auto', padding: '0.1rem 0 4px', scrollbarWidth: 'none' }}>
-                      {scrollDays.map((d) => {
-                        const isToday  = d.date === today
-                        const selected = d.date === date
-                        return (
-                          <button key={d.date} ref={isToday ? todayRef : undefined} type="button" onClick={() => setDate(d.date)}
-                            style={{ flex: '0 0 auto', width: '2.75rem', padding: '0.45rem 0.2rem', borderRadius: '0.5rem', textAlign: 'center', cursor: 'pointer', background: selected ? '#a78bfa' : '#18181b', border: `1px solid ${selected ? '#a78bfa' : isToday ? '#52525b' : '#27272a'}`, boxShadow: selected ? '0 0 0 2px rgba(167,139,250,0.35)' : 'none', transition: 'background 0.12s, border-color 0.12s' }}
-                          >
-                            <div style={{ fontSize: '0.62rem', fontWeight: 600, color: selected ? '#2e006c' : '#71717a' }}>{d.label}</div>
-                            <div style={{ fontSize: '0.9rem', fontWeight: 700, color: selected ? '#0d0d0d' : '#e4e4e7' }}>{d.dayNum}</div>
-                            <div style={{ fontSize: '0.58rem', color: selected ? '#2e006c' : isToday ? '#a78bfa' : '#3f3f46' }}>{isToday ? 'hoy' : d.month}</div>
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                  <button type="button" onClick={slideRight} style={{ flexShrink: 0, width: '1.6rem', height: '1.6rem', borderRadius: '50%', background: '#27272a', border: '1px solid #3f3f46', color: '#a1a1aa', fontSize: '1rem', lineHeight: 1, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>›</button>
-                </div>
+                <MiniCalendar selected={date} onSelect={setDate} />
                 {effectiveWeekLabel && (
                   <p style={{ fontSize: '0.73rem', marginTop: '0.35rem', color: effectiveWeekLabel.startsWith('⚠️') ? '#f87171' : '#34d399' }}>
                     {effectiveWeekLabel.startsWith('⚠️') ? effectiveWeekLabel : `✓ Se registrará en: ${effectiveWeekLabel}`}
