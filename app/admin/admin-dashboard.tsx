@@ -1384,14 +1384,13 @@ export default function AdminDashboard() {
                     <th rowSpan={2}>Cliente</th>
                     <th rowSpan={2}>Método</th>
                     <th rowSpan={2}>Total</th>
-                    <th colSpan={2} style={{ textAlign: 'center' }}>Detalle</th>
-                    <th rowSpan={2}>Ya cobrado</th>
+                    <th colSpan={2} style={{ textAlign: 'center' }}>En billetera</th>
                     <th rowSpan={2}>Modificado</th>
                     <th rowSpan={2}></th>
                   </tr>
                   <tr>
-                    <th>Comisión Barbería</th>
-                    <th>Comisión Barbero</th>
+                    <th>Barbería</th>
+                    <th>Barbero</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1407,12 +1406,11 @@ export default function AdminDashboard() {
                         </span>
                       </td>
                       <td className="td-bold">{formatARS(tx.amount)}</td>
-                      <td>{formatARS(tx.branch_share)}</td>
-                      <td className="td-amber">{formatARS(tx.barber_share)}</td>
+                      <td>{formatARS(tx.amount - tx.barber_already_collected)}</td>
                       <td>
                         {tx.barber_already_collected > 0
                           ? <span className="td-collected">{formatARS(tx.barber_already_collected)}</span>
-                          : '—'}
+                          : formatARS(0)}
                       </td>
                       <td>
                         {tx.is_manual_override
@@ -1462,8 +1460,7 @@ export default function AdminDashboard() {
                   <tr className="tfoot-row">
                     <td colSpan={5}><strong>{filtered.length} transacción{filtered.length !== 1 ? 'es' : ''}</strong></td>
                     <td><strong>{formatARS(filtered.reduce((s, t) => s + t.amount, 0))}</strong></td>
-                    <td><strong>{formatARS(filtered.reduce((s, t) => s + t.branch_share, 0))}</strong></td>
-                    <td><strong className="td-amber">{formatARS(filtered.reduce((s, t) => s + t.barber_share, 0))}</strong></td>
+                    <td><strong>{formatARS(filtered.reduce((s, t) => s + (t.amount - t.barber_already_collected), 0))}</strong></td>
                     <td><strong>{formatARS(filtered.reduce((s, t) => s + t.barber_already_collected, 0))}</strong></td>
                     <td colSpan={2}></td>
                   </tr>
