@@ -1421,7 +1421,7 @@ export default function AdminDashboard() {
                     <th rowSpan={2}>Cliente</th>
                     <th rowSpan={2}>Método</th>
                     <th rowSpan={2}>Total</th>
-                    <th colSpan={2} style={{ textAlign: 'center' }}>En billetera</th>
+                    <th colSpan={2} style={{ textAlign: 'center' }}>Detalle</th>
                     <th rowSpan={2}>Modificado</th>
                     <th rowSpan={2}></th>
                   </tr>
