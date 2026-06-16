@@ -123,7 +123,7 @@ export default function AdminDashboard() {
   const [currentUserId, setCurrentUserId] = useState<string>('')
   const [adminName, setAdminName]         = useState<string>('')
   const [showManualCut, setShowManualCut] = useState(false)
-  const [debtModal, setDebtModal] = useState<{ barberId: string; branchId: string; barberName: string; outstanding: number } | null>(null)
+  const [debtModal, setDebtModal] = useState<{ settlementId: string; barberId: string; branchId: string; barberName: string; outstanding: number } | null>(null)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 
   // Semanas del mes seleccionado (derivado)
@@ -630,20 +630,23 @@ export default function AdminDashboard() {
   }
 
   async function handleMarkPaid(s: SettlementWithBarber) {
+    // Si el barbero debía (liquidación negativa), abrir primero el modal de
+    // devolución. Marcar como pagada se hace recién al confirmar dentro del
+    // modal (cancelar o cerrar NO cambia el estado). Opción C.
+    if (s.net_payable < 0) {
+      setDebtModal({
+        settlementId: s.id,
+        barberId:     s.barber_id,
+        branchId:     s.branch_id,
+        barberName:   s.barber.full_name,
+        outstanding:  -s.net_payable,
+      })
+      return
+    }
     try {
       setActionLoading(`paid-${s.id}`)
       await markSettlementPaid(s.id)
       await loadTabData()
-      // Si el barbero debía (liquidación negativa), ofrecer registrar la
-      // devolución de esa deuda en el acto (Opción C).
-      if (s.net_payable < 0) {
-        setDebtModal({
-          barberId:    s.barber_id,
-          branchId:    s.branch_id,
-          barberName:  s.barber.full_name,
-          outstanding: -s.net_payable,
-        })
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error marcando como pagado')
     } finally {
@@ -1905,7 +1908,9 @@ export default function AdminDashboard() {
         />
       )}
 
-      {/* Modal: Registrar devolución de deuda del barbero (Opción C) */}
+      {/* Modal: Registrar devolución de deuda del barbero (Opción C).
+          Marcar la liquidación como pagada se ejecuta al confirmar (no al abrir),
+          para que cancelar/cerrar no deje la liquidación en pagada sin querer. */}
       {debtModal && currentUserId && (
         <DebtPaymentModal
           barberId={debtModal.barberId}
@@ -1913,6 +1918,12 @@ export default function AdminDashboard() {
           barberName={debtModal.barberName}
           registeredBy={currentUserId}
           outstanding={debtModal.outstanding}
+          beforeSubmit={() => markSettlementPaid(debtModal.settlementId)}
+          onMarkPaidOnly={async () => {
+            await markSettlementPaid(debtModal.settlementId)
+            setDebtModal(null)
+            await loadTabData()
+          }}
           onClose={() => setDebtModal(null)}
           onSuccess={() => { setDebtModal(null); loadTabData() }}
         />

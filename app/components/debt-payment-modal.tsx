@@ -15,6 +15,12 @@ interface Props {
   outstanding:   number
   onClose:       () => void
   onSuccess:     () => void
+  /** Acción a ejecutar ANTES de registrar el pago (ej: marcar la liquidación
+   *  como pagada). Solo corre al confirmar; si se cancela, nunca se ejecuta. */
+  beforeSubmit?: () => Promise<void>
+  /** Si se provee, muestra un botón "Solo marcar pagado" (cerrar la deuda sin
+   *  registrar una devolución). */
+  onMarkPaidOnly?: () => void | Promise<void>
 }
 
 function todayStr(): string {
@@ -28,6 +34,7 @@ function formatARS(n: number): string {
 
 export function DebtPaymentModal({
   barberId, branchId, barberName, registeredBy, outstanding, onClose, onSuccess,
+  beforeSubmit, onMarkPaidOnly,
 }: Props) {
   const [amount,    setAmount]    = useState(outstanding > 0 ? String(outstanding) : '')
   const [method,    setMethod]    = useState<PaymentMethod>('cash')
@@ -44,6 +51,7 @@ export function DebtPaymentModal({
     if (amountNum <= 0) { setError('Ingresá un monto válido'); return }
     setSubmitting(true)
     try {
+      if (beforeSubmit) await beforeSubmit()
       await recordDebtPayment({
         barberId, branchId, amount: amountNum,
         paymentMethod: method, paymentDate: date,
@@ -52,7 +60,19 @@ export function DebtPaymentModal({
       onSuccess()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error registrando el pago')
-    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  async function handleMarkPaidOnly() {
+    if (!onMarkPaidOnly) return
+    setError(null)
+    setSubmitting(true)
+    try {
+      await onMarkPaidOnly()
+      // onMarkPaidOnly cierra el modal desde el padre; no reseteamos submitting.
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error marcando como pagado')
       setSubmitting(false)
     }
   }
@@ -67,6 +87,12 @@ export function DebtPaymentModal({
 
         <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {error && <p className="form-error">{error}</p>}
+
+          {beforeSubmit && (
+            <p style={{ fontSize: '0.78rem', color: '#a1a1aa', background: '#1c1c20', border: '1px solid #27272a', borderRadius: '0.5rem', padding: '0.55rem 0.7rem' }}>
+              La liquidación se marcará como <strong>pagada</strong> recién al confirmar. Si cancelás o cerrás, queda sin cambios.
+            </p>
+          )}
 
           {outstanding > 0 && (
             <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '0.5rem', padding: '0.6rem 0.85rem', fontSize: '0.84rem' }}>
@@ -123,8 +149,13 @@ export function DebtPaymentModal({
 
         <div className="modal-footer">
           <button onClick={onClose} className="admin-btn admin-btn--ghost">Cancelar</button>
+          {onMarkPaidOnly && (
+            <button onClick={handleMarkPaidOnly} disabled={submitting} className="admin-btn admin-btn--ghost">
+              Solo marcar pagado
+            </button>
+          )}
           <button onClick={handleSubmit} disabled={submitting || !isValid} className="admin-btn admin-btn--primary">
-            {submitting ? 'Registrando...' : 'Registrar devolución'}
+            {submitting ? 'Guardando...' : 'Registrar devolución'}
           </button>
         </div>
       </div>
