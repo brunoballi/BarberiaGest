@@ -10,6 +10,7 @@ import {
   type MonthWithWeeks,
   type SettlementWithBarber,
   type TransactionWithRelations,
+  type Profile,
   type AdvanceWithBarber,
   type Advance,
   type ExpenseInsert,
@@ -218,6 +219,11 @@ export default function AdminDashboard() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Barberos activos de la sucursal (para poblar los filtros, no solo los que
+  // tienen registros en la semana). Permite filtrar por un barbero aunque aún
+  // no haya cargado nada, para chequear si viene trabajando.
+  const [branchBarbers, setBranchBarbers] = useState<Profile[]>([])
+
   // Filtros tab transacciones
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
@@ -356,6 +362,16 @@ export default function AdminDashboard() {
     }
     setTxPage(1)
   }, [selectedWeek?.id, selectedWeek?.start_date, selectedWeek?.end_date])
+
+  // ─── Barberos activos de la sucursal (para poblar los filtros) ─────
+  useEffect(() => {
+    if (!selectedBranch) { setBranchBarbers([]); return }
+    let cancel = false
+    getBarbersByBranch(selectedBranch)
+      .then((bs) => { if (!cancel) setBranchBarbers(bs) })
+      .catch(() => { if (!cancel) setBranchBarbers([]) })
+    return () => { cancel = true }
+  }, [selectedBranch])
 
   // ─── Saldo inicial del mes (se recarga al cambiar sucursal/mes) ─────
   useEffect(() => {
@@ -968,7 +984,14 @@ export default function AdminDashboard() {
 
         {/* ─── TAB: LIQUIDACIONES ─── */}
         {tab === 'liquidaciones' && (() => {
-          const barberOptsSettl = Array.from(new Map(settlements.map((s) => [s.barber_id, s.barber.full_name])))
+          // Opciones del filtro: barberos activos de la sucursal + cualquiera
+          // con liquidación en la semana (cubre barberos dados de baja con datos).
+          const barberOptsSettl = (() => {
+            const m = new Map<string, string>()
+            for (const b of branchBarbers) m.set(b.id, b.full_name)
+            for (const s of settlements) if (!m.has(s.barber_id)) m.set(s.barber_id, s.barber.full_name)
+            return Array.from(m).sort((a, b) => a[1].localeCompare(b[1]))
+          })()
           const hasSettlFilters = !!(settlFilterBarber || settlFilterObjetivo || settlFilterPresentismo || settlFilterAdelantos || settlFilterAPagar || settlFilterEstado)
           const filteredSettlements = settlements.filter((s) => {
             // Objetivo/presentismo aplican a salary y % comisión (no a alquiler de box)
@@ -1369,8 +1392,15 @@ export default function AdminDashboard() {
 
         {/* ─── TAB: TRANSACCIONES ─── */}
         {tab === 'transacciones' && (() => {
-          // Opciones únicas para los selects
-          const barberOptions = Array.from(new Map(transactions.map((t) => [t.barber_id, t.barber.full_name])))
+          // Opciones únicas para los selects.
+          // Filtro de barbero: activos de la sucursal + cualquiera con
+          // transacciones en el período (cubre barberos dados de baja con datos).
+          const barberOptions = (() => {
+            const m = new Map<string, string>()
+            for (const b of branchBarbers) m.set(b.id, b.full_name)
+            for (const t of transactions) if (!m.has(t.barber_id)) m.set(t.barber_id, t.barber.full_name)
+            return Array.from(m).sort((a, b) => a[1].localeCompare(b[1]))
+          })()
           const serviceOptions = Array.from(new Set(transactions.map((t) => t.service?.name).filter(Boolean))) as string[]
           const hasFilters = filterDateFrom || filterDateTo || filterBarber || filterMethod || filterService
           const filtered = transactions.filter((tx) => {
