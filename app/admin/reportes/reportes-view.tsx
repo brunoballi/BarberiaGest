@@ -315,7 +315,7 @@ export default function ReportesView() {
           {barData.length > 0 && (
             <div className="report-section">
               <h2 className="report-section__title">Comparativa por sucursal</h2>
-              <div className="report-chart-box">
+              <div className={`report-chart-box ${reports.length === 1 ? 'report-chart-box--single' : reports.length <= 3 ? 'report-chart-box--few' : ''}`}>
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={barData} margin={{ top: 10, right: 20, left: 10, bottom: 5 }}>
                     <XAxis dataKey="name" tick={{ fill: '#71717a', fontSize: 12 }} axisLine={false} tickLine={false} />

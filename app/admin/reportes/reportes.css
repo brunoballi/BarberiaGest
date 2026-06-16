@@ -190,12 +190,26 @@
   height: 300px;
 }
 
+/* Una sola sucursal: más altura para aprovechar espacio */
+.report-chart-box--single {
+  height: 380px;
+}
+
+/* Pocas sucursales (2-3): altura intermedia */
+.report-chart-box--few {
+  height: 340px;
+}
+
 @media (min-width: 768px) {
   .report-chart-box { height: 360px; }
+  .report-chart-box--single { height: 440px; }
+  .report-chart-box--few { height: 380px; }
 }
 
 @media (min-width: 1024px) {
   .report-chart-box { height: 420px; }
+  .report-chart-box--single { height: 500px; }
+  .report-chart-box--few { height: 440px; }
 }
 
 /* ── Pie grid ───────────────────────────────────────────────────── */
