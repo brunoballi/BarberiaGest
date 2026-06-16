@@ -20,11 +20,9 @@ import {
   getMonthsWithWeeks,
   getMonthFinancials,
   getBarberDebtSummary,
-  getCurrentProfile,
   type MonthFinancials,
 } from '@/lib/supabase/supabase.client'
 import type { BarberDebtSummary } from '@/lib/supabase/database.types'
-import { DebtPaymentModal } from '@/app/components/debt-payment-modal'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import { MONTH_NAMES } from '@/lib/supabase/supabase.client'
 import './reportes.css'
@@ -96,12 +94,10 @@ export default function ReportesView() {
   const [monthFins, setMonthFins] = useState<{ branchId: string; branchName: string; fin: MonthFinancials }[]>([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
-  // Saldo deudor de barberos (acumulado, independiente del período)
+  // Saldo deudor: liquidaciones confirmadas con deuda (independiente del período)
   type DebtRow = BarberDebtSummary & { branchId: string; branchName: string }
   const [debtRows, setDebtRows] = useState<DebtRow[]>([])
   const [multiBranch, setMultiBranch] = useState(false)
-  const [adminId, setAdminId]   = useState('')
-  const [debtModal, setDebtModal] = useState<DebtRow | null>(null)
 
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`
   const lastDay   = new Date(year, month, 0).getDate()
@@ -117,15 +113,13 @@ export default function ReportesView() {
       const data = await getReportByPeriod(myBranches, startDate, endDate)
       setReports(data)
 
-      // Saldo deudor de barberos (acumulado por sucursal) + admin actual
-      const [prof, debtLists] = await Promise.all([
-        getCurrentProfile(),
-        Promise.all(myBranches.map(async (b) => {
+      // Saldo deudor: liquidaciones confirmadas con deuda por sucursal
+      const debtLists = await Promise.all(
+        myBranches.map(async (b) => {
           const items = await getBarberDebtSummary(b.id)
           return items.map((it) => ({ ...it, branchId: b.id, branchName: b.name }))
-        })),
-      ])
-      setAdminId(prof?.id ?? '')
+        })
+      )
       setDebtRows(debtLists.flat())
 
       // Detalle mensual (saldo inicial + comisiones + box − gastos = ganancia neta)
@@ -187,8 +181,8 @@ export default function ReportesView() {
   }
 
   // ── Datos para BarChart ──────────────────────────────────────────
-  // Barberos con saldo deudor pendiente (> ~0)
-  const pendingRows = debtRows.filter((r) => r.outstandingDebt > 0.009)
+  // Total adeudado (suma de liquidaciones confirmadas con deuda)
+  const totalDebt = debtRows.reduce((s, r) => s + r.debt, 0)
 
   // ── Datos para BarChart ──────────────────────────────────────────
   const barData = reports.map((r) => ({
@@ -276,13 +270,13 @@ export default function ReportesView() {
         </section>
       )}
 
-      {/* ── Saldo deudor de barberos (acumulado) ──────────────── */}
+      {/* ── Saldo deudor: liquidaciones confirmadas con deuda (solo lectura) ── */}
       <section className="report-section">
-        <h2 className="report-section__title">Saldo deudor de barberos</h2>
+        <h2 className="report-section__title">Saldo deudor · liquidaciones confirmadas sin pagar</h2>
         <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: 14, padding: '0.5rem 0.75rem', overflowX: 'auto' }}>
-          {pendingRows.length === 0 ? (
+          {debtRows.length === 0 ? (
             <p style={{ color: '#71717a', fontSize: '0.85rem', textAlign: 'center', padding: '1.5rem 0' }}>
-              No hay barberos con saldo deudor pendiente.
+              No hay liquidaciones con deuda pendiente. Se saldan marcándolas como pagadas desde Liquidaciones.
             </p>
           ) : (
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.85rem' }}>
@@ -290,31 +284,26 @@ export default function ReportesView() {
                 <tr style={{ color: '#71717a' }}>
                   <th style={{ padding: '0.5rem', textAlign: 'left' }}>Barbero</th>
                   {multiBranch && <th style={{ padding: '0.5rem', textAlign: 'left' }}>Sucursal</th>}
-                  <th style={{ padding: '0.5rem', textAlign: 'right' }}>Deuda total</th>
-                  <th style={{ padding: '0.5rem', textAlign: 'right' }}>Devuelto</th>
-                  <th style={{ padding: '0.5rem', textAlign: 'right' }}>Pendiente</th>
-                  <th />
+                  <th style={{ padding: '0.5rem', textAlign: 'left' }}>Semana</th>
+                  <th style={{ padding: '0.5rem', textAlign: 'right' }}>Debe</th>
                 </tr>
               </thead>
               <tbody>
-                {pendingRows.map((r) => (
-                  <tr key={`${r.branchId}-${r.barberId}`} style={{ borderTop: '1px solid #27272a' }}>
+                {debtRows.map((r) => (
+                  <tr key={r.settlementId} style={{ borderTop: '1px solid #27272a' }}>
                     <td style={{ padding: '0.6rem 0.5rem', color: '#e4e4e7', fontWeight: 600 }}>{r.fullName}</td>
                     {multiBranch && <td style={{ padding: '0.6rem 0.5rem', color: '#a1a1aa' }}>{r.branchName}</td>}
-                    <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: '#a1a1aa' }}>{formatARS(r.totalDebt)}</td>
-                    <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: '#34d399' }}>{formatARS(r.totalPaid)}</td>
-                    <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: '#f87171', fontWeight: 700 }}>{formatARS(r.outstandingDebt)}</td>
-                    <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right' }}>
-                      <button
-                        onClick={() => setDebtModal(r)}
-                        style={{ background: '#a78bfa', color: '#0d0d0d', border: 'none', borderRadius: 8, padding: '0.4rem 0.8rem', fontSize: '0.8rem', fontWeight: 600, cursor: 'pointer', whiteSpace: 'nowrap' }}
-                      >
-                        Registrar pago
-                      </button>
-                    </td>
+                    <td style={{ padding: '0.6rem 0.5rem', color: '#a1a1aa' }}>{r.weekStart} → {r.weekEnd}</td>
+                    <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: '#f87171', fontWeight: 700 }}>{formatARS(r.debt)}</td>
                   </tr>
                 ))}
               </tbody>
+              <tfoot>
+                <tr style={{ borderTop: '2px solid #3f3f46' }}>
+                  <td colSpan={multiBranch ? 3 : 2} style={{ padding: '0.6rem 0.5rem', color: '#a1a1aa', fontWeight: 700 }}>Total adeudado</td>
+                  <td style={{ padding: '0.6rem 0.5rem', textAlign: 'right', color: '#f87171', fontWeight: 800 }}>{formatARS(totalDebt)}</td>
+                </tr>
+              </tfoot>
             </table>
           )}
         </div>
@@ -455,19 +444,6 @@ export default function ReportesView() {
             </div>
           </div>
         </>
-      )}
-
-      {/* Modal: registrar pago/devolución de deuda desde Reportes */}
-      {debtModal && adminId && (
-        <DebtPaymentModal
-          barberId={debtModal.barberId}
-          branchId={debtModal.branchId}
-          barberName={debtModal.fullName}
-          registeredBy={adminId}
-          outstanding={debtModal.outstandingDebt}
-          onClose={() => setDebtModal(null)}
-          onSuccess={() => { setDebtModal(null); load() }}
-        />
       )}
     </div>
   )

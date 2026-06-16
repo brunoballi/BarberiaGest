@@ -224,13 +224,16 @@ export interface BarberDebtPayment {
   created_at: string
 }
 
-/** Resumen de saldo deudor por barbero (RPC get_barber_debt_summary). */
+/** Una liquidación confirmada con deuda (RPC get_barber_debt_summary).
+ *  La deuda existe mientras la liquidación está confirmada y sin pagar; al
+ *  marcarla pagada queda saldada y deja de aparecer. */
 export interface BarberDebtSummary {
+  settlementId: string
   barberId: string
   fullName: string
-  totalDebt: number
-  totalPaid: number
-  outstandingDebt: number
+  weekStart: string
+  weekEnd: string
+  debt: number
 }
 
 // ============================================================

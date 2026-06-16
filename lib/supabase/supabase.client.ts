@@ -1096,22 +1096,23 @@ export async function recalculateSettlementFull(
 // ============================================================
 
 /**
- * Resumen de saldo deudor por barbero de una sucursal. Devuelve solo barberos
- * con deuda o pagos registrados. saldo = deudas (liquidaciones negativas pagadas)
- * − pagos registrados.
+ * Liquidaciones CONFIRMADAS con deuda de una sucursal (saldo deudor). Cada fila
+ * es una liquidación negativa todavía sin pagar; al marcarla pagada deja de
+ * aparecer (deuda saldada).
  */
 export async function getBarberDebtSummary(branchId: string): Promise<BarberDebtSummary[]> {
   const { data, error } = await supabase.rpc('get_barber_debt_summary', {
     p_branch_id: branchId,
   })
   if (error) throw new Error(`[getBarberDebtSummary] ${error.message}`)
-  type Row = { barber_id: string; full_name: string; total_debt: number; total_paid: number; outstanding_debt: number }
+  type Row = { settlement_id: string; barber_id: string; full_name: string; week_start: string; week_end: string; debt: number }
   return ((data as Row[] | null) ?? []).map((r) => ({
-    barberId:        r.barber_id,
-    fullName:        r.full_name,
-    totalDebt:       Number(r.total_debt),
-    totalPaid:       Number(r.total_paid),
-    outstandingDebt: Number(r.outstanding_debt),
+    settlementId: r.settlement_id,
+    barberId:     r.barber_id,
+    fullName:     r.full_name,
+    weekStart:    r.week_start,
+    weekEnd:      r.week_end,
+    debt:         Number(r.debt),
   }))
 }
 
