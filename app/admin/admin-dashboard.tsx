@@ -702,6 +702,10 @@ export default function AdminDashboard() {
     totalPayable: settlements.reduce((s, x) => s + Math.max(x.net_payable, 0), 0),
     totalCuts: settlements.reduce((s, x) => s + x.total_cuts, 0),
     cashTotal: settlements.reduce((s, x) => s + x.cash_amount, 0),
+    // Efectivo que los barberos devolvieron al saldar deudas (liquidaciones
+    // negativas ya pagadas). Es informativo: NO suma a la ganancia neta porque
+    // ese dinero ya está contado por devengado (comisión / alquiler de box).
+    cashReturnedByBarbers: settlements.reduce((s, x) => s + (x.status === 'paid' && x.net_payable < 0 ? -x.net_payable : 0), 0),
     transferTotal: settlements.reduce((s, x) => s + x.transfer_amount, 0),
     cardTotal: settlements.reduce((s, x) => s + x.card_amount, 0),
     expensesTotal: expenses.reduce((s, x) => s + x.amount, 0),
@@ -891,6 +895,12 @@ export default function AdminDashboard() {
               label="Transferencias"
               value={formatARS(kpis.transferTotal)}
               tooltip="Total cobrado por transferencia."
+            />
+            <KpiCard
+              label="Devuelto x barberos"
+              value={formatARS(kpis.cashReturnedByBarbers)}
+              sub="entró a caja"
+              tooltip="Efectivo que los barberos devolvieron al saldar deudas (liquidaciones negativas ya marcadas como pagadas). Es informativo: NO suma a la ganancia neta, porque ese dinero ya está contado por devengado (comisión de cortes o alquiler de box)."
             />
             <KpiCard
               label="Barberos"
