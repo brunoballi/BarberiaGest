@@ -1160,7 +1160,13 @@ export default function BarberMobileView() {
                     {s.advances_deducted > 0 && <SettlRow label="– Adelantos" value={formatARS(s.advances_deducted)} valueClass="text-red-400" />}
                     <div className="h-px bg-zinc-800 my-0.5" />
                     <SettlRow label="A recibir" value={formatARS(s.net_payable)} bold />
-                    {s.net_payable < 0 && (
+                    {s.net_payable < 0 && s.status === 'paid' && (
+                      <p className="text-xs text-emerald-400 mt-1 flex items-center gap-1">
+                        <span>✓</span>
+                        <span>Saldado con la barbería</span>
+                      </p>
+                    )}
+                    {s.net_payable < 0 && s.status !== 'paid' && (
                       <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
                         <span>ℹ️</span>
                         <span>Se debe a la barbería</span>

@@ -1076,9 +1076,12 @@ export default function AdminDashboard() {
                   {pagedSettlements.map((s) => {
                     const hasBonuses = s.barber.compensation_type !== 'box_rental'
                     const isPositive = s.net_payable >= 0
+                    // Deuda saldada: liquidación negativa ya marcada como pagada.
+                    // Ya no debe nada, así que no se muestra como "Debe" ni en rojo.
+                    const isSettledDebt = s.status === 'paid' && s.net_payable < 0
                     const loadingKey = actionLoading
                     return (
-                      <tr key={s.id} className={!isPositive ? 'tr-danger' : ''}>
+                      <tr key={s.id} className={!isPositive && !isSettledDebt ? 'tr-danger' : ''}>
                         <td>
                           <div className="barber-cell">
                             <div className="barber-avatar">
@@ -1229,8 +1232,8 @@ export default function AdminDashboard() {
                           ) : '—'}
                         </td>
                         <td>
-                          <span className={`net-payable ${isPositive ? 'net-payable--pos' : 'net-payable--neg'}`}>
-                            {isPositive ? '' : '↑ Debe '}
+                          <span className={`net-payable ${isPositive || isSettledDebt ? 'net-payable--pos' : 'net-payable--neg'}`}>
+                            {isSettledDebt ? '✓ Saldado ' : isPositive ? '' : '↑ Debe '}
                             {formatARS(Math.abs(s.net_payable))}
                           </span>
                         </td>
