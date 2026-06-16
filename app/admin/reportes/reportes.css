@@ -104,7 +104,7 @@
 }
 
 @media (min-width: 1024px) {
-  .report-cards-grid { grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+  .report-cards-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
 }
 
 .report-card {
@@ -177,11 +177,15 @@
   display: flex;
   align-items: center;
   gap: 0.625rem;
-  font-size: 0.95rem;
+  font-size: 0.8125rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #e4e4e7;
+  color: var(--grid-header-text, #f4f4f5);
+  background: var(--grid-header-bg, #3f3f46);
+  border: 1px solid var(--grid-header-border, #52525b);
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.9rem;
   margin-bottom: 1.25rem;
 }
 
@@ -236,7 +240,7 @@
 }
 
 @media (min-width: 1024px) {
-  .report-pie-grid { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); }
+  .report-pie-grid { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
 }
 
 .report-pie-card {
