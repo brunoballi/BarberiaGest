@@ -77,9 +77,14 @@ export default function MonthDetailModal({ month, branchName, data, loading, onC
 
   const filteredTransactions = useMemo(() => {
     if (!data) return []
-    return barberFilter === ALL
+    const txs = barberFilter === ALL
       ? data.transactions
       : data.transactions.filter((t) => t.barber_id === barberFilter)
+    // Ordenar por fecha (más reciente primero); las semanas vienen concatenadas.
+    return [...txs].sort((a, b) => {
+      const d = b.transaction_date.localeCompare(a.transaction_date)
+      return d !== 0 ? d : b.created_at.localeCompare(a.created_at)
+    })
   }, [data, barberFilter])
 
   // Acumulado por barbero (suma de todas las semanas del mes)
