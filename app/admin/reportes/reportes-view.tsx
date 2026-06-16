@@ -231,10 +231,8 @@ export default function ReportesView() {
 
       {/* ── Ganancia neta del mes (saldo inicial + ingresos + inyecciones − gastos) ── */}
       {monthFins.length > 0 && (
-        <section className="mb-6">
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-3">
-            Ganancia neta del mes
-          </h2>
+        <section className="report-section">
+          <h2 className="report-section__title">Ganancia neta del mes</h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
             {monthFins.map(({ branchId, branchName, fin, monthId }) => (
               <div key={branchId} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">

@@ -174,12 +174,24 @@
 }
 
 .report-section__title {
-  font-size: 0.6875rem;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  font-size: 0.95rem;
   font-weight: 700;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: #52525b;
-  margin-bottom: 1rem;
+  letter-spacing: 0.08em;
+  color: #e4e4e7;
+  margin-bottom: 1.25rem;
+}
+
+.report-section__title::before {
+  content: '';
+  flex: 0 0 auto;
+  width: 4px;
+  height: 1.15em;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #a78bfa, #6366f1);
 }
 
 .report-chart-box {
