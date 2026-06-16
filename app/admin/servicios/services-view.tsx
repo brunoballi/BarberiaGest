@@ -161,7 +161,7 @@ export default function ServicesView() {
     <div className="w-full px-4 py-8 space-y-6">
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flowi-page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-white">Catálogo de servicios</h1>
           <p className="text-zinc-400 text-sm mt-1">

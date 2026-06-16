@@ -34,6 +34,17 @@ body {
   min-width: 0;  /* evita overflow en flex */
 }
 
+/* ── Encabezado de sección (panel con sombreado suave + acento) ──────
+   Mismo estilo que el header de Reportes; reutilizable en todas las
+   secciones (barberos, beneficios, servicios, auditoría, etc.). */
+.flowi-page-header {
+  background: linear-gradient(180deg, #232328, #1a1a1e);
+  border: 1px solid #2d2d33;
+  border-left: 3px solid #6366f1;
+  border-radius: 0.625rem;
+  padding: 1rem 1.25rem;
+}
+
 .flowi-footer {
   display: flex;
   align-items: center;
