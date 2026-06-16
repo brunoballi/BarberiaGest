@@ -29,6 +29,10 @@ import type {
   ExpenseInsert,
   ExpenseUpdate,
   RevenueBalance,
+  BarberDebtPayment,
+  BarberDebtPaymentInsert,
+  BarberDebtSummary,
+  PaymentMethod,
   ProfileUpdate,
   WeekUpdate,
   ServiceCatalog,
@@ -1085,6 +1089,68 @@ export async function recalculateSettlementFull(
     p_barber_id: barberId,
   })
   if (error) throw new Error(`[recalculateSettlementFull] ${error.message}`)
+}
+
+// ============================================================
+// DEUDAS DE BARBEROS (saldo deudor + pagos de deuda)
+// ============================================================
+
+/**
+ * Resumen de saldo deudor por barbero de una sucursal. Devuelve solo barberos
+ * con deuda o pagos registrados. saldo = deudas (liquidaciones negativas pagadas)
+ * − pagos registrados.
+ */
+export async function getBarberDebtSummary(branchId: string): Promise<BarberDebtSummary[]> {
+  const { data, error } = await supabase.rpc('get_barber_debt_summary', {
+    p_branch_id: branchId,
+  })
+  if (error) throw new Error(`[getBarberDebtSummary] ${error.message}`)
+  type Row = { barber_id: string; full_name: string; total_debt: number; total_paid: number; outstanding_debt: number }
+  return ((data as Row[] | null) ?? []).map((r) => ({
+    barberId:        r.barber_id,
+    fullName:        r.full_name,
+    totalDebt:       Number(r.total_debt),
+    totalPaid:       Number(r.total_paid),
+    outstandingDebt: Number(r.outstanding_debt),
+  }))
+}
+
+/** Registra un pago/devolución de deuda de un barbero. */
+export async function recordDebtPayment(input: {
+  barberId: string
+  branchId: string
+  amount: number
+  paymentMethod: PaymentMethod
+  paymentDate: string
+  notes?: string | null
+  registeredBy: string
+}): Promise<void> {
+  const insert: BarberDebtPaymentInsert = {
+    barber_id:      input.barberId,
+    branch_id:      input.branchId,
+    amount:         input.amount,
+    payment_method: input.paymentMethod,
+    payment_date:   input.paymentDate,
+    notes:          input.notes ?? null,
+    registered_by:  input.registeredBy,
+  }
+  const { error } = await supabase.from('barber_debt_payments').insert(insert)
+  if (error) throw new Error(`[recordDebtPayment] ${error.message}`)
+}
+
+/** Historial de pagos de deuda de un barbero en una sucursal (más reciente primero). */
+export async function getBarberDebtPayments(
+  barberId: string,
+  branchId: string,
+): Promise<BarberDebtPayment[]> {
+  const { data, error } = await supabase
+    .from('barber_debt_payments')
+    .select('*')
+    .eq('barber_id', barberId)
+    .eq('branch_id', branchId)
+    .order('payment_date', { ascending: false })
+  if (error) throw new Error(`[getBarberDebtPayments] ${error.message}`)
+  return (data as BarberDebtPayment[] | null) ?? []
 }
 
 export async function getSettlementsForWeek(

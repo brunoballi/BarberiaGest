@@ -211,10 +211,34 @@ export interface RevenueBalance {
   updated_at: string
 }
 
+/** Pago/devolución de deuda de un barbero (liquidación negativa saldada). */
+export interface BarberDebtPayment {
+  id: string
+  barber_id: string
+  branch_id: string
+  amount: number
+  payment_method: PaymentMethod
+  payment_date: string
+  notes: string | null
+  registered_by: string
+  created_at: string
+}
+
+/** Resumen de saldo deudor por barbero (RPC get_barber_debt_summary). */
+export interface BarberDebtSummary {
+  barberId: string
+  fullName: string
+  totalDebt: number
+  totalPaid: number
+  outstandingDebt: number
+}
+
 // ============================================================
 // INSERT TYPES — Para mutations (omite campos auto-generados)
 // ============================================================
 export type BranchInsert = Omit<Branch, 'id' | 'created_at'>
+
+export type BarberDebtPaymentInsert = Omit<BarberDebtPayment, 'id' | 'created_at'>
 
 export type ProfileInsert = Omit<Profile, 'created_at' | 'receives_transfers' | 'advance_enabled' | 'advance_limit'> & {
   receives_transfers?: boolean

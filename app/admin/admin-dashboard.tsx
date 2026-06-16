@@ -66,6 +66,7 @@ import {
 } from '@/lib/supabase/supabase.client'
 import './admin-dashboard.css'
 import ManualCutModal from './manual-cut-modal'
+import { DebtPaymentModal } from '@/app/components/debt-payment-modal'
 import AdvancesTab from './advances-tab'
 import { PaginationControls } from '@/app/components/pagination-controls'
 import { CurrencyInput } from '@/app/components/currency-input'
@@ -122,6 +123,7 @@ export default function AdminDashboard() {
   const [currentUserId, setCurrentUserId] = useState<string>('')
   const [adminName, setAdminName]         = useState<string>('')
   const [showManualCut, setShowManualCut] = useState(false)
+  const [debtModal, setDebtModal] = useState<{ barberId: string; branchId: string; barberName: string; outstanding: number } | null>(null)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 
   // Semanas del mes seleccionado (derivado)
@@ -627,11 +629,21 @@ export default function AdminDashboard() {
     }
   }
 
-  async function handleMarkPaid(settlementId: string) {
+  async function handleMarkPaid(s: SettlementWithBarber) {
     try {
-      setActionLoading(`paid-${settlementId}`)
-      await markSettlementPaid(settlementId)
+      setActionLoading(`paid-${s.id}`)
+      await markSettlementPaid(s.id)
       await loadTabData()
+      // Si el barbero debía (liquidación negativa), ofrecer registrar la
+      // devolución de esa deuda en el acto (Opción C).
+      if (s.net_payable < 0) {
+        setDebtModal({
+          barberId:    s.barber_id,
+          branchId:    s.branch_id,
+          barberName:  s.barber.full_name,
+          outstanding: -s.net_payable,
+        })
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error marcando como pagado')
     } finally {
@@ -727,6 +739,7 @@ export default function AdminDashboard() {
         onLogout={handleLogout}
         onRegisterCut={() => { setIsDrawerOpen(false); setShowManualCut(true) }}
         adminName={adminName}
+        isWeekClosed={selectedWeek?.status !== 'open'}
       />
       {/* ── HEADER WRAPPER (sticky) ── */}
       <div className="admin-header-wrapper">
@@ -1246,7 +1259,7 @@ export default function AdminDashboard() {
                             )}
                             {s.status === 'confirmed' && (
                               <button
-                                onClick={() => handleMarkPaid(s.id)}
+                                onClick={() => handleMarkPaid(s)}
                                 disabled={loadingKey === `paid-${s.id}`}
                                 className="action-btn action-btn--pay"
                               >
@@ -1889,6 +1902,19 @@ export default function AdminDashboard() {
             // Forzar reload de transactions via cambio de referencia
             setSelectedWeek((w) => (w ? { ...w } : null))
           }}
+        />
+      )}
+
+      {/* Modal: Registrar devolución de deuda del barbero (Opción C) */}
+      {debtModal && currentUserId && (
+        <DebtPaymentModal
+          barberId={debtModal.barberId}
+          branchId={debtModal.branchId}
+          barberName={debtModal.barberName}
+          registeredBy={currentUserId}
+          outstanding={debtModal.outstanding}
+          onClose={() => setDebtModal(null)}
+          onSuccess={() => { setDebtModal(null); loadTabData() }}
         />
       )}
 

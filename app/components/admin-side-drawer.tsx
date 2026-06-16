@@ -9,6 +9,7 @@ interface AdminSideDrawerProps {
   onLogout: () => void
   onRegisterCut: () => void
   adminName?: string
+  isWeekClosed?: boolean
 }
 
 export function AdminSideDrawer({
@@ -17,6 +18,7 @@ export function AdminSideDrawer({
   onLogout,
   onRegisterCut,
   adminName = 'Admin',
+  isWeekClosed = false,
 }: AdminSideDrawerProps) {
   const [showConfigSubmenu, setShowConfigSubmenu] = useState(false)
 
@@ -63,13 +65,19 @@ export function AdminSideDrawer({
         <div className="flex-1 flex flex-col p-5 space-y-1 overflow-y-auto">
           <button
             onClick={() => {
+              if (isWeekClosed) return
               onRegisterCut()
               onClose()
             }}
-            className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
+            disabled={isWeekClosed}
+            title={isWeekClosed ? 'La semana seleccionada está cerrada. Posicionate en una semana abierta para registrar cortes.' : undefined}
+            className={`drawer-item flex items-center gap-3 px-4 py-3 rounded-lg transition-colors text-white ${
+              isWeekClosed ? 'opacity-40 cursor-not-allowed' : 'hover:bg-zinc-800'
+            }`}
           >
             <span className="text-xl">✂️</span>
             <span className="font-medium">Registrar corte</span>
+            {isWeekClosed && <span className="ml-auto text-xs text-zinc-500">semana cerrada</span>}
           </button>
 
           <Link
