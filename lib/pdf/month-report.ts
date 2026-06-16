@@ -20,6 +20,9 @@ export interface MonthReportOptions {
   rows: MonthReportRow[]
 }
 
+// Nombre de la barbería (marca). Se muestra antes de la sucursal en el PDF.
+const BARBERSHOP_NAME = 'Valhalla'
+
 function formatARS(n: number): string {
   return new Intl.NumberFormat('es-AR', {
     style: 'currency',
@@ -39,16 +42,21 @@ export function generateMonthReport(options: MonthReportOptions): void {
   const pageWidth = doc.internal.pageSize.getWidth()
 
   // ── Encabezado ──────────────────────────────────────────
+  // Barbería + sucursal como título principal (identidad del documento).
   doc.setFontSize(16)
   doc.setTextColor(24, 24, 27)
-  doc.text(`Detalle mensual · ${monthLabel}`, 14, 18)
+  doc.text(`${BARBERSHOP_NAME} · ${branchName}`, 14, 18)
 
-  doc.setFontSize(10)
-  doc.setTextColor(113, 113, 122)
-  doc.text(branchName, 14, 25)
+  doc.setFontSize(11)
+  doc.setTextColor(82, 82, 91)
+  doc.text(`Detalle mensual · ${monthLabel}`, 14, 25)
   if (barberFilterLabel) {
+    doc.setFontSize(10)
+    doc.setTextColor(113, 113, 122)
     doc.text(`Filtro: ${barberFilterLabel}`, 14, 31)
   }
+  doc.setFontSize(10)
+  doc.setTextColor(113, 113, 122)
   doc.text(
     `Generado: ${new Date().toLocaleString('es-AR')}`,
     pageWidth - 14,
