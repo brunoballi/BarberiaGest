@@ -44,6 +44,13 @@
   flex-wrap: wrap;
   gap: 1rem;
   margin-bottom: 2rem;
+  /* Panel con sombreado suave, en sintonía con los encabezados de grilla
+     pero en un tono más tenue para que destaque sin competir. */
+  background: linear-gradient(180deg, #232328, #1a1a1e);
+  border: 1px solid #2d2d33;
+  border-left: 3px solid #6366f1;
+  border-radius: 0.625rem;
+  padding: 1rem 1.25rem;
 }
 
 .report-title {
