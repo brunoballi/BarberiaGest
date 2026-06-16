@@ -465,19 +465,22 @@ export default function ConfiguracionView() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          padding: '1.25rem 1.5rem',
-          borderBottom: '1px solid #2d2d2d',
-          background: '#141414',
+          padding: '1rem 1.25rem',
+          border: '1px solid #2d2d33',
+          borderLeft: '3px solid #6366f1',
+          borderRadius: '0.625rem',
+          background: 'linear-gradient(180deg, #232328, #1a1a1e)',
           flexWrap: 'wrap',
           gap: '0.75rem',
+          marginBottom: '1.5rem',
         }}
       >
         <div>
           <h1 style={{ fontSize: '1.125rem', fontWeight: 700, color: '#e5e5e5', margin: 0 }}>
-            Configuración
+            Calendario
           </h1>
           <p style={{ fontSize: '0.8125rem', color: '#71717a', margin: '0.25rem 0 0' }}>
-            Meses y Semanas
+            Meses y semanas
           </p>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
