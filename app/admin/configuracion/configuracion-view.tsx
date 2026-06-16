@@ -36,6 +36,7 @@ import type {
   PaymentMethod,
 } from '@/lib/supabase/database.types'
 import { PAYMENT_METHOD_LABELS, WEEK_STATUS_LABELS } from '@/lib/supabase/database.types'
+import MonthDetailModal, { type MonthDetailData } from './month-detail-modal'
 
 // ============================================================
 // HELPERS
@@ -172,6 +173,11 @@ export default function ConfiguracionView() {
   const [detailLoading, setDetailLoading] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [branchId, setBranchId] = useState<string | null>(null)
+  const [branchName, setBranchName] = useState<string>('')
+  // Detalle mensual (acumulado de todas las semanas del mes)
+  const [monthDetail, setMonthDetail] = useState<MonthWithWeeks | null>(null)
+  const [monthDetailData, setMonthDetailData] = useState<MonthDetailData | null>(null)
+  const [monthDetailLoading, setMonthDetailLoading] = useState(false)
 
   // Load data
   const loadMonths = useCallback(async (bid: string) => {
@@ -214,6 +220,7 @@ export default function ConfiguracionView() {
       if (!bid) { router.replace('/admin/select-branch'); return }
 
       setBranchId(bid)
+      setBranchName(myBranches.find((b) => b.id === bid)?.name ?? '')
       loadMonths(bid)
     }
     init()
@@ -394,6 +401,37 @@ export default function ConfiguracionView() {
     setDetailData(null)
   }
 
+  // Open month detail modal (acumulado de todas las semanas del mes)
+  async function handleViewMonthDetail(month: MonthWithWeeks) {
+    setMonthDetail(month)
+    setMonthDetailData(null)
+    setMonthDetailLoading(true)
+    try {
+      const perWeek = await Promise.all(
+        month.weeks.map(async (w) => {
+          const [transactions, settlements] = await Promise.all([
+            getWeekTransactions(w.id),
+            getSettlementsForWeek(w.id),
+          ])
+          return { transactions, settlements }
+        })
+      )
+      setMonthDetailData({
+        transactions: perWeek.flatMap((p) => p.transactions),
+        settlements: perWeek.flatMap((p) => p.settlements),
+      })
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Error cargando detalle mensual')
+    } finally {
+      setMonthDetailLoading(false)
+    }
+  }
+
+  function closeMonthDetail() {
+    setMonthDetail(null)
+    setMonthDetailData(null)
+  }
+
   if (loading) {
     return (
       <div className="admin-app flex-center" style={{ minHeight: '60vh' }}>
@@ -523,6 +561,7 @@ export default function ConfiguracionView() {
                       onDeleteWeek={handleDeleteWeek}
                       onEditWeek={(w) => setEditingWeek(w)}
                       onViewDetail={handleViewDetail}
+                      onViewMonthDetail={handleViewMonthDetail}
                     />
                   ))}
                 </div>
@@ -552,6 +591,17 @@ export default function ConfiguracionView() {
           data={detailData}
           loading={detailLoading}
           onClose={closeDetail}
+        />
+      )}
+
+      {/* Month Detail Modal (acumulado mensual) */}
+      {monthDetail && (
+        <MonthDetailModal
+          month={monthDetail}
+          branchName={branchName}
+          data={monthDetailData}
+          loading={monthDetailLoading}
+          onClose={closeMonthDetail}
         />
       )}
 
@@ -610,6 +660,7 @@ interface MonthRowProps {
   onDeleteWeek: (week: Week) => void
   onEditWeek: (week: Week) => void
   onViewDetail: (week: Week, month: Month) => void
+  onViewMonthDetail: (month: MonthWithWeeks) => void
 }
 
 function MonthRow({
@@ -624,6 +675,7 @@ function MonthRow({
   onDeleteWeek,
   onEditWeek,
   onViewDetail,
+  onViewMonthDetail,
 }: MonthRowProps) {
   const name = MONTH_NAMES[month.month - 1]
   const weekCount = month.weeks.length
@@ -668,6 +720,14 @@ function MonthRow({
         </div>
 
         <div style={{ display: 'flex', gap: '0.5rem' }} onClick={(e) => e.stopPropagation()}>
+          <button
+            className="admin-btn admin-btn--ghost"
+            style={{ fontSize: '0.75rem', padding: '0.25rem 0.75rem', borderColor: '#6366f1', color: '#818cf8' }}
+            onClick={() => onViewMonthDetail(month)}
+            title="Ver acumulado mensual por barbero"
+          >
+            Detalle mensual
+          </button>
           {isActive ? (
             <button
               className="admin-btn admin-btn--danger"
