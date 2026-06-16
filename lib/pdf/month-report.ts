@@ -13,11 +13,21 @@ export interface MonthReportRow {
   toCollect: number
 }
 
+export interface MonthReportTx {
+  date: string         // fecha ya formateada (ej: "16 jun")
+  barberName: string
+  service: string
+  method: string       // etiqueta legible del método de pago
+  amount: number
+  commission: number
+}
+
 export interface MonthReportOptions {
   monthLabel: string          // "Junio 2026"
   branchName: string          // nombre de la sucursal
   barberFilterLabel?: string  // "Todos los barberos" o nombre del barbero filtrado
   rows: MonthReportRow[]
+  transactions?: MonthReportTx[]  // detalle de transacciones (opcional)
 }
 
 // Nombre de la barbería (marca). Se muestra antes de la sucursal en el PDF.
@@ -36,7 +46,7 @@ function formatARS(n: number): string {
  * Se ejecuta en el momento (client-side) con los datos ya calculados.
  */
 export function generateMonthReport(options: MonthReportOptions): void {
-  const { monthLabel, branchName, barberFilterLabel, rows } = options
+  const { monthLabel, branchName, barberFilterLabel, rows, transactions } = options
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
   const pageWidth = doc.internal.pageSize.getWidth()
@@ -104,6 +114,34 @@ export function generateMonthReport(options: MonthReportOptions): void {
     },
     styles: { fontSize: 9, cellPadding: 2.5 },
   })
+
+  // ── Detalle de transacciones (opcional) ─────────────────
+  if (transactions && transactions.length > 0) {
+    const afterFirst = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY
+    doc.setFontSize(11)
+    doc.setTextColor(24, 24, 27)
+    doc.text(`Transacciones (${transactions.length})`, 14, afterFirst + 10)
+
+    autoTable(doc, {
+      startY: afterFirst + 13,
+      head: [['Fecha', 'Barbero', 'Servicio', 'Método', 'Monto', 'Comisión']],
+      body: transactions.map((t) => [
+        t.date,
+        t.barberName,
+        t.service,
+        t.method,
+        formatARS(t.amount),
+        formatARS(t.commission),
+      ]),
+      theme: 'striped',
+      headStyles: { fillColor: [63, 63, 70], textColor: [255, 255, 255], fontStyle: 'bold' },
+      columnStyles: {
+        4: { halign: 'right' },
+        5: { halign: 'right' },
+      },
+      styles: { fontSize: 8, cellPadding: 2 },
+    })
+  }
 
   const fileName = `detalle-mensual-${monthLabel.replace(/\s+/g, '-').toLowerCase()}.pdf`
   doc.save(fileName)

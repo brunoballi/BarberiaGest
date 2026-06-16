@@ -138,6 +138,14 @@ export default function MonthDetailModal({ month, branchName, data, loading, onC
         commission: r.commission,
         toCollect: r.toCollect,
       })),
+      transactions: filteredTransactions.map((t) => ({
+        date: formatDate(t.transaction_date),
+        barberName: t.barber.full_name,
+        service: t.service?.name ?? '—',
+        method: PAYMENT_METHOD_LABELS[t.payment_method],
+        amount: t.amount,
+        commission: t.barber_share,
+      })),
     })
   }
 
