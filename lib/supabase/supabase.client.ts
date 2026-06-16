@@ -1685,9 +1685,12 @@ export async function createCapitalInjection(
   amount: number,
   description?: string
 ): Promise<CapitalInjection> {
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (authError || !user) throw new Error('[createCapitalInjection] Usuario no autenticado')
+
   const { data, error } = await supabase
     .from('capital_injections')
-    .insert([{ branch_id: branchId, month_id: monthId, amount, description }])
+    .insert([{ branch_id: branchId, month_id: monthId, amount, description, created_by: user.id }])
     .select()
     .single()
 
