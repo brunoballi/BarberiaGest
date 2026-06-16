@@ -25,6 +25,7 @@ import {
 import type { BarberDebtSummary } from '@/lib/supabase/database.types'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import { MONTH_NAMES } from '@/lib/supabase/supabase.client'
+import CapitalInjectionsView from './capital-injections-view'
 import './reportes.css'
 
 // ── Utilidades ────────────────────────────────────────────────────
@@ -91,7 +92,7 @@ export default function ReportesView() {
   const [year, setYear]   = useState(today.getFullYear())
   const [month, setMonth] = useState(today.getMonth() + 1)  // 1-12
   const [reports, setReports]   = useState<BranchReport[]>([])
-  const [monthFins, setMonthFins] = useState<{ branchId: string; branchName: string; fin: MonthFinancials }[]>([])
+  const [monthFins, setMonthFins] = useState<{ branchId: string; branchName: string; monthId: string; fin: MonthFinancials }[]>([])
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState<string | null>(null)
   // Saldo deudor: liquidaciones confirmadas con deuda (independiente del período)
@@ -122,17 +123,17 @@ export default function ReportesView() {
       )
       setDebtRows(debtLists.flat())
 
-      // Detalle mensual (saldo inicial + comisiones + box − gastos = ganancia neta)
+      // Detalle mensual (saldo inicial + comisiones + box + inyecciones − gastos = ganancia neta)
       const fins = await Promise.all(
         myBranches.map(async (b) => {
           const ms = await getMonthsWithWeeks(b.id)
           const mrow = ms.find((m) => m.year === year && m.month === month)
           if (!mrow) return null
           const fin = await getMonthFinancials(b.id, mrow.id)
-          return { branchId: b.id, branchName: b.name, fin }
+          return { branchId: b.id, branchName: b.name, monthId: mrow.id, fin }
         })
       )
-      setMonthFins(fins.filter((x): x is { branchId: string; branchName: string; fin: MonthFinancials } => x !== null))
+      setMonthFins(fins.filter((x): x is { branchId: string; branchName: string; monthId: string; fin: MonthFinancials } => x !== null))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar reportes')
     } finally {
@@ -228,14 +229,14 @@ export default function ReportesView() {
         </div>
       </div>
 
-      {/* ── Ganancia neta del mes (saldo inicial + ingresos − gastos) ── */}
+      {/* ── Ganancia neta del mes (saldo inicial + ingresos + inyecciones − gastos) ── */}
       {monthFins.length > 0 && (
         <section className="mb-6">
           <h2 className="text-sm font-semibold uppercase tracking-widest text-zinc-500 mb-3">
             Ganancia neta del mes
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
-            {monthFins.map(({ branchId, branchName, fin }) => (
+            {monthFins.map(({ branchId, branchName, fin, monthId }) => (
               <div key={branchId} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
                 <p className="font-bold text-zinc-100 mb-3">{branchName}</p>
                 <div className="space-y-1.5 text-sm">
@@ -255,6 +256,12 @@ export default function ReportesView() {
                     <span className="pl-4">· Alquileres de box</span>
                     <span>{formatARS(fin.boxRentTotal)}</span>
                   </div>
+                  {fin.capitalInjections > 0 && (
+                    <div className="flex justify-between">
+                      <span className="text-zinc-400">+ Inyecciones de capital</span>
+                      <span className="text-blue-400">{formatARS(fin.capitalInjections)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between">
                     <span className="text-zinc-400">− Gastos del mes</span>
                     <span className="text-red-400">{formatARS(fin.totalExpenses)}</span>
@@ -262,6 +269,13 @@ export default function ReportesView() {
                   <div className="flex justify-between pt-2 border-t border-zinc-800 font-bold">
                     <span className="text-zinc-200">= Ganancia neta del mes</span>
                     <span className={fin.netProfit < 0 ? 'text-red-400' : 'text-emerald-400'}>{formatARS(fin.netProfit)}</span>
+                  </div>
+                  <div className="pt-3 border-t border-zinc-800">
+                    <CapitalInjectionsView
+                      branchId={branchId}
+                      monthId={monthId}
+                      onInjectionChange={() => load()}
+                    />
                   </div>
                 </div>
               </div>

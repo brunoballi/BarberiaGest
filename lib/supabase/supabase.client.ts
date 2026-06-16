@@ -1616,14 +1616,15 @@ export async function setInitialBalance(
   return data
 }
 
-/** Resumen financiero del mes (Ganancia neta = saldo inicial + ingresos barbería - gastos). */
+/** Resumen financiero del mes (Ganancia neta = saldo inicial + ingresos barbería + inyecciones - gastos). */
 export interface MonthFinancials {
-  branchShareCuts: number // comisión de la barbería en cortes
-  boxRentTotal: number    // alquileres de box cobrados
-  branchIncome: number    // branchShareCuts + boxRentTotal
-  totalExpenses: number   // gastos del mes (excluye retiro de socios)
-  initialBalance: number  // saldo inicial del mes
-  netProfit: number       // initialBalance + branchIncome - totalExpenses
+  branchShareCuts: number    // comisión de la barbería en cortes
+  boxRentTotal: number       // alquileres de box cobrados
+  branchIncome: number       // branchShareCuts + boxRentTotal
+  capitalInjections: number  // inyecciones de capital de socios
+  totalExpenses: number      // gastos del mes (excluye retiro de socios)
+  initialBalance: number     // saldo inicial del mes
+  netProfit: number          // initialBalance + branchIncome + capitalInjections - totalExpenses
 }
 
 export async function getMonthFinancials(
@@ -1638,17 +1639,69 @@ export async function getMonthFinancials(
 
   type Row = {
     branch_share_cuts: number; box_rent_total: number; branch_income: number
-    total_expenses: number; initial_balance: number; net_profit: number
+    capital_injections: number; total_expenses: number; initial_balance: number; net_profit: number
   }
   const r = (data as Row[] | null)?.[0]
   return {
     branchShareCuts: Number(r?.branch_share_cuts ?? 0),
     boxRentTotal:    Number(r?.box_rent_total ?? 0),
     branchIncome:    Number(r?.branch_income ?? 0),
+    capitalInjections: Number(r?.capital_injections ?? 0),
     totalExpenses:   Number(r?.total_expenses ?? 0),
     initialBalance:  Number(r?.initial_balance ?? 0),
     netProfit:       Number(r?.net_profit ?? 0),
   }
+}
+
+// ============================================================
+// CAPITAL INJECTIONS
+// ============================================================
+export interface CapitalInjection {
+  id: string
+  branch_id: string
+  month_id: string
+  amount: number
+  description?: string
+  created_by: string
+  created_at: string
+  updated_at: string
+}
+
+export async function getCapitalInjections(branchId: string, monthId: string): Promise<CapitalInjection[]> {
+  const { data, error } = await supabase
+    .from('capital_injections')
+    .select('*')
+    .eq('branch_id', branchId)
+    .eq('month_id', monthId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw new Error(`[getCapitalInjections] ${error.message}`)
+  return data ?? []
+}
+
+export async function createCapitalInjection(
+  branchId: string,
+  monthId: string,
+  amount: number,
+  description?: string
+): Promise<CapitalInjection> {
+  const { data, error } = await supabase
+    .from('capital_injections')
+    .insert([{ branch_id: branchId, month_id: monthId, amount, description }])
+    .select()
+    .single()
+
+  if (error) throw new Error(`[createCapitalInjection] ${error.message}`)
+  return data
+}
+
+export async function deleteCapitalInjection(injectionId: string): Promise<void> {
+  const { error } = await supabase
+    .from('capital_injections')
+    .delete()
+    .eq('id', injectionId)
+
+  if (error) throw new Error(`[deleteCapitalInjection] ${error.message}`)
 }
 
 // ============================================================
