@@ -17,6 +17,9 @@ interface InvitePayload {
   objetivo_rate: number | null
   objetivo_min_cuts: number | null
   box_rental_amount: number | null
+  receives_transfers: boolean
+  advance_enabled: boolean
+  advance_limit: number
 }
 
 /** Genera una contraseña segura de 12 caracteres */

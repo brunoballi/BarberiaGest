@@ -49,6 +49,9 @@ interface InviteForm {
   objetivo_rate: string
   objetivo_min_cuts: string
   box_rental_amount: string
+  receives_transfers: boolean
+  advance_enabled: boolean
+  advance_limit: string
 }
 
 const EMPTY_INVITE: InviteForm = {
@@ -64,6 +67,9 @@ const EMPTY_INVITE: InviteForm = {
   objetivo_rate: '',
   objetivo_min_cuts: '',
   box_rental_amount: '',
+  receives_transfers: true,
+  advance_enabled: false,
+  advance_limit: '',
 }
 
 // ─── Edit form state ───────────────────────────────────────────────────────
@@ -286,6 +292,12 @@ export default function BarbersAbm() {
           inviteForm.objetivo_min_cuts ? parseInt(inviteForm.objetivo_min_cuts, 10) : null,
         box_rental_amount:
           inviteForm.box_rental_amount ? parseFloat(inviteForm.box_rental_amount) : null,
+        receives_transfers: inviteForm.receives_transfers,
+        advance_enabled: inviteForm.advance_enabled,
+        advance_limit:
+          inviteForm.advance_enabled && inviteForm.advance_limit
+            ? parseFloat(inviteForm.advance_limit)
+            : 0,
       }
 
       const res = await fetch('/api/invite-barber', {
@@ -622,6 +634,63 @@ export default function BarbersAbm() {
                 setInviteForm((f) => ({ ...f, [field]: value }))
               }
             />
+
+            {/* Transferencias */}
+            <div className="bg-zinc-800/40 border border-zinc-700 rounded-lg px-4 py-3">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={inviteForm.receives_transfers}
+                  onChange={(e) => setInviteForm((f) => ({ ...f, receives_transfers: e.target.checked }))}
+                  className="mt-0.5 w-4 h-4 accent-amber-500"
+                />
+                <span>
+                  <span className="block text-sm font-semibold text-white">Recibe transferencias en su cuenta</span>
+                  <span className="block text-xs text-zinc-400 mt-0.5">
+                    {inviteForm.receives_transfers
+                      ? 'Las transferencias las cobra el barbero directamente (ya cobrado).'
+                      : 'Las transferencias van a la cuenta de Valhalla; se le pagan en la liquidación.'}
+                  </span>
+                </span>
+              </label>
+            </div>
+
+            {/* Adelantos */}
+            <div className="bg-zinc-800/40 border border-zinc-700 rounded-lg px-4 py-3 space-y-3">
+              <label className="flex items-start gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={inviteForm.advance_enabled}
+                  onChange={(e) => setInviteForm((f) => ({ ...f, advance_enabled: e.target.checked }))}
+                  className="mt-0.5 w-4 h-4 accent-amber-500"
+                />
+                <span>
+                  <span className="block text-sm font-semibold text-white">Habilitar adelantos</span>
+                  <span className="block text-xs text-zinc-400 mt-0.5">
+                    {inviteForm.advance_enabled
+                      ? 'El barbero verá el botón "Pedir adelanto" en su vista.'
+                      : 'El botón "Pedir adelanto" queda oculto para el barbero.'}
+                  </span>
+                </span>
+              </label>
+
+              {inviteForm.advance_enabled && (
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
+                    Límite por adelanto ($)
+                  </label>
+                  <CurrencyInput
+                    placeholder="0 = sin tope"
+                    value={inviteForm.advance_limit}
+                    onChange={(v) => setInviteForm((f) => ({ ...f, advance_limit: v }))}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+                  />
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Monto máximo que puede solicitar por adelanto. Dejalo vacío o en 0 para no imponer tope.
+                  </p>
+                </div>
+              )}
+            </div>
 
             {inviteError && <p className="text-red-400 text-sm">{inviteError}</p>}
 
