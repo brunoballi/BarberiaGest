@@ -730,6 +730,8 @@ export default function AdminDashboard() {
   const kpis = {
     grossTotal: settlements.reduce((s, x) => s + x.gross_amount, 0),
     branchTotal: settlements.reduce((s, x) => s + (x.gross_amount - x.barber_gross - x.bonus_presentismo - x.bonus_objetivo), 0),
+    // Total que cobra el barbero (comisión + bonos = total_earned), todos los barberos.
+    barberTotal: settlements.reduce((s, x) => s + x.total_earned, 0),
     totalPayable: settlements.reduce((s, x) => s + Math.max(x.net_payable, 0), 0),
     totalCuts: settlements.reduce((s, x) => s + x.total_cuts, 0),
     cashTotal: settlements.reduce((s, x) => s + x.cash_amount, 0),
@@ -910,6 +912,11 @@ export default function AdminDashboard() {
               value={formatARS(kpis.branchTotal)}
               accent="positive"
               tooltip="Lo que queda del facturado tras comisiones y bonos."
+            />
+            <KpiCard
+              label="Total barbero"
+              value={formatARS(kpis.barberTotal)}
+              tooltip="Lo que ganan los barberos: comisión + bonos (total devengado de la semana)."
             />
             <KpiCard
               label="A pagar barberos"

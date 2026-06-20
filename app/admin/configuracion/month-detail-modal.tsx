@@ -1,16 +1,16 @@
 'use client'
 
 // ============================================================
-// MONTH DETAIL MODAL — Acumulado mensual por barbero
-// Misma estructura que WeekDetailModal pero sumando todas las
-// semanas del mes. Incluye filtro por barbero + descarga PDF.
+// DETAIL MODAL — Detalle de mes/semana por barbero
+// Carga todas las semanas del mes y filtra en cliente por barbero
+// y por semana. KPIs de negocio + tabla por barbero + export PDF.
 // ============================================================
 import { useState, useMemo } from 'react'
 import type {
   Month,
+  Week,
   TransactionWithRelations,
   SettlementWithBarber,
-  PaymentMethod,
 } from '@/lib/supabase/database.types'
 import { PAYMENT_METHOD_LABELS } from '@/lib/supabase/database.types'
 import { MONTH_NAMES } from '@/lib/supabase/supabase.client'
@@ -26,6 +26,11 @@ function formatARS(n: number): string {
 
 function formatDate(d: string): string {
   return new Date(d + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
+}
+
+/** Parte de la barbería para una liquidación: facturado − (comisión barbero + bonos). */
+function branchShareOf(s: SettlementWithBarber): number {
+  return s.gross_amount - s.barber_gross - s.bonus_presentismo - s.bonus_objetivo
 }
 
 export interface MonthDetailData {
@@ -44,18 +49,28 @@ interface BarberAgg {
 
 interface MonthDetailModalProps {
   month: Month
+  weeks: Week[]
   branchName: string
   data: MonthDetailData | null
   loading: boolean
+  initialWeekId?: string | null
   onClose: () => void
 }
 
 const ALL = '__all__'
 
-export default function MonthDetailModal({ month, branchName, data, loading, onClose }: MonthDetailModalProps) {
+export default function MonthDetailModal({ month, weeks, branchName, data, loading, initialWeekId, onClose }: MonthDetailModalProps) {
   const monthName = MONTH_NAMES[month.month - 1]
   const monthLabel = `${monthName} ${month.year}`
   const [barberFilter, setBarberFilter] = useState<string>(ALL)
+  const [weekFilter, setWeekFilter] = useState<string>(initialWeekId ?? ALL)
+
+  // Etiqueta de la semana seleccionada (para títulos/PDF)
+  const weekLabel = useMemo(() => {
+    if (weekFilter === ALL) return 'Todas las semanas'
+    const w = weeks.find((x) => x.id === weekFilter)
+    return w ? `Semana ${w.week_number}` : 'Semana'
+  }, [weekFilter, weeks])
 
   // Lista de barberos únicos del mes (para el dropdown)
   const barbers = useMemo(() => {
@@ -67,27 +82,29 @@ export default function MonthDetailModal({ month, branchName, data, loading, onC
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [data])
 
-  // Settlements/transacciones filtrados por barbero
+  // Settlements/transacciones filtrados por barbero + semana
   const filteredSettlements = useMemo(() => {
     if (!data) return []
-    return barberFilter === ALL
-      ? data.settlements
-      : data.settlements.filter((s) => s.barber_id === barberFilter)
-  }, [data, barberFilter])
+    return data.settlements.filter((s) =>
+      (barberFilter === ALL || s.barber_id === barberFilter) &&
+      (weekFilter === ALL || s.week_id === weekFilter)
+    )
+  }, [data, barberFilter, weekFilter])
 
   const filteredTransactions = useMemo(() => {
     if (!data) return []
-    const txs = barberFilter === ALL
-      ? data.transactions
-      : data.transactions.filter((t) => t.barber_id === barberFilter)
+    const txs = data.transactions.filter((t) =>
+      (barberFilter === ALL || t.barber_id === barberFilter) &&
+      (weekFilter === ALL || t.week_id === weekFilter)
+    )
     // Ordenar por fecha (más reciente primero); las semanas vienen concatenadas.
     return [...txs].sort((a, b) => {
       const d = b.transaction_date.localeCompare(a.transaction_date)
       return d !== 0 ? d : b.created_at.localeCompare(a.created_at)
     })
-  }, [data, barberFilter])
+  }, [data, barberFilter, weekFilter])
 
-  // Acumulado por barbero (suma de todas las semanas del mes)
+  // Acumulado por barbero
   const barberRows = useMemo<BarberAgg[]>(() => {
     const map = new Map<string, BarberAgg>()
     for (const s of filteredSettlements) {
@@ -105,32 +122,44 @@ export default function MonthDetailModal({ month, branchName, data, loading, onC
     return [...map.values()].sort((a, b) => a.barberName.localeCompare(b.barberName))
   }, [filteredSettlements])
 
-  // Resumen (KPIs) basado en transacciones filtradas
-  const summary = useMemo(() => {
-    const txs = filteredTransactions
-    const byMethod: Record<PaymentMethod, number> = { cash: 0, transfer: 0, card: 0, mixed: 0 }
-    let totalBilled = 0
-    for (const t of txs) { byMethod[t.payment_method] += t.amount; totalBilled += t.amount }
-    return { totalCuts: txs.length, totalBilled, byMethod }
+  // Cortes por servicio (desglose dentro de la tarjeta de Cortes)
+  const cortesPorServicio = useMemo(() => {
+    const map = new Map<string, number>()
+    for (const t of filteredTransactions) {
+      const name = t.service?.name ?? 'Sin servicio'
+      map.set(name, (map.get(name) ?? 0) + 1)
+    }
+    return [...map.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((a, b) => b.count - a.count)
   }, [filteredTransactions])
 
-  const totals = useMemo(() => barberRows.reduce(
-    (acc, r) => ({
-      cuts: acc.cuts + r.cuts,
-      billed: acc.billed + r.billed,
-      commission: acc.commission + r.commission,
-      toCollect: acc.toCollect + r.toCollect,
-    }),
-    { cuts: 0, billed: 0, commission: 0, toCollect: 0 }
-  ), [barberRows])
+  // Totales de negocio
+  const totals = useMemo(() => {
+    const t = filteredSettlements.reduce(
+      (acc, s) => ({
+        cuts: acc.cuts + s.total_cuts,
+        billed: acc.billed + s.gross_amount,
+        commission: acc.commission + s.total_earned,
+        toCollect: acc.toCollect + s.net_payable,
+        branch: acc.branch + branchShareOf(s),
+      }),
+      { cuts: 0, billed: 0, commission: 0, toCollect: 0, branch: 0 }
+    )
+    return t
+  }, [filteredSettlements])
+
+  const totalCuts = filteredTransactions.length
 
   function handleDownloadPdf() {
+    const filterParts = [
+      barberFilter === ALL ? 'Todos los barberos' : barbers.find((b) => b.id === barberFilter)?.name,
+      weekLabel,
+    ].filter(Boolean)
     generateMonthReport({
-      monthLabel,
+      monthLabel: weekFilter === ALL ? monthLabel : `${monthLabel} · ${weekLabel}`,
       branchName,
-      barberFilterLabel: barberFilter === ALL
-        ? 'Todos los barberos'
-        : barbers.find((b) => b.id === barberFilter)?.name,
+      barberFilterLabel: filterParts.join(' · '),
       rows: barberRows.map((r) => ({
         barberName: r.barberName,
         cuts: r.cuts,
@@ -149,14 +178,19 @@ export default function MonthDetailModal({ month, branchName, data, loading, onC
     })
   }
 
+  const selectStyle = {
+    background: '#18181b', color: '#e4e4e7', border: '1px solid #3f3f46',
+    borderRadius: '0.5rem', padding: '0.4rem 0.7rem', fontSize: '0.8125rem',
+  } as const
+
   return (
     <div className="modal-overlay">
       <div className="modal-box" style={{ maxWidth: '820px', width: '100%' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>
-            Detalle mensual · {monthLabel}
+            Detalle · {monthLabel}
             <span style={{ marginLeft: '0.75rem', fontSize: '0.75rem', fontWeight: 400, color: '#71717a' }}>
-              acumulado de todas las semanas
+              {weekLabel === 'Todas las semanas' ? 'acumulado del mes' : weekLabel}
             </span>
           </h3>
           <button className="modal-close" onClick={onClose}>✕</button>
@@ -171,23 +205,29 @@ export default function MonthDetailModal({ month, branchName, data, loading, onC
 
           {!loading && data && (
             <>
-              {/* --- Filtro por barbero + PDF --- */}
+              {/* --- Filtros + PDF --- */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                  <label style={{ fontSize: '0.75rem', color: '#71717a' }}>Barbero</label>
-                  <select
-                    value={barberFilter}
-                    onChange={(e) => setBarberFilter(e.target.value)}
-                    style={{
-                      background: '#18181b', color: '#e4e4e7', border: '1px solid #3f3f46',
-                      borderRadius: '0.5rem', padding: '0.4rem 0.7rem', fontSize: '0.8125rem',
-                    }}
-                  >
-                    <option value={ALL}>Ver todos</option>
-                    {barbers.map((b) => (
-                      <option key={b.id} value={b.id}>{b.name}</option>
-                    ))}
-                  </select>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <label style={{ fontSize: '0.75rem', color: '#71717a' }}>Barbero</label>
+                    <select value={barberFilter} onChange={(e) => setBarberFilter(e.target.value)} style={selectStyle}>
+                      <option value={ALL}>Ver todos</option>
+                      {barbers.map((b) => (
+                        <option key={b.id} value={b.id}>{b.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <label style={{ fontSize: '0.75rem', color: '#71717a' }}>Semana</label>
+                    <select value={weekFilter} onChange={(e) => setWeekFilter(e.target.value)} style={selectStyle}>
+                      <option value={ALL}>Todas las semanas</option>
+                      {weeks.map((w) => (
+                        <option key={w.id} value={w.id}>
+                          S{w.week_number} · {formatDate(w.start_date)}–{formatDate(w.end_date)}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
                 <button
                   className="admin-btn"
@@ -202,23 +242,34 @@ export default function MonthDetailModal({ month, branchName, data, loading, onC
               {/* --- Resumen --- */}
               <section>
                 <p style={{ fontSize: '0.6875rem', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
-                  Resumen del mes
+                  Resumen
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <KpiMini label="Cortes" value={String(summary.totalCuts)} />
-                  <KpiMini label="Facturado" value={formatARS(summary.totalBilled)} />
-                  <KpiMini label="Efectivo" value={formatARS(summary.byMethod.cash)} color="#34d399" />
-                  <KpiMini label="Transfer" value={formatARS(summary.byMethod.transfer)} color="#818cf8" />
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" style={{ alignItems: 'start' }}>
+                  <KpiMini label="Cortes" value={String(totalCuts)}>
+                    {cortesPorServicio.length > 0 && (
+                      <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.2rem', maxHeight: '8rem', overflowY: 'auto' }}>
+                        {cortesPorServicio.map((c) => (
+                          <div key={c.name} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', fontSize: '0.7rem' }}>
+                            <span style={{ color: '#a1a1aa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                            <span style={{ color: '#e4e4e7', fontWeight: 600 }}>×{c.count}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </KpiMini>
+                  <KpiMini label="Facturado" value={formatARS(totals.billed)} />
+                  <KpiMini label="Total barbero" value={formatARS(totals.commission)} color="#f59e0b" />
+                  <KpiMini label="Total barbería" value={formatARS(totals.branch)} color="#34d399" />
                 </div>
               </section>
 
-              {/* --- Por barbero (acumulado) --- */}
+              {/* --- Por barbero --- */}
               <section>
                 <p style={{ fontSize: '0.6875rem', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
-                  Por barbero · acumulado mensual
+                  Por barbero
                 </p>
                 {barberRows.length === 0 ? (
-                  <div className="empty-state"><p>Sin datos para este mes.</p></div>
+                  <div className="empty-state"><p>Sin datos para este período.</p></div>
                 ) : (
                   <div className="admin-table-wrap" style={{ padding: 0 }}>
                     <table className="admin-table">
@@ -259,47 +310,6 @@ export default function MonthDetailModal({ month, branchName, data, loading, onC
                   </div>
                 )}
               </section>
-
-              {/* --- Transacciones --- */}
-              <section>
-                <p style={{ fontSize: '0.6875rem', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
-                  Transacciones ({filteredTransactions.length})
-                </p>
-                {filteredTransactions.length === 0 ? (
-                  <div className="empty-state"><p>Sin transacciones en este mes.</p></div>
-                ) : (
-                  <div className="admin-table-wrap" style={{ padding: 0, maxHeight: '260px', overflowY: 'auto' }}>
-                    <table className="admin-table">
-                      <thead>
-                        <tr>
-                          <th>Fecha</th>
-                          <th>Barbero</th>
-                          <th>Servicio</th>
-                          <th>Método</th>
-                          <th>Monto</th>
-                          <th>Comisión</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {filteredTransactions.map((t) => (
-                          <tr key={t.id}>
-                            <td className="td-date">{formatDate(t.transaction_date)}</td>
-                            <td>{t.barber.full_name}</td>
-                            <td className="td-muted">{t.service?.name ?? '—'}</td>
-                            <td>
-                              <span className={`dot-badge dot-badge--${t.payment_method}`}>
-                                {PAYMENT_METHOD_LABELS[t.payment_method]}
-                              </span>
-                            </td>
-                            <td className="td-bold">{formatARS(t.amount)}</td>
-                            <td className="td-amber">{formatARS(t.barber_share)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </section>
             </>
           )}
         </div>
@@ -312,11 +322,12 @@ export default function MonthDetailModal({ month, branchName, data, loading, onC
   )
 }
 
-function KpiMini({ label, value, color }: { label: string; value: string; color?: string }) {
+function KpiMini({ label, value, color, children }: { label: string; value: string; color?: string; children?: React.ReactNode }) {
   return (
     <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '0.625rem', padding: '0.625rem 0.75rem' }}>
       <p style={{ fontSize: '0.625rem', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>{label}</p>
       <p style={{ fontSize: '1rem', fontWeight: 700, color: color ?? '#e4e4e7', margin: '0.25rem 0 0' }}>{value}</p>
+      {children}
     </div>
   )
 }

@@ -28,14 +28,10 @@ import {
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import type {
   MonthWithWeeks,
-  Month,
   Week,
   WeekStatus,
-  TransactionWithRelations,
-  SettlementWithBarber,
-  PaymentMethod,
 } from '@/lib/supabase/database.types'
-import { PAYMENT_METHOD_LABELS, WEEK_STATUS_LABELS } from '@/lib/supabase/database.types'
+import { WEEK_STATUS_LABELS } from '@/lib/supabase/database.types'
 import MonthDetailModal, { type MonthDetailData } from './month-detail-modal'
 
 // ============================================================
@@ -137,19 +133,6 @@ function monthSummary(
 // ============================================================
 // TYPES
 // ============================================================
-interface WeekDetailData {
-  transactions: TransactionWithRelations[]
-  settlements: SettlementWithBarber[]
-}
-
-interface BarberRow {
-  barberId: string
-  barberName: string
-  cuts: number
-  billed: number
-  commission: number
-  toCollect: number
-}
 
 // ============================================================
 // MAIN COMPONENT
@@ -167,17 +150,14 @@ export default function ConfiguracionView() {
   const [showNewYearModal, setShowNewYearModal] = useState(false)
   const [showManualWeekModal, setShowManualWeekModal] = useState(false)
   const [editingWeek, setEditingWeek] = useState<Week | null>(null)
-  const [detailWeek, setDetailWeek] = useState<Week | null>(null)
-  const [detailWeekMonth, setDetailWeekMonth] = useState<Month | null>(null)
-  const [detailData, setDetailData] = useState<WeekDetailData | null>(null)
-  const [detailLoading, setDetailLoading] = useState(false)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null)
   const [branchId, setBranchId] = useState<string | null>(null)
   const [branchName, setBranchName] = useState<string>('')
-  // Detalle mensual (acumulado de todas las semanas del mes)
+  // Detalle (mes/semana): carga todas las semanas del mes y filtra en cliente.
   const [monthDetail, setMonthDetail] = useState<MonthWithWeeks | null>(null)
   const [monthDetailData, setMonthDetailData] = useState<MonthDetailData | null>(null)
   const [monthDetailLoading, setMonthDetailLoading] = useState(false)
+  const [detailInitialWeekId, setDetailInitialWeekId] = useState<string | null>(null)
 
   // Load data
   const loadMonths = useCallback(async (bid: string) => {
@@ -376,34 +356,11 @@ export default function ConfiguracionView() {
     }
   }
 
-  // Open week detail modal
-  async function handleViewDetail(week: Week, month: Month) {
-    setDetailWeek(week)
-    setDetailWeekMonth(month)
-    setDetailData(null)
-    setDetailLoading(true)
-    try {
-      const [transactions, settlements] = await Promise.all([
-        getWeekTransactions(week.id),
-        getSettlementsForWeek(week.id),
-      ])
-      setDetailData({ transactions, settlements })
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error cargando detalle')
-    } finally {
-      setDetailLoading(false)
-    }
-  }
-
-  function closeDetail() {
-    setDetailWeek(null)
-    setDetailWeekMonth(null)
-    setDetailData(null)
-  }
-
-  // Open month detail modal (acumulado de todas las semanas del mes)
-  async function handleViewMonthDetail(month: MonthWithWeeks) {
+  // Abre el detalle (mes completo). Si se pasa weekId, el modal arranca
+  // filtrado a esa semana (botón "Ver detalle" de una semana).
+  async function handleViewMonthDetail(month: MonthWithWeeks, weekId?: string) {
     setMonthDetail(month)
+    setDetailInitialWeekId(weekId ?? null)
     setMonthDetailData(null)
     setMonthDetailLoading(true)
     try {
@@ -430,6 +387,7 @@ export default function ConfiguracionView() {
   function closeMonthDetail() {
     setMonthDetail(null)
     setMonthDetailData(null)
+    setDetailInitialWeekId(null)
   }
 
   if (loading) {
@@ -563,7 +521,6 @@ export default function ConfiguracionView() {
                       onReopenWeek={handleReopenWeek}
                       onDeleteWeek={handleDeleteWeek}
                       onEditWeek={(w) => setEditingWeek(w)}
-                      onViewDetail={handleViewDetail}
                       onViewMonthDetail={handleViewMonthDetail}
                     />
                   ))}
@@ -586,24 +543,15 @@ export default function ConfiguracionView() {
         />
       )}
 
-      {/* Week Detail Modal */}
-      {detailWeek && detailWeekMonth && (
-        <WeekDetailModal
-          week={detailWeek}
-          month={detailWeekMonth}
-          data={detailData}
-          loading={detailLoading}
-          onClose={closeDetail}
-        />
-      )}
-
-      {/* Month Detail Modal (acumulado mensual) */}
+      {/* Detalle (mes/semana) */}
       {monthDetail && (
         <MonthDetailModal
           month={monthDetail}
+          weeks={monthDetail.weeks}
           branchName={branchName}
           data={monthDetailData}
           loading={monthDetailLoading}
+          initialWeekId={detailInitialWeekId}
           onClose={closeMonthDetail}
         />
       )}
@@ -662,8 +610,7 @@ interface MonthRowProps {
   onReopenWeek: (week: Week) => void
   onDeleteWeek: (week: Week) => void
   onEditWeek: (week: Week) => void
-  onViewDetail: (week: Week, month: Month) => void
-  onViewMonthDetail: (month: MonthWithWeeks) => void
+  onViewMonthDetail: (month: MonthWithWeeks, weekId?: string) => void
 }
 
 function MonthRow({
@@ -677,7 +624,6 @@ function MonthRow({
   onReopenWeek,
   onDeleteWeek,
   onEditWeek,
-  onViewDetail,
   onViewMonthDetail,
 }: MonthRowProps) {
   const name = MONTH_NAMES[month.month - 1]
@@ -778,7 +724,7 @@ function MonthRow({
               onReopenWeek={onReopenWeek}
               onDeleteWeek={onDeleteWeek}
               onEditWeek={onEditWeek}
-              onViewDetail={onViewDetail}
+              onViewMonthDetail={onViewMonthDetail}
             />
           ))}
         </div>
@@ -797,10 +743,10 @@ interface WeekRowProps {
   onReopenWeek: (week: Week) => void
   onDeleteWeek: (week: Week) => void
   onEditWeek: (week: Week) => void
-  onViewDetail: (week: Week, month: Month) => void
+  onViewMonthDetail: (month: MonthWithWeeks, weekId?: string) => void
 }
 
-function WeekRow({ week, month, onCloseWeek, onReopenWeek, onDeleteWeek, onEditWeek, onViewDetail }: WeekRowProps) {
+function WeekRow({ week, month, onCloseWeek, onReopenWeek, onDeleteWeek, onEditWeek, onViewMonthDetail }: WeekRowProps) {
   const { activeFrom, activeTo, clampedStart, clampedEnd } = getWeekActiveRange(
     week,
     month.year,
@@ -875,7 +821,7 @@ function WeekRow({ week, month, onCloseWeek, onReopenWeek, onDeleteWeek, onEditW
         <button
           className="action-btn action-btn--pay"
           style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8' }}
-          onClick={() => onViewDetail(week, month)}
+          onClick={() => onViewMonthDetail(month, week.id)}
         >
           Ver detalle
         </button>
@@ -1030,248 +976,6 @@ function NewMonthModal({ branchId, onClose, onCreated }: NewMonthModalProps) {
           </button>
         </div>
       </div>
-    </div>
-  )
-}
-
-// ============================================================
-// WEEK DETAIL MODAL
-// ============================================================
-interface WeekDetailModalProps {
-  week: Week
-  month: Month
-  data: WeekDetailData | null
-  loading: boolean
-  onClose: () => void
-}
-
-function WeekDetailModal({ week, month, data, loading, onClose }: WeekDetailModalProps) {
-  const monthName = MONTH_NAMES[month.month - 1]
-
-  // Compute summary from transactions
-  const summary = data
-    ? (() => {
-        const txs = data.transactions
-        const totalCuts = txs.length
-        const totalBilled = txs.reduce((s, t) => s + t.amount, 0)
-        const byMethod: Record<PaymentMethod, number> = { cash: 0, transfer: 0, card: 0, mixed: 0 }
-        for (const t of txs) byMethod[t.payment_method] += t.amount
-        return { totalCuts, totalBilled, byMethod }
-      })()
-    : null
-
-  // Compute per-barber rows from settlements
-  const barberRows: BarberRow[] = data
-    ? data.settlements.map((s) => ({
-        barberId: s.barber_id,
-        barberName: s.barber.full_name,
-        cuts: s.total_cuts,
-        billed: s.gross_amount,
-        commission: s.total_earned,
-        toCollect: s.net_payable,
-      }))
-    : []
-
-  return (
-    <div className="modal-overlay">
-      <div
-        className="modal-box"
-        style={{ maxWidth: '760px', width: '100%' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="modal-header">
-          <h3>
-            Semana {week.week_number} · {monthName} {month.year}
-            <span
-              style={{ marginLeft: '0.75rem', fontSize: '0.75rem', fontWeight: 400, color: '#71717a' }}
-            >
-              {formatDate(week.start_date)} – {formatDate(week.end_date)}
-            </span>
-          </h3>
-          <button className="modal-close" onClick={onClose}>
-            ✕
-          </button>
-        </div>
-
-        <div className="modal-body" style={{ gap: '1.25rem' }}>
-          {loading && (
-            <div className="flex-center" style={{ padding: '2rem' }}>
-              <div className="admin-loader" />
-            </div>
-          )}
-
-          {!loading && data && (
-            <>
-              {/* --- Resumen --- */}
-              <section>
-                <p
-                  style={{
-                    fontSize: '0.6875rem',
-                    color: '#71717a',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.08em',
-                    marginBottom: '0.75rem',
-                  }}
-                >
-                  Resumen
-                </p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <KpiMini label="Cortes" value={String(summary!.totalCuts)} />
-                  <KpiMini label="Facturado" value={formatARS(summary!.totalBilled)} />
-                  <KpiMini
-                    label="Efectivo"
-                    value={formatARS(summary!.byMethod.cash)}
-                    color="#34d399"
-                  />
-                  <KpiMini
-                    label="Transfer"
-                    value={formatARS(summary!.byMethod.transfer)}
-                    color="#818cf8"
-                  />
-                </div>
-              </section>
-
-              {/* --- Por barbero --- */}
-              {barberRows.length > 0 && (
-                <section>
-                  <p
-                    style={{
-                      fontSize: '0.6875rem',
-                      color: '#71717a',
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.08em',
-                      marginBottom: '0.5rem',
-                    }}
-                  >
-                    Por barbero
-                  </p>
-                  <div className="admin-table-wrap" style={{ padding: 0 }}>
-                    <table className="admin-table">
-                      <thead>
-                        <tr>
-                          <th>Barbero</th>
-                          <th>Cortes</th>
-                          <th>Facturado</th>
-                          <th>Comisión</th>
-                          <th>A cobrar</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {barberRows.map((row) => (
-                          <tr key={row.barberId}>
-                            <td>{row.barberName}</td>
-                            <td className="td-center">{row.cuts}</td>
-                            <td>{formatARS(row.billed)}</td>
-                            <td>{formatARS(row.commission)}</td>
-                            <td
-                              className={
-                                row.toCollect >= 0 ? 'net-payable net-payable--pos' : 'net-payable net-payable--neg'
-                              }
-                            >
-                              {formatARS(row.toCollect)}
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </section>
-              )}
-
-              {/* --- Transacciones --- */}
-              <section>
-                <p
-                  style={{
-                    fontSize: '0.6875rem',
-                    color: '#71717a',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.08em',
-                    marginBottom: '0.5rem',
-                  }}
-                >
-                  Transacciones ({data.transactions.length})
-                </p>
-
-                {data.transactions.length === 0 && (
-                  <div className="empty-state">
-                    <p>Sin transacciones en esta semana.</p>
-                  </div>
-                )}
-
-                {data.transactions.length > 0 && (
-                  <div className="admin-table-wrap" style={{ padding: 0, maxHeight: '260px', overflowY: 'auto' }}>
-                    <table className="admin-table">
-                      <thead>
-                        <tr>
-                          <th>Fecha</th>
-                          <th>Barbero</th>
-                          <th>Servicio</th>
-                          <th>Método</th>
-                          <th>Monto</th>
-                          <th>Comisión</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.transactions.map((t) => (
-                          <tr key={t.id}>
-                            <td className="td-date">{formatDate(t.transaction_date)}</td>
-                            <td>{t.barber.full_name}</td>
-                            <td className="td-muted">{t.service?.name ?? '—'}</td>
-                            <td>
-                              <span className={`dot-badge dot-badge--${t.payment_method}`}>
-                                {PAYMENT_METHOD_LABELS[t.payment_method]}
-                              </span>
-                            </td>
-                            <td className="td-bold">{formatARS(t.amount)}</td>
-                            <td className="td-amber">{formatARS(t.barber_share)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </section>
-            </>
-          )}
-        </div>
-
-        <div className="modal-footer">
-          <button className="admin-btn admin-btn--ghost" onClick={onClose}>
-            Cerrar
-          </button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ============================================================
-// KPI MINI CARD
-// ============================================================
-function KpiMini({
-  label,
-  value,
-  color,
-}: {
-  label: string
-  value: string
-  color?: string
-}) {
-  return (
-    <div
-      style={{
-        background: '#0f0f0f',
-        border: '1px solid #2d2d2d',
-        borderRadius: '0.375rem',
-        padding: '0.625rem 0.75rem',
-      }}
-    >
-      <p style={{ fontSize: '0.6875rem', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.07em', margin: '0 0 0.25rem' }}>
-        {label}
-      </p>
-      <p style={{ fontSize: '1rem', fontWeight: 700, color: color ?? '#e5e5e5', margin: 0 }}>
-        {value}
-      </p>
     </div>
   )
 }
