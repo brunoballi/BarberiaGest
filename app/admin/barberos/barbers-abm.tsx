@@ -520,7 +520,7 @@ export default function BarbersAbm() {
           className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold px-4 py-2.5 rounded-lg text-sm transition-colors"
         >
           <span className="text-lg leading-none">+</span>
-          Invitar barbero
+          Alta Barbero
         </button>
       </div>
 
