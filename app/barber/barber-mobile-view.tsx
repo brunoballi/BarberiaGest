@@ -341,8 +341,8 @@ export default function BarberMobileView() {
     setTransferPart(String(effectiveAmount - half))
   }, [effectiveAmount, splitPayment])
 
-  // Descuento 50/50: barbero absorbe la mitad del descuento, comisión sobre precio original.
-  const previewBarberShare = Math.max(0, Math.round(resolvedAmount * commissionRate - discountNum * 0.5))
+  // Comisión = % sobre el monto facturado (ya con el descuento aplicado).
+  const previewBarberShare = Math.max(0, Math.round(effectiveAmount * commissionRate))
   // Transferencia → barbero ya tiene su parte; efectivo → queda en caja
   const previewAlreadyCollected = paymentMethod === 'transfer' ? previewBarberShare : 0
 

@@ -830,11 +830,10 @@ export async function registerCut(
   // Alquiler de box: el barbero se queda el 100% de cada corte; la barbería no toma
   // nada del corte (su ingreso es el alquiler, que se carga en la liquidación).
   const isBoxRental = barber.compensation_type === 'box_rental'
-  // El descuento se divide 50/50: barbero absorbe la mitad, barbería la otra mitad.
-  // La comisión del barbero sigue calculándose sobre el precio original.
-  const discountAmt    = payload.discount_amount ?? 0
-  const fullPrice      = payload.amount + discountAmt
-  const barberShareRaw = Number((fullPrice * commissionRate - discountAmt * 0.5).toFixed(2))
+  // La comisión del barbero es el % sobre el monto facturado (ya con el
+  // descuento aplicado). El descuento lo absorben barbero y barbería en
+  // proporción a su split: cada uno su % sobre el monto efectivamente cobrado.
+  const barberShareRaw = Number((payload.amount * commissionRate).toFixed(2))
   // Constraints DB: barber_share >= 0, branch_share >= 0, branch_share + barber_share = amount.
   const barberShare = isBoxRental ? payload.amount : Math.max(0, Math.min(barberShareRaw, payload.amount))
   const branchShare = isBoxRental ? 0 : Number((payload.amount - barberShare).toFixed(2))

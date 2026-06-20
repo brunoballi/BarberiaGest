@@ -2288,8 +2288,9 @@ function EditTransactionModal({
   const cashNum         = parseFloat(cashPart) || 0
   const transferNum     = parseFloat(transferPart) || 0
 
+  // Comisión = % sobre el monto facturado (ya con el descuento aplicado).
   const barberShareCalc = Math.max(0, Math.min(
-    Number((resolvedAmount * commissionRate - discountNum * 0.5).toFixed(2)),
+    Number((effectiveAmount * commissionRate).toFixed(2)),
     effectiveAmount
   ))
   const branchShareCalc = Number((effectiveAmount - barberShareCalc).toFixed(2))
