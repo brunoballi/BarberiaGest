@@ -529,7 +529,7 @@ export default function BarbersAbm() {
       {/* Invite form */}
       {showInvite && (
         <div className="bg-zinc-900 border border-zinc-700 rounded-xl p-5 space-y-4">
-          <h2 className="text-base font-bold text-white">Invitar nuevo barbero</h2>
+          <h2 className="text-base font-bold text-white">Alta Barbero</h2>
           <form onSubmit={handleInvite} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
@@ -631,7 +631,7 @@ export default function BarbersAbm() {
                 disabled={inviting}
                 className="bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-zinc-950 font-bold px-5 py-2.5 rounded-lg text-sm transition-colors"
               >
-                {inviting ? 'Enviando...' : 'Enviar invitación'}
+                {inviting ? 'Guardando...' : 'Guardar'}
               </button>
               <button
                 type="button"
