@@ -6,11 +6,11 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 
 export interface MonthReportRow {
-  barberName: string
+  label: string        // etiqueta de la fila (ej: "Semana 1")
   cuts: number
   billed: number
-  commission: number
-  toCollect: number
+  commission: number   // lo que se lleva el barbero
+  branch: number       // lo que se lleva la barbería
 }
 
 export interface MonthReportTx {
@@ -80,28 +80,28 @@ export function generateMonthReport(options: MonthReportOptions): void {
       cuts: acc.cuts + r.cuts,
       billed: acc.billed + r.billed,
       commission: acc.commission + r.commission,
-      toCollect: acc.toCollect + r.toCollect,
+      branch: acc.branch + r.branch,
     }),
-    { cuts: 0, billed: 0, commission: 0, toCollect: 0 }
+    { cuts: 0, billed: 0, commission: 0, branch: 0 }
   )
 
-  // ── Tabla por barbero ───────────────────────────────────
+  // ── Tabla por semana ────────────────────────────────────
   autoTable(doc, {
     startY: barberFilterLabel ? 37 : 31,
-    head: [['Barbero', 'Cortes', 'Facturado', 'Comisión', 'A cobrar']],
+    head: [['Semana', 'Cortes', 'Facturado', 'Comisión', 'Barbería']],
     body: rows.map((r) => [
-      r.barberName,
+      r.label,
       String(r.cuts),
       formatARS(r.billed),
       formatARS(r.commission),
-      formatARS(r.toCollect),
+      formatARS(r.branch),
     ]),
     foot: [[
       'TOTAL',
       String(totals.cuts),
       formatARS(totals.billed),
       formatARS(totals.commission),
-      formatARS(totals.toCollect),
+      formatARS(totals.branch),
     ]],
     theme: 'striped',
     headStyles: { fillColor: [63, 63, 70], textColor: [255, 255, 255], fontStyle: 'bold' },

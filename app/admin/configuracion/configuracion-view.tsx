@@ -719,7 +719,6 @@ function MonthRow({
               onReopenWeek={onReopenWeek}
               onDeleteWeek={onDeleteWeek}
               onEditWeek={onEditWeek}
-              onViewMonthDetail={onViewMonthDetail}
             />
           ))}
         </div>
@@ -738,10 +737,9 @@ interface WeekRowProps {
   onReopenWeek: (week: Week) => void
   onDeleteWeek: (week: Week) => void
   onEditWeek: (week: Week) => void
-  onViewMonthDetail: (month: MonthWithWeeks) => void
 }
 
-function WeekRow({ week, month, onCloseWeek, onReopenWeek, onDeleteWeek, onEditWeek, onViewMonthDetail }: WeekRowProps) {
+function WeekRow({ week, month, onCloseWeek, onReopenWeek, onDeleteWeek, onEditWeek }: WeekRowProps) {
   const { activeFrom, activeTo, clampedStart, clampedEnd } = getWeekActiveRange(
     week,
     month.year,
@@ -812,13 +810,6 @@ function WeekRow({ week, month, onCloseWeek, onReopenWeek, onDeleteWeek, onEditW
           title="Eliminar semana (solo si no tiene datos)"
         >
           🗑
-        </button>
-        <button
-          className="action-btn action-btn--pay"
-          style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8' }}
-          onClick={() => onViewMonthDetail(month)}
-        >
-          Ver detalle
         </button>
       </div>
     </div>

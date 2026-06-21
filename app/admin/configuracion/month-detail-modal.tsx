@@ -42,23 +42,14 @@ export interface MonthDetailData {
   settlements: SettlementWithBarber[]
 }
 
-interface BarberAgg {
-  barberId: string
-  barberName: string
-  cuts: number
-  billed: number
-  commission: number
-  toCollect: number
-}
-
 interface WeekAgg {
   weekId: string
   label: string
   range: string
   cuts: number
   billed: number
-  commission: number
-  toCollect: number
+  commission: number  // lo que se lleva el barbero (total_earned)
+  branch: number      // lo que se lleva la barbería (branch share)
 }
 
 interface MonthDetailModalProps {
@@ -108,23 +99,6 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
     })
   }, [data, barberFilter])
 
-  // Acumulado por barbero (para el PDF)
-  const barberRows = useMemo<BarberAgg[]>(() => {
-    const map = new Map<string, BarberAgg>()
-    for (const s of filteredSettlements) {
-      const cur = map.get(s.barber_id) ?? {
-        barberId: s.barber_id, barberName: s.barber.full_name,
-        cuts: 0, billed: 0, commission: 0, toCollect: 0,
-      }
-      cur.cuts += s.total_cuts
-      cur.billed += s.gross_amount
-      cur.commission += s.total_earned
-      cur.toCollect += s.net_payable
-      map.set(s.barber_id, cur)
-    }
-    return [...map.values()].sort((a, b) => a.barberName.localeCompare(b.barberName))
-  }, [filteredSettlements])
-
   // Desglose por semana (filas fijas de la grilla)
   const weekRows = useMemo<WeekAgg[]>(() => {
     return sortedWeeks.map((w) => {
@@ -135,9 +109,9 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
             cuts: acc.cuts + s.total_cuts,
             billed: acc.billed + s.gross_amount,
             commission: acc.commission + s.total_earned,
-            toCollect: acc.toCollect + s.net_payable,
+            branch: acc.branch + branchShareOf(s),
           }),
-          { cuts: 0, billed: 0, commission: 0, toCollect: 0 }
+          { cuts: 0, billed: 0, commission: 0, branch: 0 }
         )
       return {
         weekId: w.id,
@@ -179,8 +153,8 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
       monthLabel,
       branchName,
       barberFilterLabel: barberFilter === ALL ? 'Todos los barberos' : barbers.find((b) => b.id === barberFilter)?.name,
-      rows: barberRows.map((r) => ({
-        barberName: r.barberName, cuts: r.cuts, billed: r.billed, commission: r.commission, toCollect: r.toCollect,
+      rows: weekRows.map((r) => ({
+        label: r.label, cuts: r.cuts, billed: r.billed, commission: r.commission, branch: r.branch,
       })),
       transactions: filteredTransactions.map((t) => ({
         date: formatDate(t.transaction_date),
@@ -235,7 +209,7 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
                   className="admin-btn"
                   style={{ background: 'rgba(99,102,241,0.15)', color: '#818cf8', fontSize: '0.8125rem', padding: '0.4rem 0.9rem' }}
                   onClick={handleDownloadPdf}
-                  disabled={barberRows.length === 0}
+                  disabled={totalCuts === 0}
                 >
                   ⬇ Descargar PDF
                 </button>
@@ -318,7 +292,7 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
                           <th>Cortes</th>
                           <th>Facturado</th>
                           <th>Comisión</th>
-                          <th>A cobrar</th>
+                          <th>Barbería</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -330,10 +304,8 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
                             </td>
                             <td className="td-center">{row.cuts}</td>
                             <td>{formatARS(row.billed)}</td>
-                            <td>{formatARS(row.commission)}</td>
-                            <td className={row.toCollect >= 0 ? 'net-payable net-payable--pos' : 'net-payable net-payable--neg'}>
-                              {formatARS(row.toCollect)}
-                            </td>
+                            <td style={{ color: '#f59e0b', fontWeight: 600 }}>{formatARS(row.commission)}</td>
+                            <td style={{ color: '#34d399', fontWeight: 600 }}>{formatARS(row.branch)}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -342,10 +314,8 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
                           <td>TOTAL</td>
                           <td className="td-center">{totals.cuts}</td>
                           <td>{formatARS(totals.billed)}</td>
-                          <td>{formatARS(totals.commission)}</td>
-                          <td className={totals.toCollect >= 0 ? 'net-payable net-payable--pos' : 'net-payable net-payable--neg'}>
-                            {formatARS(totals.toCollect)}
-                          </td>
+                          <td style={{ color: '#f59e0b' }}>{formatARS(totals.commission)}</td>
+                          <td style={{ color: '#34d399' }}>{formatARS(totals.branch)}</td>
                         </tr>
                       </tfoot>
                     </table>
