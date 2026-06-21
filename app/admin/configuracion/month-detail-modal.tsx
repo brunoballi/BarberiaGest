@@ -14,7 +14,6 @@ import type {
   TransactionWithRelations,
   SettlementWithBarber,
 } from '@/lib/supabase/database.types'
-import { PAYMENT_METHOD_LABELS } from '@/lib/supabase/database.types'
 import { MONTH_NAMES } from '@/lib/supabase/supabase.client'
 import { generateMonthReport } from '@/lib/pdf/month-report'
 
@@ -155,14 +154,6 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
       barberFilterLabel: barberFilter === ALL ? 'Todos los barberos' : barbers.find((b) => b.id === barberFilter)?.name,
       rows: weekRows.map((r) => ({
         label: r.label, cuts: r.cuts, billed: r.billed, commission: r.commission, branch: r.branch,
-      })),
-      transactions: filteredTransactions.map((t) => ({
-        date: formatDate(t.transaction_date),
-        barberName: t.barber.full_name,
-        service: t.service?.name ?? '—',
-        method: PAYMENT_METHOD_LABELS[t.payment_method],
-        amount: t.amount,
-        commission: t.barber_share,
       })),
     })
   }
