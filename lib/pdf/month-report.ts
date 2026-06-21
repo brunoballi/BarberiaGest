@@ -78,7 +78,7 @@ export function generateMonthReport(options: MonthReportOptions): void {
   // ── Tabla por semana ────────────────────────────────────
   autoTable(doc, {
     startY: barberFilterLabel ? 37 : 31,
-    head: [['Semana', 'Cortes', 'Facturado', 'Comisión', 'Barbería']],
+    head: [['Semana', 'Cortes', 'Facturado', 'Comisión barbero', 'Barbería']],
     body: rows.map((r) => [
       r.label,
       String(r.cuts),

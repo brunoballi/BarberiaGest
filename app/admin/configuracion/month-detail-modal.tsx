@@ -282,7 +282,7 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
                           <th>Semana</th>
                           <th>Cortes</th>
                           <th>Facturado</th>
-                          <th>Comisión</th>
+                          <th>Comisión barbero</th>
                           <th>Barbería</th>
                         </tr>
                       </thead>
