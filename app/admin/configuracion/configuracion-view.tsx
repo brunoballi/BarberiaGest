@@ -157,7 +157,6 @@ export default function ConfiguracionView() {
   const [monthDetail, setMonthDetail] = useState<MonthWithWeeks | null>(null)
   const [monthDetailData, setMonthDetailData] = useState<MonthDetailData | null>(null)
   const [monthDetailLoading, setMonthDetailLoading] = useState(false)
-  const [detailInitialWeekId, setDetailInitialWeekId] = useState<string | null>(null)
 
   // Load data
   const loadMonths = useCallback(async (bid: string) => {
@@ -356,11 +355,9 @@ export default function ConfiguracionView() {
     }
   }
 
-  // Abre el detalle (mes completo). Si se pasa weekId, el modal arranca
-  // filtrado a esa semana (botón "Ver detalle" de una semana).
-  async function handleViewMonthDetail(month: MonthWithWeeks, weekId?: string) {
+  // Abre el detalle del mes (la grilla muestra el desglose por semana).
+  async function handleViewMonthDetail(month: MonthWithWeeks) {
     setMonthDetail(month)
-    setDetailInitialWeekId(weekId ?? null)
     setMonthDetailData(null)
     setMonthDetailLoading(true)
     try {
@@ -387,7 +384,6 @@ export default function ConfiguracionView() {
   function closeMonthDetail() {
     setMonthDetail(null)
     setMonthDetailData(null)
-    setDetailInitialWeekId(null)
   }
 
   if (loading) {
@@ -551,7 +547,6 @@ export default function ConfiguracionView() {
           branchName={branchName}
           data={monthDetailData}
           loading={monthDetailLoading}
-          initialWeekId={detailInitialWeekId}
           onClose={closeMonthDetail}
         />
       )}
@@ -610,7 +605,7 @@ interface MonthRowProps {
   onReopenWeek: (week: Week) => void
   onDeleteWeek: (week: Week) => void
   onEditWeek: (week: Week) => void
-  onViewMonthDetail: (month: MonthWithWeeks, weekId?: string) => void
+  onViewMonthDetail: (month: MonthWithWeeks) => void
 }
 
 function MonthRow({
@@ -743,7 +738,7 @@ interface WeekRowProps {
   onReopenWeek: (week: Week) => void
   onDeleteWeek: (week: Week) => void
   onEditWeek: (week: Week) => void
-  onViewMonthDetail: (month: MonthWithWeeks, weekId?: string) => void
+  onViewMonthDetail: (month: MonthWithWeeks) => void
 }
 
 function WeekRow({ week, month, onCloseWeek, onReopenWeek, onDeleteWeek, onEditWeek, onViewMonthDetail }: WeekRowProps) {
@@ -821,7 +816,7 @@ function WeekRow({ week, month, onCloseWeek, onReopenWeek, onDeleteWeek, onEditW
         <button
           className="action-btn action-btn--pay"
           style={{ background: 'rgba(99,102,241,0.12)', color: '#818cf8' }}
-          onClick={() => onViewMonthDetail(month, week.id)}
+          onClick={() => onViewMonthDetail(month)}
         >
           Ver detalle
         </button>

@@ -1,11 +1,13 @@
 'use client'
 
 // ============================================================
-// DETAIL MODAL — Detalle de mes/semana por barbero
-// Carga todas las semanas del mes y filtra en cliente por barbero
-// y por semana. KPIs de negocio + tabla por barbero + export PDF.
+// DETAIL MODAL — Detalle del mes por barbero
+// Carga todas las semanas del mes y filtra en cliente por barbero.
+// La grilla muestra el desglose por semana (fijo). KPIs + donut de
+// cortes por servicio + export PDF.
 // ============================================================
 import { useState, useMemo } from 'react'
+import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import type {
   Month,
   Week,
@@ -15,6 +17,8 @@ import type {
 import { PAYMENT_METHOD_LABELS } from '@/lib/supabase/database.types'
 import { MONTH_NAMES } from '@/lib/supabase/supabase.client'
 import { generateMonthReport } from '@/lib/pdf/month-report'
+
+const SERVICE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#eab308', '#3b82f6', '#f97316']
 
 function formatARS(n: number): string {
   return new Intl.NumberFormat('es-AR', {
@@ -47,30 +51,37 @@ interface BarberAgg {
   toCollect: number
 }
 
+interface WeekAgg {
+  weekId: string
+  label: string
+  range: string
+  cuts: number
+  billed: number
+  commission: number
+  toCollect: number
+}
+
 interface MonthDetailModalProps {
   month: Month
   weeks: Week[]
   branchName: string
   data: MonthDetailData | null
   loading: boolean
-  initialWeekId?: string | null
   onClose: () => void
 }
 
 const ALL = '__all__'
 
-export default function MonthDetailModal({ month, weeks, branchName, data, loading, initialWeekId, onClose }: MonthDetailModalProps) {
+export default function MonthDetailModal({ month, weeks, branchName, data, loading, onClose }: MonthDetailModalProps) {
   const monthName = MONTH_NAMES[month.month - 1]
   const monthLabel = `${monthName} ${month.year}`
   const [barberFilter, setBarberFilter] = useState<string>(ALL)
-  const [weekFilter, setWeekFilter] = useState<string>(initialWeekId ?? ALL)
 
-  // Etiqueta de la semana seleccionada (para títulos/PDF)
-  const weekLabel = useMemo(() => {
-    if (weekFilter === ALL) return 'Todas las semanas'
-    const w = weeks.find((x) => x.id === weekFilter)
-    return w ? `Semana ${w.week_number}` : 'Semana'
-  }, [weekFilter, weeks])
+  // Semanas del mes ordenadas (para las filas fijas de la grilla)
+  const sortedWeeks = useMemo(
+    () => [...weeks].sort((a, b) => a.week_number - b.week_number),
+    [weeks]
+  )
 
   // Lista de barberos únicos del mes (para el dropdown)
   const barbers = useMemo(() => {
@@ -82,35 +93,27 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
       .sort((a, b) => a.name.localeCompare(b.name))
   }, [data])
 
-  // Settlements/transacciones filtrados por barbero + semana
+  // Settlements/transacciones filtrados por barbero
   const filteredSettlements = useMemo(() => {
     if (!data) return []
-    return data.settlements.filter((s) =>
-      (barberFilter === ALL || s.barber_id === barberFilter) &&
-      (weekFilter === ALL || s.week_id === weekFilter)
-    )
-  }, [data, barberFilter, weekFilter])
+    return data.settlements.filter((s) => barberFilter === ALL || s.barber_id === barberFilter)
+  }, [data, barberFilter])
 
   const filteredTransactions = useMemo(() => {
     if (!data) return []
-    const txs = data.transactions.filter((t) =>
-      (barberFilter === ALL || t.barber_id === barberFilter) &&
-      (weekFilter === ALL || t.week_id === weekFilter)
-    )
-    // Ordenar por fecha (más reciente primero); las semanas vienen concatenadas.
+    const txs = data.transactions.filter((t) => barberFilter === ALL || t.barber_id === barberFilter)
     return [...txs].sort((a, b) => {
       const d = b.transaction_date.localeCompare(a.transaction_date)
       return d !== 0 ? d : b.created_at.localeCompare(a.created_at)
     })
-  }, [data, barberFilter, weekFilter])
+  }, [data, barberFilter])
 
-  // Acumulado por barbero
+  // Acumulado por barbero (para el PDF)
   const barberRows = useMemo<BarberAgg[]>(() => {
     const map = new Map<string, BarberAgg>()
     for (const s of filteredSettlements) {
       const cur = map.get(s.barber_id) ?? {
-        barberId: s.barber_id,
-        barberName: s.barber.full_name,
+        barberId: s.barber_id, barberName: s.barber.full_name,
         cuts: 0, billed: 0, commission: 0, toCollect: 0,
       }
       cur.cuts += s.total_cuts
@@ -122,7 +125,30 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
     return [...map.values()].sort((a, b) => a.barberName.localeCompare(b.barberName))
   }, [filteredSettlements])
 
-  // Cortes por servicio (desglose dentro de la tarjeta de Cortes)
+  // Desglose por semana (filas fijas de la grilla)
+  const weekRows = useMemo<WeekAgg[]>(() => {
+    return sortedWeeks.map((w) => {
+      const agg = filteredSettlements
+        .filter((s) => s.week_id === w.id)
+        .reduce(
+          (acc, s) => ({
+            cuts: acc.cuts + s.total_cuts,
+            billed: acc.billed + s.gross_amount,
+            commission: acc.commission + s.total_earned,
+            toCollect: acc.toCollect + s.net_payable,
+          }),
+          { cuts: 0, billed: 0, commission: 0, toCollect: 0 }
+        )
+      return {
+        weekId: w.id,
+        label: `Semana ${w.week_number}`,
+        range: `${formatDate(w.start_date)}–${formatDate(w.end_date)}`,
+        ...agg,
+      }
+    })
+  }, [sortedWeeks, filteredSettlements])
+
+  // Cortes por servicio (donut)
   const cortesPorServicio = useMemo(() => {
     const map = new Map<string, number>()
     for (const t of filteredTransactions) {
@@ -135,37 +161,26 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
   }, [filteredTransactions])
 
   // Totales de negocio
-  const totals = useMemo(() => {
-    const t = filteredSettlements.reduce(
-      (acc, s) => ({
-        cuts: acc.cuts + s.total_cuts,
-        billed: acc.billed + s.gross_amount,
-        commission: acc.commission + s.total_earned,
-        toCollect: acc.toCollect + s.net_payable,
-        branch: acc.branch + branchShareOf(s),
-      }),
-      { cuts: 0, billed: 0, commission: 0, toCollect: 0, branch: 0 }
-    )
-    return t
-  }, [filteredSettlements])
+  const totals = useMemo(() => filteredSettlements.reduce(
+    (acc, s) => ({
+      cuts: acc.cuts + s.total_cuts,
+      billed: acc.billed + s.gross_amount,
+      commission: acc.commission + s.total_earned,
+      toCollect: acc.toCollect + s.net_payable,
+      branch: acc.branch + branchShareOf(s),
+    }),
+    { cuts: 0, billed: 0, commission: 0, toCollect: 0, branch: 0 }
+  ), [filteredSettlements])
 
   const totalCuts = filteredTransactions.length
 
   function handleDownloadPdf() {
-    const filterParts = [
-      barberFilter === ALL ? 'Todos los barberos' : barbers.find((b) => b.id === barberFilter)?.name,
-      weekLabel,
-    ].filter(Boolean)
     generateMonthReport({
-      monthLabel: weekFilter === ALL ? monthLabel : `${monthLabel} · ${weekLabel}`,
+      monthLabel,
       branchName,
-      barberFilterLabel: filterParts.join(' · '),
+      barberFilterLabel: barberFilter === ALL ? 'Todos los barberos' : barbers.find((b) => b.id === barberFilter)?.name,
       rows: barberRows.map((r) => ({
-        barberName: r.barberName,
-        cuts: r.cuts,
-        billed: r.billed,
-        commission: r.commission,
-        toCollect: r.toCollect,
+        barberName: r.barberName, cuts: r.cuts, billed: r.billed, commission: r.commission, toCollect: r.toCollect,
       })),
       transactions: filteredTransactions.map((t) => ({
         date: formatDate(t.transaction_date),
@@ -190,7 +205,7 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
           <h3>
             Detalle · {monthLabel}
             <span style={{ marginLeft: '0.75rem', fontSize: '0.75rem', fontWeight: 400, color: '#71717a' }}>
-              {weekLabel === 'Todas las semanas' ? 'acumulado del mes' : weekLabel}
+              desglose por semana
             </span>
           </h3>
           <button className="modal-close" onClick={onClose}>✕</button>
@@ -205,29 +220,16 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
 
           {!loading && data && (
             <>
-              {/* --- Filtros + PDF --- */}
+              {/* --- Filtro barbero + PDF --- */}
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.75rem', flexWrap: 'wrap' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <label style={{ fontSize: '0.75rem', color: '#71717a' }}>Barbero</label>
-                    <select value={barberFilter} onChange={(e) => setBarberFilter(e.target.value)} style={selectStyle}>
-                      <option value={ALL}>Ver todos</option>
-                      {barbers.map((b) => (
-                        <option key={b.id} value={b.id}>{b.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <label style={{ fontSize: '0.75rem', color: '#71717a' }}>Semana</label>
-                    <select value={weekFilter} onChange={(e) => setWeekFilter(e.target.value)} style={selectStyle}>
-                      <option value={ALL}>Todas las semanas</option>
-                      {weeks.map((w) => (
-                        <option key={w.id} value={w.id}>
-                          S{w.week_number} · {formatDate(w.start_date)}–{formatDate(w.end_date)}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <label style={{ fontSize: '0.75rem', color: '#71717a' }}>Barbero</label>
+                  <select value={barberFilter} onChange={(e) => setBarberFilter(e.target.value)} style={selectStyle}>
+                    <option value={ALL}>Ver todos</option>
+                    {barbers.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
                 </div>
                 <button
                   className="admin-btn"
@@ -239,43 +241,80 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
                 </button>
               </div>
 
-              {/* --- Resumen --- */}
+              {/* --- Resumen (totales arriba) --- */}
               <section>
                 <p style={{ fontSize: '0.6875rem', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.75rem' }}>
                   Resumen
                 </p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2" style={{ alignItems: 'start' }}>
-                  <KpiMini label="Cortes" value={String(totalCuts)}>
+
+                {/* Cortes por servicio (donut) */}
+                <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '0.625rem', padding: '0.75rem 1rem', marginBottom: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '1rem', flexWrap: 'wrap' }}>
+                    <div>
+                      <p style={{ fontSize: '0.625rem', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>Cortes</p>
+                      <p style={{ fontSize: '1.75rem', fontWeight: 800, color: '#e4e4e7', margin: '0.1rem 0 0' }}>{totalCuts}</p>
+                    </div>
                     {cortesPorServicio.length > 0 && (
-                      <div style={{ marginTop: '0.5rem', display: 'flex', flexDirection: 'column', gap: '0.2rem', maxHeight: '8rem', overflowY: 'auto' }}>
-                        {cortesPorServicio.map((c) => (
-                          <div key={c.name} style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', fontSize: '0.7rem' }}>
-                            <span style={{ color: '#a1a1aa', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
-                            <span style={{ color: '#e4e4e7', fontWeight: 600 }}>×{c.count}</span>
-                          </div>
-                        ))}
-                      </div>
+                      <>
+                        <div style={{ width: 140, height: 140, flex: '0 0 auto' }}>
+                          <ResponsiveContainer width="100%" height="100%">
+                            <PieChart>
+                              <Pie
+                                data={cortesPorServicio}
+                                dataKey="count"
+                                nameKey="name"
+                                cx="50%" cy="50%"
+                                innerRadius={42}
+                                outerRadius={66}
+                                paddingAngle={2}
+                                stroke="none"
+                              >
+                                {cortesPorServicio.map((_, i) => (
+                                  <Cell key={i} fill={SERVICE_COLORS[i % SERVICE_COLORS.length]} />
+                                ))}
+                              </Pie>
+                              <Tooltip
+                                formatter={(v, n) => [`${v} cortes`, n]}
+                                contentStyle={{ background: '#0f0f0f', border: '1px solid #3f3f46', borderRadius: 8, fontSize: '0.75rem' }}
+                              />
+                            </PieChart>
+                          </ResponsiveContainer>
+                        </div>
+                        <div style={{ flex: 1, minWidth: 180, display: 'flex', flexDirection: 'column', gap: '0.3rem', maxHeight: '9rem', overflowY: 'auto' }}>
+                          {cortesPorServicio.map((c, i) => (
+                            <div key={c.name} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.75rem' }}>
+                              <span style={{ width: 10, height: 10, borderRadius: 3, background: SERVICE_COLORS[i % SERVICE_COLORS.length], flex: '0 0 auto' }} />
+                              <span style={{ color: '#a1a1aa', flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.name}</span>
+                              <span style={{ color: '#e4e4e7', fontWeight: 700 }}>×{c.count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </>
                     )}
-                  </KpiMini>
+                  </div>
+                </div>
+
+                {/* Totales de plata */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                   <KpiMini label="Facturado" value={formatARS(totals.billed)} />
                   <KpiMini label="Total barbero" value={formatARS(totals.commission)} color="#f59e0b" />
                   <KpiMini label="Total barbería" value={formatARS(totals.branch)} color="#34d399" />
                 </div>
               </section>
 
-              {/* --- Por barbero --- */}
+              {/* --- Por semana (filas fijas) --- */}
               <section>
                 <p style={{ fontSize: '0.6875rem', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.5rem' }}>
-                  Por barbero
+                  Por semana
                 </p>
-                {barberRows.length === 0 ? (
-                  <div className="empty-state"><p>Sin datos para este período.</p></div>
+                {weekRows.length === 0 ? (
+                  <div className="empty-state"><p>Sin semanas en este mes.</p></div>
                 ) : (
                   <div className="admin-table-wrap" style={{ padding: 0 }}>
                     <table className="admin-table">
                       <thead>
                         <tr>
-                          <th>Barbero</th>
+                          <th>Semana</th>
                           <th>Cortes</th>
                           <th>Facturado</th>
                           <th>Comisión</th>
@@ -283,9 +322,12 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
                         </tr>
                       </thead>
                       <tbody>
-                        {barberRows.map((row) => (
-                          <tr key={row.barberId}>
-                            <td>{row.barberName}</td>
+                        {weekRows.map((row) => (
+                          <tr key={row.weekId}>
+                            <td>
+                              {row.label}
+                              <span style={{ display: 'block', fontSize: '0.7rem', color: '#71717a' }}>{row.range}</span>
+                            </td>
                             <td className="td-center">{row.cuts}</td>
                             <td>{formatARS(row.billed)}</td>
                             <td>{formatARS(row.commission)}</td>
@@ -322,12 +364,11 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
   )
 }
 
-function KpiMini({ label, value, color, children }: { label: string; value: string; color?: string; children?: React.ReactNode }) {
+function KpiMini({ label, value, color }: { label: string; value: string; color?: string }) {
   return (
     <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: '0.625rem', padding: '0.625rem 0.75rem' }}>
       <p style={{ fontSize: '0.625rem', color: '#71717a', textTransform: 'uppercase', letterSpacing: '0.05em', margin: 0 }}>{label}</p>
       <p style={{ fontSize: '1rem', fontWeight: 700, color: color ?? '#e4e4e7', margin: '0.25rem 0 0' }}>{value}</p>
-      {children}
     </div>
   )
 }
