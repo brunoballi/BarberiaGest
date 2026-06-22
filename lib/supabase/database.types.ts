@@ -384,8 +384,9 @@ export interface BranchReport {
   branchName: string
   cutCount: number
   totalIncome: number        // suma de transactions.amount
-  branchShare: number        // suma de transactions.branch_share (lo que queda al negocio de cortes)
-  barberShare: number        // suma de transactions.barber_share (comisiones)
+  branchShare: number        // Total Barbería = totalIncome - barberShare (descuenta bonos)
+  barberShare: number        // Total Barberos = comisión por corte + bonos (presentismo + objetivo)
+  barbers: { barberId: string; fullName: string; total: number }[]  // desglose por barbero (desplegable)
   totalExpenses: number      // suma de expenses.amount (excluye retiros de socios)
   expensesByCategory: Record<string, number>
   partnerWithdrawals: number // Mejora 4: retiros de socios (no restan de netProfit)

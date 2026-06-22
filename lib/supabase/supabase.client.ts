@@ -1734,26 +1734,34 @@ export async function getReportByPeriod(
     total_expenses: number
     partner_withdrawals: number
     expenses_by_category: Record<string, number> | null
+    barber_total: number
+    barbers: { barber_id: string; full_name: string; total: number }[] | null
   }
   const byId = new Map((data as ReportRow[] ?? []).map((r) => [r.branch_id, r]))
 
   return branches.map((branch) => {
     const r = byId.get(branch.id)
     const totalIncome   = Number(r?.total_income ?? 0)
-    const branchShare   = Number(r?.branch_share ?? 0)
+    // Total Barberos = comisión por corte + bonos; Total Barbería = ingresos − eso.
+    const barberShare   = Number(r?.barber_total ?? 0)
+    const branchShare   = totalIncome - barberShare
     const totalExpenses = Number(r?.total_expenses ?? 0)
     const netProfit     = branchShare - totalExpenses
     const expensesByCategory: Record<string, number> = {}
     for (const [k, v] of Object.entries(r?.expenses_by_category ?? {})) {
       expensesByCategory[k] = Number(v)
     }
+    const barbers = (r?.barbers ?? []).map((b) => ({
+      barberId: b.barber_id, fullName: b.full_name, total: Number(b.total),
+    }))
     return {
       branchId: branch.id,
       branchName: branch.name,
       cutCount: Number(r?.cut_count ?? 0),
       totalIncome,
       branchShare,
-      barberShare: Number(r?.barber_share ?? 0),
+      barberShare,
+      barbers,
       totalExpenses,
       expensesByCategory,
       partnerWithdrawals: Number(r?.partner_withdrawals ?? 0),

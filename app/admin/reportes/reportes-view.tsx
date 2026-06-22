@@ -164,13 +164,14 @@ export default function ReportesView() {
       totalIncome:    acc.totalIncome + r.totalIncome,
       branchShare:    acc.branchShare + r.branchShare,
       barberShare:    acc.barberShare + r.barberShare,
+      barbers:        acc.barbers,
       totalExpenses:  acc.totalExpenses + r.totalExpenses,
       expensesByCategory: acc.expensesByCategory,
       partnerWithdrawals: acc.partnerWithdrawals + r.partnerWithdrawals,
       netProfit:      acc.netProfit + r.netProfit,
       profitMargin:   0,
     }),
-    { branchId: 'total', branchName: 'Total', cutCount: 0, totalIncome: 0, branchShare: 0, barberShare: 0, totalExpenses: 0, expensesByCategory: {}, partnerWithdrawals: 0, netProfit: 0, profitMargin: 0 }
+    { branchId: 'total', branchName: 'Total', cutCount: 0, totalIncome: 0, branchShare: 0, barberShare: 0, barbers: [], totalExpenses: 0, expensesByCategory: {}, partnerWithdrawals: 0, netProfit: 0, profitMargin: 0 }
   )
   total.profitMargin = total.totalIncome > 0 ? (total.netProfit / total.totalIncome) * 100 : 0
   const avg = {
@@ -189,8 +190,8 @@ export default function ReportesView() {
   const barData = reports.map((r) => ({
     name: r.branchName,
     'Ingresos':        r.totalIncome,
-    'Parte negocio':   r.branchShare,
-    'Comisiones':      r.barberShare,
+    'Total barbería':  r.branchShare,
+    'Total barberos':  r.barberShare,
     'Gastos':          r.totalExpenses,
     'Ganancia neta':   r.netProfit,
   }))
@@ -333,8 +334,8 @@ export default function ReportesView() {
                 <div className="report-card__metrics">
                   <MetricRow label="Cortes" value={String(r.cutCount)} small />
                   <MetricRow label="Ingresos totales"  value={formatARS(r.totalIncome)} color="blue" />
-                  <MetricRow label="Parte negocio"     value={formatARS(r.branchShare)} color="emerald" />
-                  <MetricRow label="Comisiones"        value={formatARS(r.barberShare)} color="amber" />
+                  <MetricRow label="Total barbería"    value={formatARS(r.branchShare)} color="emerald" />
+                  <BarberBreakdownRow barbers={r.barbers} total={r.barberShare} />
                   <MetricRow label="Gastos"            value={formatARS(r.totalExpenses)} color="red" />
                   <div className="report-card__divider" />
                   <MetricRow
@@ -365,8 +366,8 @@ export default function ReportesView() {
               <div className="report-card__metrics">
                 <MetricRow label="Cortes total"       value={String(total.cutCount)} small />
                 <MetricRow label="Ingresos totales"   value={formatARS(total.totalIncome)} color="blue" />
-                <MetricRow label="Parte negocio"      value={formatARS(total.branchShare)} color="emerald" />
-                <MetricRow label="Comisiones"         value={formatARS(total.barberShare)} color="amber" />
+                <MetricRow label="Total barbería"     value={formatARS(total.branchShare)} color="emerald" />
+                <MetricRow label="Total barberos"     value={formatARS(total.barberShare)} color="amber" />
                 <MetricRow label="Gastos"             value={formatARS(total.totalExpenses)} color="red" />
                 <div className="report-card__divider" />
                 <MetricRow label="Ganancia neta"      value={formatARS(total.netProfit)} color={total.netProfit >= 0 ? 'violet' : 'red'} bold />
@@ -394,9 +395,9 @@ export default function ReportesView() {
                       tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
                     <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(255,255,255,0.04)' }} />
                     <Legend wrapperStyle={{ fontSize: 12, color: '#a1a1aa', paddingTop: 16 }} />
-                    <Bar dataKey="Ingresos"      fill={BAR_COLORS.totalIncome}  radius={[3,3,0,0]} />
-                    <Bar dataKey="Parte negocio" fill={BAR_COLORS.branchShare}  radius={[3,3,0,0]} />
-                    <Bar dataKey="Comisiones"    fill={BAR_COLORS.barberShare}  radius={[3,3,0,0]} />
+                    <Bar dataKey="Ingresos"       fill={BAR_COLORS.totalIncome}  radius={[3,3,0,0]} />
+                    <Bar dataKey="Total barbería" fill={BAR_COLORS.branchShare}  radius={[3,3,0,0]} />
+                    <Bar dataKey="Total barberos" fill={BAR_COLORS.barberShare}  radius={[3,3,0,0]} />
                     <Bar dataKey="Gastos"        fill={BAR_COLORS.totalExpenses} radius={[3,3,0,0]} />
                     <Bar dataKey="Ganancia neta" fill={BAR_COLORS.netProfit}    radius={[3,3,0,0]} />
                   </BarChart>
@@ -490,5 +491,41 @@ function MetricRow({ label, value, color, bold, small }: {
         {value}
       </span>
     </div>
+  )
+}
+
+// ── Total barberos con desplegable por barbero ────────────────────
+function BarberBreakdownRow({ barbers, total }: {
+  barbers: { barberId: string; fullName: string; total: number }[]
+  total: number
+}) {
+  const [open, setOpen] = useState(false)
+  const hasBreakdown = barbers.length > 0
+  return (
+    <>
+      <div
+        className="metric-row"
+        style={{ cursor: hasBreakdown ? 'pointer' : 'default' }}
+        onClick={() => hasBreakdown && setOpen((o) => !o)}
+      >
+        <span className="metric-row__label" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+          {hasBreakdown && <span style={{ fontSize: '0.6rem', color: '#71717a' }}>{open ? '▼' : '▶'}</span>}
+          Total barberos
+        </span>
+        <span className="metric-row__value" style={{ color: '#f59e0b', fontWeight: 500 }}>
+          {formatARS(total)}
+        </span>
+      </div>
+      {open && hasBreakdown && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', margin: '0.1rem 0 0.3rem', paddingLeft: '0.9rem', borderLeft: '2px solid #27272a' }}>
+          {barbers.map((b) => (
+            <div key={b.barberId} className="metric-row">
+              <span className="metric-row__label" style={{ fontSize: '0.72rem', color: '#a1a1aa' }}>{b.fullName}</span>
+              <span className="metric-row__value" style={{ fontSize: '0.78rem', color: '#d4d4d8' }}>{formatARS(b.total)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   )
 }
