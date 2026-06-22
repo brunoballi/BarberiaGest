@@ -1742,9 +1742,11 @@ export async function getReportByPeriod(
   return branches.map((branch) => {
     const r = byId.get(branch.id)
     const totalIncome   = Number(r?.total_income ?? 0)
-    // Total Barberos = comisión por corte + bonos; Total Barbería = ingresos − eso.
+    // Total Barberos = comisión por corte + bonos (lo que se lleva el barbero).
     const barberShare   = Number(r?.barber_total ?? 0)
-    const branchShare   = totalIncome - barberShare
+    // Total Barbería = facturado − comisión (sin descontar bonos), igual que el
+    // "VALHALLA" del Excel del cliente.
+    const branchShare   = Number(r?.branch_share ?? 0)
     const totalExpenses = Number(r?.total_expenses ?? 0)
     const netProfit     = branchShare - totalExpenses
     const expensesByCategory: Record<string, number> = {}
