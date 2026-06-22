@@ -1748,7 +1748,8 @@ export async function getReportByPeriod(
     // "VALHALLA" del Excel del cliente.
     const branchShare   = Number(r?.branch_share ?? 0)
     const totalExpenses = Number(r?.total_expenses ?? 0)
-    const netProfit     = branchShare - totalExpenses
+    // Ganancia neta = Ingresos − Total Barberos (comisión + bonos) − Gastos.
+    const netProfit     = totalIncome - barberShare - totalExpenses
     const expensesByCategory: Record<string, number> = {}
     for (const [k, v] of Object.entries(r?.expenses_by_category ?? {})) {
       expensesByCategory[k] = Number(v)
