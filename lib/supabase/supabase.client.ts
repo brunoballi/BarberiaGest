@@ -1744,11 +1744,11 @@ export async function getReportByPeriod(
     const totalIncome   = Number(r?.total_income ?? 0)
     // Total Barberos = comisión por corte + bonos (lo que se lleva el barbero).
     const barberShare   = Number(r?.barber_total ?? 0)
-    // Total Barbería = facturado − comisión (sin descontar bonos), igual que el
-    // "VALHALLA" del Excel del cliente.
-    const branchShare   = Number(r?.branch_share ?? 0)
+    // Total Barbería = Ingresos − Total Barberos. Los bonos (presentismo/objetivo)
+    // los resigna la barbería para dárselos al barbero, así que se descuentan acá.
+    const branchShare   = totalIncome - barberShare
     const totalExpenses = Number(r?.total_expenses ?? 0)
-    // Ganancia neta = Ingresos − Total Barberos (comisión + bonos) − Gastos.
+    // Ganancia neta = Ingresos − Total Barberos − Gastos (= Total Barbería − Gastos).
     const netProfit     = totalIncome - barberShare - totalExpenses
     const expensesByCategory: Record<string, number> = {}
     for (const [k, v] of Object.entries(r?.expenses_by_category ?? {})) {
