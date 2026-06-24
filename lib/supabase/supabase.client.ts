@@ -239,28 +239,42 @@ export function computeBenefitDiscount(benefit: Benefit, price: number): number 
 // ============================================================
 export async function getOpenWeek(branchId: string): Promise<Week | null> {
   const today = todayLocal()
-  // Single query: fetch all open weeks (normally ≤2 at any time), apply priority in JS
-  const { data, error } = await supabase
-    .from('weeks')
-    .select('*')
-    .eq('branch_id', branchId)
-    .eq('status', 'open')
+  // Resolvemos la prioridad en SQL (no en JS). Antes traíamos solo 10 semanas
+  // abiertas ordenadas por start_date asc y filtrábamos en memoria; con muchas
+  // semanas abiertas (cientos en prod) la semana que contiene hoy quedaba fuera
+  // del límite y el barbero no podía cargar cortes. Cada prioridad es 1 query
+  // acotada a 1 fila, así no depende de cuántas semanas abiertas existan.
+  const base = () =>
+    supabase
+      .from('weeks')
+      .select('*')
+      .eq('branch_id', branchId)
+      .eq('status', 'open')
+
+  // Prioridad 1: semana abierta que contiene hoy
+  const { data: current, error: e1 } = await base()
+    .lte('start_date', today)
+    .gte('end_date', today)
+    .order('start_date', { ascending: false })
+    .limit(1)
+  if (e1) throw new Error(`[getOpenWeek] ${e1.message}`)
+  if (current?.length) return current[0]
+
+  // Prioridad 2: próxima semana abierta futura (la más cercana)
+  const { data: future, error: e2 } = await base()
+    .gt('start_date', today)
     .order('start_date', { ascending: true })
-    .limit(10)
+    .limit(1)
+  if (e2) throw new Error(`[getOpenWeek] ${e2.message}`)
+  if (future?.length) return future[0]
 
-  if (error) throw new Error(`[getOpenWeek] ${error.message}`)
-  if (!data?.length) return null
-
-  // Priority 1: week that contains today
-  const containsToday = data.find(w => w.start_date <= today && w.end_date >= today)
-  if (containsToday) return containsToday
-
-  // Priority 2: nearest future open week
-  const nextOpen = data.find(w => w.start_date > today)
-  if (nextOpen) return nextOpen
-
-  // Priority 3: most recent past open week
-  return data.filter(w => w.start_date < today).at(-1) ?? null
+  // Prioridad 3: semana abierta pasada más reciente
+  const { data: past, error: e3 } = await base()
+    .lt('start_date', today)
+    .order('start_date', { ascending: false })
+    .limit(1)
+  if (e3) throw new Error(`[getOpenWeek] ${e3.message}`)
+  return past?.[0] ?? null
 }
 
 export async function getWeeksByBranch(branchId: string): Promise<Week[]> {
