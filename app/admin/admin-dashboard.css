@@ -971,6 +971,15 @@
   .kpi-strip { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 }
 
+/* En desktop la franja mantiene overflow visible (para el tooltip), pero el fondo
+   debe cubrir TODAS las tarjetas aunque desborden el viewport: si no, al hacer
+   scroll horizontal aparece una banda negra detrás de los últimos KPIs (ej.
+   "Retiros socios"). width:max-content extiende el fondo al contenido; min-width:100%
+   evita que en pantallas anchas la franja quede más corta que el viewport. */
+@media (min-width: 768px) {
+  .kpi-strip { width: max-content; min-width: 100%; }
+}
+
 /* ── Liquidaciones: cards apiladas en mobile ─────────────────── */
 @media (max-width: 639px) {
   .settlement-row { flex-direction: column; gap: 0.5rem; }

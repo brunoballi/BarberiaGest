@@ -942,17 +942,6 @@ export default function AdminDashboard() {
               tooltip="Efectivo que los barberos devolvieron al saldar deudas (liquidaciones negativas ya marcadas como pagadas). Es informativo: NO suma a la ganancia neta, porque ese dinero ya está contado por devengado (comisión de cortes o alquiler de box)."
             />
             <KpiCard
-              label="Barberos"
-              value={String(kpis.barberCount)}
-              tooltip="Cantidad de barberos con liquidación esta semana."
-            />
-            <KpiCard
-              label="Gastos semana"
-              value={formatARS(kpis.operationalExpenses)}
-              accent="negative"
-              tooltip="Gastos de la semana, sin contar retiros de socios."
-            />
-            <KpiCard
               label="Retiros socios"
               value={formatARS(kpis.partnerWithdrawals)}
               tooltip="Retiros de los socios (ganancia x socios)."
