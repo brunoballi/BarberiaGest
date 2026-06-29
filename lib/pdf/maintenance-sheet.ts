@@ -35,16 +35,9 @@ const FOOTER_NOTES = [
   'Todos los martes, al limpiar el calentador de toallas, se deben cambiar por toallas limpias.',
 ]
 
-/** APROBADO si el % de tareas cumplidas alcanza el mínimo. */
-function blockResult(tasks: MaintenanceTaskRow[], minPct: number): { label: string; pct: number } {
-  if (tasks.length === 0) return { label: '—', pct: 0 }
-  const done = tasks.filter((t) => t.done).length
-  const pct = Math.round((done / tasks.length) * 100)
-  return { label: pct >= minPct ? 'APROBADO' : 'NO APROBADO', pct }
-}
-
 /**
  * Genera y descarga el PDF de la planilla semanal. Client-side.
+ * El PDF es un documento para imprimir y completar a mano (casilleros vacíos).
  */
 export function generateMaintenanceSheet(options: MaintenanceSheetOptions): void {
   const { branchName, weekLabel, minApprovalPct, blocks } = options
@@ -67,10 +60,10 @@ export function generateMaintenanceSheet(options: MaintenanceSheetOptions): void
   doc.text(`Generado: ${new Date().toLocaleString('es-AR')}`, pageWidth - 14, 18, { align: 'right' })
 
   // ── Un bloque (tabla) por barbero ───────────────────────
+  // El PDF es para imprimir y completar A MANO: la columna "Cumple" es un
+  // casillero vacío para tildar con lapicera, y el RESULTADO se marca a mano.
   let cursorY = 37
   blocks.forEach((b) => {
-    const res = blockResult(b.tasks, minApprovalPct)
-
     // Salto de página si no entra el encabezado del bloque
     if (cursorY > pageHeight - 50) {
       doc.addPage()
@@ -86,31 +79,43 @@ export function generateMaintenanceSheet(options: MaintenanceSheetOptions): void
     autoTable(doc, {
       startY: cursorY,
       head: [['N°', 'Tarea', 'Cumple']],
-      body: b.tasks.map((t) => [String(t.item_number), t.description, t.done ? 'SÍ' : 'NO']),
+      // Celda "Cumple" vacía: dibujamos el casillero en didDrawCell
+      body: b.tasks.map((t) => [String(t.item_number), t.description, '']),
       theme: 'striped',
-      headStyles: { fillColor: [63, 63, 70], textColor: [255, 255, 255], fontStyle: 'bold' },
+      headStyles: { fillColor: [63, 63, 70], textColor: [255, 255, 255], fontStyle: 'bold', halign: 'center' },
       columnStyles: {
         0: { halign: 'center', cellWidth: 12 },
         2: { halign: 'center', cellWidth: 20 },
       },
       styles: { fontSize: 9, cellPadding: 2.5 },
-      // Pinta la celda "Cumple" verde (SÍ) o rojo (NO)
-      didParseCell: (data) => {
+      // Dibuja un casillero vacío centrado en la columna "Cumple"
+      didDrawCell: (data) => {
         if (data.section === 'body' && data.column.index === 2) {
-          const isYes = data.cell.raw === 'SÍ'
-          data.cell.styles.textColor = isYes ? [22, 163, 74] : [220, 38, 38]
-          data.cell.styles.fontStyle = 'bold'
+          const size = 4
+          const cx = data.cell.x + data.cell.width / 2 - size / 2
+          const cy = data.cell.y + data.cell.height / 2 - size / 2
+          doc.setDrawColor(82, 82, 91)
+          doc.setLineWidth(0.3)
+          doc.rect(cx, cy, size, size)
         }
       },
     })
 
     // @ts-expect-error lastAutoTable lo agrega el plugin en runtime
     const afterTableY: number = doc.lastAutoTable.finalY
+    // RESULTADO FINAL para completar a mano: dos casilleros
+    const ry = afterTableY + 7
     doc.setFontSize(10)
-    const approved = res.label === 'APROBADO'
-    doc.setTextColor(...(res.label === '—' ? [113, 113, 122] : approved ? [22, 163, 74] : [220, 38, 38]) as [number, number, number])
-    doc.text(`RESULTADO: ${res.label}${res.label === '—' ? '' : ` (${res.pct}%)`}`, 14, afterTableY + 6)
-    cursorY = afterTableY + 14
+    doc.setTextColor(24, 24, 27)
+    doc.text('RESULTADO:', 14, ry)
+    doc.setDrawColor(82, 82, 91)
+    doc.setLineWidth(0.3)
+    doc.rect(40, ry - 3.2, 4, 4)
+    doc.setTextColor(82, 82, 91)
+    doc.text('APROBADO', 46, ry)
+    doc.rect(74, ry - 3.2, 4, 4)
+    doc.text('NO APROBADO', 80, ry)
+    cursorY = afterTableY + 15
   })
 
   // ── Notas al pie ────────────────────────────────────────
