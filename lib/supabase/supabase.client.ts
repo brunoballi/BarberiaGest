@@ -917,6 +917,91 @@ export async function registerCut(
 }
 
 /**
+ * Edita un corte existente reusando EXACTAMENTE la misma lógica financiera que
+ * registerCut (comisión, split, ya cobrado). No cambia week_id ni barber_id:
+ * solo actualiza los campos editables del corte. Se usa cuando el barbero (o el
+ * admin) corrige un corte de una semana NO liquidada.
+ */
+export async function updateCut(
+  txId: string,
+  payload: RegisterCutPayload,
+  barber: Profile,
+): Promise<Transaction> {
+  const commissionRate = barber.commission_rate ?? 0.5
+  const isBoxRental = barber.compensation_type === 'box_rental'
+  const barberShareRaw = Number((payload.amount * commissionRate).toFixed(2))
+  const barberShare = isBoxRental ? payload.amount : Math.max(0, Math.min(barberShareRaw, payload.amount))
+  const branchShare = isBoxRental ? 0 : Number((payload.amount - barberShare).toFixed(2))
+
+  const cashAmount     = payload.cash_amount     ?? (payload.payment_method === 'cash'     ? payload.amount : 0)
+  const transferAmount = payload.transfer_amount ?? (payload.payment_method === 'transfer' ? payload.amount : 0)
+  const cardAmount     = payload.card_amount     ?? (payload.payment_method === 'card'     ? payload.amount : 0)
+
+  const splitSum = cashAmount + transferAmount + cardAmount
+  if (Math.abs(splitSum - payload.amount) > 0.01) {
+    throw new Error(`La suma de los métodos (${splitSum}) no coincide con el total (${payload.amount})`)
+  }
+
+  const barberAlreadyCollected: number =
+    payload.barber_already_collected_override !== undefined
+      ? payload.barber_already_collected_override
+      : isBoxRental
+      ? payload.amount
+      : barber.receives_transfers
+      ? transferAmount
+      : 0
+
+  const update = {
+    service_id: payload.service_id,
+    transaction_date: payload.transaction_date,
+    amount: payload.amount,
+    payment_method: payload.payment_method,
+    branch_share: branchShare,
+    barber_share: barberShare,
+    commission_rate_snapshot: commissionRate,
+    barber_already_collected: barberAlreadyCollected,
+    cash_amount: cashAmount,
+    transfer_amount: transferAmount,
+    card_amount: cardAmount,
+    client_name: payload.client_name ?? null,
+    client_surname: payload.client_surname ?? null,
+    discount_amount: payload.discount_amount ?? 0,
+    discount_reason: payload.discount_reason ?? null,
+    benefit_id: payload.benefit_id ?? null,
+  }
+
+  const { data, error } = await supabase
+    .from('transactions')
+    .update(update)
+    .eq('id', txId)
+    .select()
+    .single()
+
+  if (error) throw new Error(`[updateCut] ${error.message}`)
+  return data
+}
+
+/**
+ * Dado un set de week_ids, devuelve los que están liquidados (confirmed/paid)
+ * para ese barbero. Sirve para bloquear la edición de cortes de semanas cerradas
+ * en la vista de cortes filtrados por fecha.
+ */
+export async function getBarberClosedWeekIds(
+  barberId: string,
+  weekIds: string[],
+): Promise<string[]> {
+  if (weekIds.length === 0) return []
+  const { data, error } = await supabase
+    .from('settlements')
+    .select('week_id, status')
+    .eq('barber_id', barberId)
+    .in('week_id', weekIds)
+    .in('status', ['confirmed', 'paid'])
+  if (error) throw new Error(`[getBarberClosedWeekIds] ${error.message}`)
+  return (data ?? []).map((r) => r.week_id as string)
+}
+
+/**
  * Devuelve transacciones del barbero en un rango de fechas (cruza semanas).
  * Útil para el home con filtro desde-hasta.
  */

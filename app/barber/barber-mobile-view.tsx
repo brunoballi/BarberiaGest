@@ -17,13 +17,15 @@ import {
 import {
   getCurrentProfile,
   getOpenWeek,
+  getWeeksByBranch,
   getBarberTransactionsForWeek,
   getBarberTransactionsByDateRange,
   getBarberSettlements,
   getSettlementStatusForWeek,
   computeBenefitDiscount,
   registerCut,
-  updateTransaction,
+  updateCut,
+  getBarberClosedWeekIds,
   createAdvance,
   todayLocal,
   supabase,
@@ -134,6 +136,14 @@ export default function BarberMobileView() {
   const [settlementsLoaded, setSettlementsLoaded] = useState(false)
   const [settlementsLoading, setSettlementsLoading] = useState(false)
   const [settlFilterStatus, setSettlFilterStatus] = useState('')
+  // Filtros de liquidaciones: por defecto el mes actual. Semana opcional dentro del mes.
+  const [settlFilterMonth, setSettlFilterMonth] = useState<string>(() => todayLocal().slice(0, 7))
+  const [settlFilterWeek, setSettlFilterWeek] = useState<string>('')
+  const [settlPage, setSettlPage] = useState(1)
+  const SETTL_PAGE_SIZE = 6
+  // Meses del calendario de la sucursal (los arma el admin); pueblan el filtro de mes
+  // aunque ese mes todavía no tenga liquidaciones.
+  const [branchMonths, setBranchMonths] = useState<string[]>([])
   const [expandedSettlement, setExpandedSettlement] = useState<string | null>(null)
   const [selectedService, setSelectedService] = useState<string>('')
   const [customAmount, setCustomAmount] = useState<string>('')
@@ -174,13 +184,11 @@ export default function BarberMobileView() {
   const [advanceError, setAdvanceError] = useState<string | null>(null)
   const [advanceDone, setAdvanceDone] = useState(false)
 
-  // Edit transaction
+  // Edit transaction — reusa el formulario completo del alta (view 'register').
+  // editingTx != null ⇒ el form está en modo edición (vs alta).
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
-  const [editSvc, setEditSvc] = useState<string>('')
-  const [editAmount, setEditAmount] = useState<string>('')
-  const [editMethod, setEditMethod] = useState<PaymentMethod | null>(null)
-  const [editSaving, setEditSaving] = useState(false)
-  const [editError, setEditError] = useState<string | null>(null)
+  // week_ids liquidados (confirmed/paid) dentro del filtro por rango → bloquean edición.
+  const [closedWeekIds, setClosedWeekIds] = useState<Set<string>>(new Set())
 
   const loadData = useCallback(async () => {
     try {
@@ -232,12 +240,21 @@ export default function BarberMobileView() {
   }, [profile, week])
 
   async function goToSettlements() {
+    // Al entrar siempre arrancamos en el mes actual, sin filtros de semana/estado.
+    setSettlFilterMonth(todayLocal().slice(0, 7))
+    setSettlFilterWeek('')
+    setSettlFilterStatus('')
+    setSettlPage(1)
     setView('settlements')
     if (settlementsLoaded || !profile) return
     setSettlementsLoading(true)
     try {
-      const data = await getBarberSettlements(profile.id)
+      const [data, weeks] = await Promise.all([
+        getBarberSettlements(profile.id),
+        getWeeksByBranch(profile.branch_id),
+      ])
       setSettlements(data)
+      setBranchMonths([...new Set(weeks.map((w) => w.start_date.slice(0, 7)))])
       setSettlementsLoaded(true)
     } catch {
       // silently ignore — list will be empty
@@ -334,12 +351,15 @@ export default function BarberMobileView() {
 
   // Recalcular partes mixtas cuando cambia effectiveAmount
   useEffect(() => {
-    if (!splitPayment) return
+    // En modo edición NO auto-balanceamos: respetamos el split original del corte.
+    // (Si el barbero cambia el monto, ajusta el split a mano; la validación de la
+    // suma lo obliga antes de guardar.)
+    if (!splitPayment || editingTx) return
     if (effectiveAmount === 0) { setCashPart('0'); setTransferPart('0'); return }
     const half = Math.round(effectiveAmount / 2)
     setCashPart(String(half))
     setTransferPart(String(effectiveAmount - half))
-  }, [effectiveAmount, splitPayment])
+  }, [effectiveAmount, splitPayment, editingTx])
 
   // Comisión = % sobre el monto facturado (ya con el descuento aplicado).
   const previewBarberShare = Math.max(0, Math.round(effectiveAmount * commissionRate))
@@ -357,8 +377,11 @@ export default function BarberMobileView() {
     setFormSubmitError(null)
     if (!profile || !week) return
 
-    if (weekClosed) { setFormSubmitError('Tu semana está cerrada (liquidación confirmada). Contactá al admin.'); return }
-    if (!todayAllowedForBarber) { setFormSubmitError('Hoy no se cargan cortes (domingo/lunes). Pedile al admin que habilite el día.'); return }
+    // Guards solo de alta (no aplican al editar un corte ya existente)
+    if (!editingTx) {
+      if (weekClosed) { setFormSubmitError('Tu semana está cerrada (liquidación confirmada). Contactá al admin.'); return }
+      if (!todayAllowedForBarber) { setFormSubmitError('Hoy no se cargan cortes (domingo/lunes). Pedile al admin que habilite el día.'); return }
+    }
     if (!selectedService) { setFormSubmitError('Seleccioná un servicio antes de continuar'); return }
     if (discountNum > resolvedAmount) { setFormSubmitError('El descuento no puede superar el precio del servicio'); return }
     if (resolvedAmount <= 0)          { setFormSubmitError('Ingresá un monto válido'); return }
@@ -392,9 +415,12 @@ export default function BarberMobileView() {
       transferAmt = paymentMethod === 'transfer' ? effectiveAmount : 0
     }
 
-    // Protección cambio de día a medianoche
-    const nowDate = todayLocal()
-    if (nowDate !== today) { setFormSubmitError('El día cambió. Recargá la app para continuar.'); return }
+    // Protección cambio de día a medianoche (solo al dar de alta; el corte editado
+    // conserva su fecha original)
+    if (!editingTx) {
+      const nowDate = todayLocal()
+      if (nowDate !== today) { setFormSubmitError('El día cambió. Recargá la app para continuar.'); return }
+    }
 
     // Combinar discount reason + observaciones en un solo campo
     const parts = [discountReason.trim(), observations.trim()].filter(Boolean)
@@ -406,7 +432,7 @@ export default function BarberMobileView() {
         service_id:       selectedServiceData?.id ?? null,
         amount:           effectiveAmount,
         payment_method:   paymentMethodFinal,
-        transaction_date: today,
+        transaction_date: editingTx ? editingTx.transaction_date : today,
         cash_amount:      cashAmt,
         transfer_amount:  transferAmt,
         card_amount:      0,
@@ -416,12 +442,21 @@ export default function BarberMobileView() {
         discount_reason:  discountReasonFinal,
         benefit_id:       benefitId || null,
       }
-      const tx = await registerCut(payload, profile, week.id)
-      setLastRegistered(tx)
-      setTransactions((prev) => [tx, ...prev])
-      setView('success')
+      if (editingTx) {
+        const updated = await updateCut(editingTx.id, payload, profile)
+        // Reflejar el cambio en ambas listas (semana actual y filtro por rango)
+        setTransactions((prev) => prev.map((t) => t.id === updated.id ? updated : t))
+        setFilteredTxs((prev) => prev ? prev.map((t) => t.id === updated.id ? updated : t) : prev)
+        setEditingTx(null)
+        setView('home')
+      } else {
+        const tx = await registerCut(payload, profile, week.id)
+        setLastRegistered(tx)
+        setTransactions((prev) => [tx, ...prev])
+        setView('success')
+      }
     } catch (e) {
-      setFormSubmitError(e instanceof Error ? e.message : 'Error al registrar')
+      setFormSubmitError(e instanceof Error ? e.message : editingTx ? 'Error al guardar' : 'Error al registrar')
     } finally {
       setSubmitting(false)
     }
@@ -439,6 +474,10 @@ export default function BarberMobileView() {
       const data = await getBarberTransactionsByDateRange(profile.id, filterFrom, filterTo)
       setFilteredTxs(data)
       setFilterMode('range')
+      // Determinar qué semanas del rango están liquidadas (bloquean edición)
+      const weekIds = [...new Set(data.map((t) => t.week_id))]
+      const closed = await getBarberClosedWeekIds(profile.id, weekIds)
+      setClosedWeekIds(new Set(closed))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al filtrar')
     } finally {
@@ -493,54 +532,52 @@ export default function BarberMobileView() {
     setAdvanceError(null)
   }
 
-  function openEditTx(tx: Transaction) {
+  // Un corte está bloqueado para edición si su semana ya fue liquidada
+  // (confirmed/paid). La semana actual usa weekClosed; las semanas del filtro por
+  // rango usan el set closedWeekIds calculado al filtrar.
+  function isTxLocked(tx: Transaction): boolean {
+    if (week && tx.week_id === week.id) return weekClosed
+    return closedWeekIds.has(tx.week_id)
+  }
+
+  // Abre el formulario COMPLETO del alta en modo edición, pre-cargado con el corte.
+  function openEditFull(tx: Transaction) {
+    if (isTxLocked(tx)) return
     const svc = services.find((s) => s.id === tx.service_id)
     setEditingTx(tx)
-    setEditSvc(svc?.name ?? '')
-    setEditAmount(String(tx.amount))
-    setEditMethod(tx.payment_method)
-    setEditError(null)
-  }
-
-  async function handleSaveTx() {
-    if (!editingTx || !editMethod || !profile) return
-    const amount = parseFloat(editAmount)
-    if (!amount || amount <= 0) { setEditError('Ingresá un monto válido'); return }
-    setEditSaving(true)
-    setEditError(null)
-    try {
-      const rate = profile.commission_rate ?? 0.5
-      // Alquiler de box: el barbero se queda el 100% del corte.
-      const isBox = profile.compensation_type === 'box_rental'
-      const barberShare = isBox ? amount : Number((amount * rate).toFixed(2))
-      const branchShare = isBox ? 0 : Number((amount - barberShare).toFixed(2))
-      // box_rental ya tiene el 100%. Si recibe transferencias y paga por transferencia,
-      // retiene el TOTAL (se reconcilia en la liquidación). Efectivo/transfer-a-Valhalla → 0.
-      const alreadyCollected = isBox
-        ? amount
-        : ((editMethod === 'transfer' && profile.receives_transfers) ? amount : 0)
-      const svcData = services.find((s) => s.name === editSvc)
-      const updates = {
-        service_id: svcData?.id ?? null,
-        amount,
-        payment_method: editMethod,
-        barber_share: barberShare,
-        branch_share: branchShare,
-        barber_already_collected: alreadyCollected,
-      }
-      await updateTransaction(editingTx.id, updates)
-      setTransactions((prev) =>
-        prev.map((t) => t.id === editingTx.id ? { ...t, ...updates } : t)
-      )
-      setEditingTx(null)
-    } catch (e) {
-      setEditError(e instanceof Error ? e.message : 'Error al guardar')
-    } finally {
-      setEditSaving(false)
+    setSelectedService(svc?.name ?? '')
+    // El form trabaja con subtotal (resolvedAmount); amount guardado ya tiene el
+    // descuento aplicado, así que reconstruimos subtotal = amount + descuento.
+    setCustomAmount(String(tx.amount + (tx.discount_amount || 0)))
+    setDiscountAmount(tx.discount_amount > 0 ? String(tx.discount_amount) : '')
+    setBenefitId(tx.benefit_id ?? '')
+    setClientName(tx.client_name ?? '')
+    setClientSurname(tx.client_surname ?? '')
+    // discount_reason guardado = "[beneficio] | [observaciones]". Recuperamos solo
+    // las observaciones (el beneficio se re-deriva del benefit_id seleccionado).
+    const reason = tx.discount_reason ?? ''
+    if (tx.benefit_id) {
+      const parts = reason.split(' | ')
+      setObservations(parts.length > 1 ? parts.slice(1).join(' | ') : '')
+    } else {
+      setObservations(reason)
     }
+    if (tx.payment_method === 'mixed') {
+      setSplitPayment(true)
+      setCashPart(String(tx.cash_amount || 0))
+      setTransferPart(String(tx.transfer_amount || 0))
+      setPaymentMethod(null)
+    } else {
+      setSplitPayment(false)
+      setPaymentMethod(tx.payment_method)
+      setCashPart('')
+      setTransferPart('')
+    }
+    setFormSubmitError(null)
+    setView('register')
   }
 
-  function resetForm() {
+  function clearFormFields() {
     setSelectedService('')
     setCustomAmount('')
     setPaymentMethod(null)
@@ -549,22 +586,23 @@ export default function BarberMobileView() {
     setTransferPart('')
     setObservations('')
     setBenefitId('')
+    setClientName('')
+    setClientSurname('')
+    setDiscountAmount('')
+    setDiscountReason('')
+    setEditingTx(null)
     setFormSubmitError(null)
+  }
+
+  function resetForm() {
+    clearFormFields()
     setLastRegistered(null)
     setView('home')
   }
 
   function goToRegister() {
     if (weekClosed) return
-    setSelectedService('')
-    setCustomAmount('')
-    setPaymentMethod(null)
-    setSplitPayment(false)
-    setCashPart('')
-    setTransferPart('')
-    setObservations('')
-    setBenefitId('')
-    setFormSubmitError(null)
+    clearFormFields()
     setView('register')
   }
 
@@ -655,66 +693,6 @@ export default function BarberMobileView() {
     </div>
   )
 
-  // ── EDIT TRANSACTION MODAL ───────────────────────────────────────────────
-  const editModal = editingTx && (
-    <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 px-0" onClick={() => setEditingTx(null)}>
-      <div className="bg-zinc-900 border-t border-zinc-700 rounded-t-2xl w-full max-w-lg p-5 space-y-5 animate-fadein" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h2 className="text-white font-bold text-base">Editar corte</h2>
-          <button onClick={() => setEditingTx(null)} className="icon-btn"><span className="text-lg leading-none">✕</span></button>
-        </div>
-
-        <div>
-          <p className="section-label mb-2">Servicio</p>
-          <div className="grid grid-cols-3 gap-2">
-            {services.map((s) => (
-              <button key={s.name} onClick={() => {
-                setEditSvc(s.name)
-                if (s.base_price > 0) setEditAmount(String(s.base_price))
-              }}
-                className={`service-chip ${editSvc === s.name ? 'service-chip--active' : ''}`}>
-                {s.name}
-                {s.base_price > 0 && (
-                  <span className="block text-xs opacity-60 mt-0.5">{formatARS(s.base_price)}</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          <p className="section-label mb-2">Monto</p>
-          <div className="amount-input-wrapper">
-            <span className="amount-prefix">$</span>
-            <CurrencyInput value={editAmount} onChange={setEditAmount} className="amount-input" />
-          </div>
-        </div>
-
-        <div>
-          <p className="section-label mb-2">Método de pago</p>
-          <div className="grid grid-cols-2 gap-2">
-            {([
-              { method: 'cash' as PaymentMethod, label: 'Efectivo', Icon: IconCash },
-              { method: 'transfer' as PaymentMethod, label: 'Transf.', Icon: IconTransfer },
-            ] as const).map(({ method, label, Icon }) => (
-              <button key={method} onClick={() => setEditMethod(method)}
-                className={`payment-chip ${editMethod === method ? 'payment-chip--active' : ''}`}>
-                <Icon /><span className="text-xs mt-1">{label}</span>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {editError && <p className="text-red-400 text-sm">{editError}</p>}
-
-        <button onClick={handleSaveTx} disabled={editSaving}
-          className="btn-primary disabled:opacity-40">
-          {editSaving ? 'Guardando...' : 'Guardar cambios'}
-        </button>
-      </div>
-    </div>
-  )
-
   // ── SUCCESS ──────────────────────────────────────────────────────────────
   if (view === 'success' && lastRegistered) {
     return (
@@ -776,10 +754,10 @@ export default function BarberMobileView() {
       {advanceModal}
       <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
         <header className="flex items-center gap-3 px-5 pt-safe pt-6 pb-4">
-          <button onClick={() => setView('home')} className="icon-btn">
+          <button onClick={() => { setEditingTx(null); setView('home') }} className="icon-btn">
             <IconBack />
           </button>
-          <h1 className="text-lg font-bold text-white">Registrar corte</h1>
+          <h1 className="text-lg font-bold text-white">{editingTx ? 'Editar corte' : 'Registrar corte'}</h1>
         </header>
 
         <div className="flex-1 overflow-y-auto px-5 pb-10 space-y-6">
@@ -1053,7 +1031,7 @@ export default function BarberMobileView() {
             disabled={submitting}
             className="btn-primary w-full text-lg py-5 disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {submitting ? 'Registrando...' : 'Confirmar corte'}
+            {submitting ? (editingTx ? 'Guardando...' : 'Registrando...') : (editingTx ? 'Guardar cambios' : 'Confirmar corte')}
           </button>
         </div>
       </div>
@@ -1074,7 +1052,37 @@ export default function BarberMobileView() {
       confirmed: { label: 'Confirmado', color: 'text-amber-400',   dot: 'bg-amber-500' },
       paid:      { label: 'Pagado',     color: 'text-emerald-400', dot: 'bg-emerald-500' },
     }
-    const filtered = settlements.filter((s) => !settlFilterStatus || s.status === settlFilterStatus)
+    // ── Opciones de mes: salen del calendario de semanas que arma el admin
+    // (branchMonths), más los meses con liquidaciones y el mes actual por las dudas.
+    // Así el barbero puede elegir un mes aunque todavía no tenga liquidaciones. ──
+    const monthsSet = new Set<string>(branchMonths)
+    settlements.forEach((s) => monthsSet.add(s.week.start_date.slice(0, 7)))
+    monthsSet.add(todayLocal().slice(0, 7))
+    const monthOptions = [...monthsSet].sort((a, b) => b.localeCompare(a))
+    const monthLabel = (ym: string) => {
+      const [y, m] = ym.split('-').map(Number)
+      const lbl = new Date(y, m - 1, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+      return lbl.charAt(0).toUpperCase() + lbl.slice(1)
+    }
+
+    // ── Liquidaciones del mes elegido (también pueblan el filtro de semana) ──
+    const monthSettlements = settlements
+      .filter((s) => s.week.start_date.slice(0, 7) === settlFilterMonth)
+      .sort((a, b) => b.week.start_date.localeCompare(a.week.start_date))
+    const weekLabel = (s: SettlementWithBarber) =>
+      `Sem. ${s.week.week_number} (${new Date(s.week.start_date + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })}–${new Date(s.week.end_date + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })})`
+
+    // ── Filtrado final: mes → semana → estado ──
+    const filtered = monthSettlements.filter((s) =>
+      (!settlFilterWeek || s.week_id === settlFilterWeek) &&
+      (!settlFilterStatus || s.status === settlFilterStatus)
+    )
+
+    // ── Paginación ──
+    const pageCount = Math.max(1, Math.ceil(filtered.length / SETTL_PAGE_SIZE))
+    const page = Math.min(settlPage, pageCount)
+    const pageItems = filtered.slice((page - 1) * SETTL_PAGE_SIZE, page * SETTL_PAGE_SIZE)
+
     return (
       <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
         <header className="flex items-center gap-3 px-5 pt-safe pt-6 pb-4">
@@ -1082,12 +1090,38 @@ export default function BarberMobileView() {
           <h1 className="text-lg font-bold text-white">Mis liquidaciones</h1>
         </header>
 
-        {/* Filter chips */}
+        {/* Filtros mes + semana */}
+        <div className="px-5 pb-3 grid grid-cols-2 gap-2">
+          <select
+            value={settlFilterMonth}
+            onChange={(e) => { setSettlFilterMonth(e.target.value); setSettlFilterWeek(''); setSettlPage(1) }}
+            className="settl-select"
+            aria-label="Filtrar por mes"
+          >
+            {monthOptions.map((ym) => (
+              <option key={ym} value={ym}>{monthLabel(ym)}</option>
+            ))}
+          </select>
+          <select
+            value={settlFilterWeek}
+            onChange={(e) => { setSettlFilterWeek(e.target.value); setSettlPage(1) }}
+            className="settl-select"
+            disabled={monthSettlements.length === 0}
+            aria-label="Filtrar por semana"
+          >
+            <option value="">Todas las semanas</option>
+            {monthSettlements.map((s) => (
+              <option key={s.week_id} value={s.week_id}>{weekLabel(s)}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Filtro de estado + contador */}
         <div className="px-5 pb-3 flex items-center gap-2 overflow-x-auto">
           {STATUS_FILTERS.map((f) => (
             <button
               key={f.value}
-              onClick={() => setSettlFilterStatus(f.value)}
+              onClick={() => { setSettlFilterStatus(f.value); setSettlPage(1) }}
               className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-colors flex-shrink-0 ${
                 settlFilterStatus === f.value
                   ? 'bg-amber-500 text-zinc-950'
@@ -1108,10 +1142,12 @@ export default function BarberMobileView() {
           ) : filtered.length === 0 ? (
             <div className="card text-center py-10">
               <p className="text-zinc-500 text-sm">
-                {settlements.length === 0 ? 'No hay liquidaciones todavía' : 'Sin resultados'}
+                {settlements.length === 0
+                  ? 'No hay liquidaciones todavía'
+                  : `Sin liquidaciones en ${monthLabel(settlFilterMonth)}`}
               </p>
             </div>
-          ) : filtered.map((s) => {
+          ) : pageItems.map((s) => {
             const isExpanded = expandedSettlement === s.id
             const cfg = STATUS_CFG[s.status] ?? STATUS_CFG.draft
             return (
@@ -1184,6 +1220,27 @@ export default function BarberMobileView() {
             )
           })}
         </div>
+
+        {/* Paginación */}
+        {filtered.length > SETTL_PAGE_SIZE && (
+          <div className="px-5 pb-safe pb-6 pt-3 border-t border-zinc-800 flex items-center justify-between">
+            <button
+              onClick={() => setSettlPage((p) => Math.max(1, p - 1))}
+              disabled={page <= 1}
+              className="settl-page-btn disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              ‹ Anterior
+            </button>
+            <span className="text-xs text-zinc-500">Página {page} de {pageCount}</span>
+            <button
+              onClick={() => setSettlPage((p) => Math.min(pageCount, p + 1))}
+              disabled={page >= pageCount}
+              className="settl-page-btn disabled:opacity-30 disabled:cursor-not-allowed"
+            >
+              Siguiente ›
+            </button>
+          </div>
+        )}
       </div>
     )
   }
@@ -1191,7 +1248,6 @@ export default function BarberMobileView() {
   // ── HOME ─────────────────────────────────────────────────────────────────
   return (
     <>
-    {editModal}
     {advanceModal}
     <BarberSideDrawer
       isOpen={isDrawerOpen}
@@ -1501,12 +1557,21 @@ export default function BarberMobileView() {
                                           <span className="tx-card__date">
                                             {new Date(tx.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
                                           </span>
-                                          <button onClick={() => openEditTx(tx)} className="tx-card__edit" title="Editar">
-                                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
-                                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                                            </svg>
-                                          </button>
+                                          {isTxLocked(tx) ? (
+                                            <span className="tx-card__lock" title="Semana liquidada — no se puede editar">
+                                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
+                                                <rect x="3" y="11" width="18" height="11" rx="2"/>
+                                                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                                              </svg>
+                                            </span>
+                                          ) : (
+                                            <button onClick={() => openEditFull(tx)} className="tx-card__edit" title="Editar">
+                                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
+                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                                              </svg>
+                                            </button>
+                                          )}
                                         </div>
                                         <div className="tx-card__amount">{formatARS(tx.amount)}</div>
                                         <div className="tx-card__share">{formatARS(tx.barber_share)} <span className="text-zinc-600 text-xs">tuya</span></div>
@@ -1535,12 +1600,21 @@ export default function BarberMobileView() {
                           <span className="tx-card__date">
                             {new Date(tx.created_at).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' })}
                           </span>
-                          <button onClick={() => openEditTx(tx)} className="tx-card__edit" title="Editar">
-                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
-                              <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-                              <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-                            </svg>
-                          </button>
+                          {isTxLocked(tx) ? (
+                            <span className="tx-card__lock" title="Semana liquidada — no se puede editar">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
+                                <rect x="3" y="11" width="18" height="11" rx="2"/>
+                                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+                              </svg>
+                            </span>
+                          ) : (
+                            <button onClick={() => openEditFull(tx)} className="tx-card__edit" title="Editar">
+                              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className="w-3 h-3">
+                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                              </svg>
+                            </button>
+                          )}
                         </div>
                         <div className="tx-card__amount">{formatARS(tx.amount)}</div>
                         <div className="tx-card__share">{formatARS(tx.barber_share)} <span className="text-zinc-600 text-xs">tuya</span></div>

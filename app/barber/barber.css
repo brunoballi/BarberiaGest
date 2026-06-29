@@ -166,6 +166,32 @@
   border-top: 1px solid #27272a;
 }
 
+/* ─── Liquidaciones: filtros mes/semana + paginación ────────────── */
+.settl-select {
+  width: 100%;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  color: #e4e4e7;
+  font-size: 0.78rem;
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  appearance: none;
+  cursor: pointer;
+}
+.settl-select:disabled { opacity: 0.45; cursor: not-allowed; }
+.settl-select:focus { outline: none; border-color: #f59e0b; }
+.settl-page-btn {
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  color: #e4e4e7;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 0.45rem 0.9rem;
+  cursor: pointer;
+}
+.settl-page-btn:not(:disabled):hover { border-color: #f59e0b; color: #f59e0b; }
+
 /* ─── Bloques de días de la semana ──────────────────────────── */
 .day-blocks {
   display: grid;
@@ -415,6 +441,18 @@
   padding: 0;
 }
 .tx-card__edit:hover { color: #f59e0b; border-color: #f59e0b; }
+/* Corte de semana liquidada: candado en vez de lápiz (no editable) */
+.tx-card__lock {
+  background: transparent;
+  color: #52525b;
+  border: 1px solid #27272a;
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
 .tx-card__amount {
   font-size: 0.95rem;
   font-weight: 700;
