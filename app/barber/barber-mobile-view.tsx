@@ -1381,6 +1381,9 @@ export default function BarberMobileView() {
             const list = filterMode === 'range' ? (filteredTxs ?? []) : dayTxs
             const totalAmount = list.reduce((s, t) => s + t.amount, 0)
             const totalBarber = list.reduce((s, t) => s + t.barber_share, 0)
+            const totalCash = list.reduce((s, t) => s + (t.cash_amount || 0), 0)
+            const totalTransfer = list.reduce((s, t) => s + (t.transfer_amount || 0), 0)
+            const totalCard = list.reduce((s, t) => s + (t.card_amount || 0), 0)
 
             return (
               <>
@@ -1398,6 +1401,22 @@ export default function BarberMobileView() {
                     <div>
                       <span className="filter-summary__label">Cortes</span>
                       <span className="filter-summary__value">{list.length}</span>
+                    </div>
+                    <div className="filter-summary__breakdown">
+                      <span className="filter-summary__chip">
+                        <span className="payment-dot payment-dot--cash" />
+                        Efectivo <strong>{formatARS(totalCash)}</strong>
+                      </span>
+                      <span className="filter-summary__chip">
+                        <span className="payment-dot payment-dot--transfer" />
+                        Transferencia <strong>{formatARS(totalTransfer)}</strong>
+                      </span>
+                      {totalCard > 0 && (
+                        <span className="filter-summary__chip">
+                          <span className="payment-dot payment-dot--card" />
+                          Tarjeta <strong>{formatARS(totalCard)}</strong>
+                        </span>
+                      )}
                     </div>
                   </div>
                 )}
@@ -1424,6 +1443,9 @@ export default function BarberMobileView() {
                           const dayList = byDate[date]
                           const dayTotal = dayList.reduce((s, t) => s + t.amount, 0)
                           const dayShare = dayList.reduce((s, t) => s + t.barber_share, 0)
+                          const dayCash = dayList.reduce((s, t) => s + (t.cash_amount || 0), 0)
+                          const dayTransfer = dayList.reduce((s, t) => s + (t.transfer_amount || 0), 0)
+                          const dayCard = dayList.reduce((s, t) => s + (t.card_amount || 0), 0)
                           const isOpen = expandedDates.has(date)
                           const label = new Date(date + 'T12:00:00').toLocaleDateString('es-AR', {
                             weekday: 'short', day: '2-digit', month: 'short',
@@ -1441,14 +1463,32 @@ export default function BarberMobileView() {
                                 }}
                                 className="tx-day-group__header"
                               >
-                                <div className="tx-day-group__left">
-                                  <span className="tx-day-group__arrow">▶</span>
-                                  <span className="tx-day-group__date">{label}</span>
-                                  <span className="tx-day-group__count">{dayList.length} {dayList.length === 1 ? 'corte' : 'cortes'}</span>
+                                <div className="tx-day-group__main">
+                                  <div className="tx-day-group__left">
+                                    <span className="tx-day-group__arrow">▶</span>
+                                    <span className="tx-day-group__date">{label}</span>
+                                    <span className="tx-day-group__count">{dayList.length} {dayList.length === 1 ? 'corte' : 'cortes'}</span>
+                                  </div>
+                                  <div className="tx-day-group__right">
+                                    <span className="tx-day-group__total">{formatARS(dayTotal)}</span>
+                                    <span className="tx-day-group__share">tuya {formatARS(dayShare)}</span>
+                                  </div>
                                 </div>
-                                <div className="tx-day-group__right">
-                                  <span className="tx-day-group__total">{formatARS(dayTotal)}</span>
-                                  <span className="tx-day-group__share">tuya {formatARS(dayShare)}</span>
+                                <div className="tx-day-group__breakdown">
+                                  <span className="tx-day-group__chip">
+                                    <span className="payment-dot payment-dot--cash" />
+                                    Efectivo <strong>{formatARS(dayCash)}</strong>
+                                  </span>
+                                  <span className="tx-day-group__chip">
+                                    <span className="payment-dot payment-dot--transfer" />
+                                    Transferencia <strong>{formatARS(dayTransfer)}</strong>
+                                  </span>
+                                  {dayCard > 0 && (
+                                    <span className="tx-day-group__chip">
+                                      <span className="payment-dot payment-dot--card" />
+                                      Tarjeta <strong>{formatARS(dayCard)}</strong>
+                                    </span>
+                                  )}
                                 </div>
                               </button>
                               {isOpen && (

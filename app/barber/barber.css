@@ -76,8 +76,8 @@
 
 .tx-day-group__header {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 0.5rem;
   padding: 0.75rem 1rem;
   background: transparent;
   border: none;
@@ -88,6 +88,35 @@
   transition: background 0.15s;
 }
 .tx-day-group__header:hover { background: rgba(255,255,255,0.03); }
+.tx-day-group__main {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+/* Detalle por medio de pago del total del día */
+.tx-day-group__breakdown {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 1rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid #27272a;
+}
+.tx-day-group__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.68rem;
+  color: #a1a1aa;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.tx-day-group__chip strong {
+  color: #e4e4e7;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
+}
 
 .tx-day-group__left {
   display: flex;
@@ -316,6 +345,32 @@
   font-size: 0.875rem;
   font-weight: 700;
   color: #e4e4e7;
+}
+/* Detalle del total por medio de pago (efectivo / transferencia / tarjeta) */
+.filter-summary > .filter-summary__breakdown {
+  grid-column: 1 / -1;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 1rem;
+  margin-top: 0.55rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid #27272a;
+}
+.filter-summary__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.72rem;
+  color: #a1a1aa;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.filter-summary__chip strong {
+  color: #e4e4e7;
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .tx-grid {
