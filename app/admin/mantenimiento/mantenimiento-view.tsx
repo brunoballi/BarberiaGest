@@ -22,6 +22,7 @@ import {
   saveMaintenanceTemplate,
   getMaintenanceSheetByWeek,
   createMaintenanceSheetFromTemplate,
+  regenerateMaintenanceSheet,
   setMaintenanceItemDone,
   setMaintenanceSheetMinPct,
   getMaintenanceWeeksWithSheet,
@@ -78,6 +79,7 @@ export default function MantenimientoView() {
   const [error, setError]                    = useState<string | null>(null)
   const [actionError, setActionError]        = useState<string | null>(null)
   const [creating, setCreating]              = useState(false)
+  const [regenerating, setRegenerating]      = useState(false)
 
   // Modo plantilla
   const [mode, setMode]              = useState<'sheet' | 'template'>('sheet')
@@ -159,6 +161,24 @@ export default function MantenimientoView() {
       setActionError(e instanceof Error ? e.message : 'Error al crear la planilla')
     } finally {
       setCreating(false)
+    }
+  }
+
+  async function handleRegenerate() {
+    if (!sheet) return
+    const ok = window.confirm(
+      'Regenerar la planilla desde la plantilla actual. Se reemplazan las tareas y se pierden los SÍ/NO ya marcados. ¿Continuar?'
+    )
+    if (!ok) return
+    setRegenerating(true)
+    setActionError(null)
+    try {
+      const updated = await regenerateMaintenanceSheet(sheet.id, selectedBranch)
+      setSheet(updated)
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Error al regenerar la planilla')
+    } finally {
+      setRegenerating(false)
     }
   }
 
@@ -380,10 +400,17 @@ export default function MantenimientoView() {
           ))}
         </select>
         {sheet && (
-          <button onClick={exportPDF}
-            className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold px-4 py-2 rounded-lg text-sm transition-colors">
-            📄 Exportar PDF
-          </button>
+          <div className="flex gap-2">
+            <button onClick={handleRegenerate} disabled={regenerating}
+              className="inline-flex items-center gap-2 text-zinc-300 hover:text-white border border-zinc-700 hover:border-zinc-500 disabled:opacity-40 font-semibold px-4 py-2 rounded-lg text-sm transition-colors"
+              title="Reemplaza las tareas con la plantilla actual (resetea los SÍ/NO)">
+              {regenerating ? 'Regenerando...' : '↻ Regenerar'}
+            </button>
+            <button onClick={exportPDF}
+              className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold px-4 py-2 rounded-lg text-sm transition-colors">
+              📄 Exportar PDF
+            </button>
+          </div>
         )}
       </div>
 

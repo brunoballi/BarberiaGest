@@ -2143,6 +2143,66 @@ export async function setMaintenanceSheetMinPct(sheetId: string, pct: number): P
   if (error) throw new Error(`[setMaintenanceSheetMinPct] ${error.message}`)
 }
 
+/**
+ * Regenera los ítems de una planilla existente desde la plantilla ACTUAL del branch.
+ * Borra el snapshot anterior (incluye los SÍ/NO marcados) y vuelve a copiar las
+ * tareas vigentes. Conserva la planilla (id, semana, % de aprobación).
+ */
+export async function regenerateMaintenanceSheet(
+  sheetId: string,
+  branchId: string,
+): Promise<MaintenanceSheetWithItems> {
+  const template = await getMaintenanceTemplate(branchId)
+  const hasTasks = template.some((b) => b.tasks.length > 0)
+  if (!hasTasks) {
+    throw new Error('La plantilla está vacía. Configurá las tareas por barbero antes de regenerar.')
+  }
+
+  const { error: delErr } = await supabase
+    .from('maintenance_sheet_items')
+    .delete()
+    .eq('sheet_id', sheetId)
+  if (delErr) throw new Error(`[regenerateMaintenanceSheet:delete] ${delErr.message}`)
+
+  const itemRows: Array<Omit<MaintenanceSheetItem, 'id' | 'created_at'>> = []
+  let order = 0
+  template.forEach((b) => {
+    b.tasks.forEach((t) => {
+      itemRows.push({
+        branch_id: branchId,
+        sheet_id: sheetId,
+        barber_id: b.barber_id,
+        zone_label: b.zone_label,
+        item_number: t.item_number,
+        description: t.description,
+        done: false,
+        sort_order: order++,
+      })
+    })
+  })
+
+  const { data: ins, error: iErr } = await supabase
+    .from('maintenance_sheet_items')
+    .insert(itemRows)
+    .select()
+  if (iErr) throw new Error(`[regenerateMaintenanceSheet:items] ${iErr.message}`)
+
+  await supabase
+    .from('maintenance_sheets')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('id', sheetId)
+
+  const { data: sheet, error: sErr } = await supabase
+    .from('maintenance_sheets')
+    .select('*')
+    .eq('id', sheetId)
+    .single()
+  if (sErr) throw new Error(`[regenerateMaintenanceSheet:sheet] ${sErr.message}`)
+
+  const items = ((ins ?? []) as MaintenanceSheetItem[]).sort((a, z) => a.sort_order - z.sort_order)
+  return { ...sheet, items }
+}
+
 /** week_ids de la sucursal que ya tienen planilla (para marcar en el selector). */
 export async function getMaintenanceWeeksWithSheet(branchId: string): Promise<string[]> {
   const { data, error } = await supabase
