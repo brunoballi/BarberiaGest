@@ -37,9 +37,6 @@ function fmtDM(dateStr: string): string {
 function weekRangeLabel(w: Week): string {
   return `${fmtDM(w.start_date)} – ${fmtDM(w.end_date)}`
 }
-function weekOptionLabel(w: Week): string {
-  return `Sem. ${w.week_number} · ${weekRangeLabel(w)}`
-}
 
 /** APROBADO si el % de tareas cumplidas alcanza el mínimo. */
 function blockResult(items: { done: boolean }[], minPct: number): { label: string; pct: number; ok: boolean } {
@@ -369,6 +366,27 @@ export default function MantenimientoView() {
   // ── MODO PLANILLA ──────────────────────────────────────────────────────────
   const groups = sheet ? groupByBarber(sheet.items) : []
 
+  // Navegación de semanas (weeks viene ordenado por start_date DESC: idx 0 = más nueva)
+  const today = todayLocal()
+  const currentWeekId = weeks.find((w) => w.start_date <= today && today <= w.end_date)?.id ?? null
+  const selWeek = weeks.find((w) => w.id === selectedWeekId) ?? null
+  const selIdx = weeks.findIndex((w) => w.id === selectedWeekId)
+  const canNewer = selIdx > 0                       // semana siguiente (más reciente)
+  const canOlder = selIdx >= 0 && selIdx < weeks.length - 1  // semana anterior (más vieja)
+  const selHasSheet = selWeek ? weeksWithSheet.has(selWeek.id) : false
+
+  // Salto rápido por fecha: elige la semana que contiene esa fecha (o la más cercana)
+  function jumpToDate(dateStr: string) {
+    if (!dateStr || weeks.length === 0) return
+    const exact = weeks.find((w) => w.start_date <= dateStr && dateStr <= w.end_date)
+    if (exact) { handleWeekChange(exact.id); return }
+    // Sin semana que contenga la fecha (ej. domingo/lunes): la más cercana por inicio
+    const nearest = [...weeks].sort(
+      (a, b) => Math.abs(+new Date(a.start_date) - +new Date(dateStr)) - Math.abs(+new Date(b.start_date) - +new Date(dateStr))
+    )[0]
+    if (nearest) handleWeekChange(nearest.id)
+  }
+
   return (
     <div className="w-full px-4 py-8 space-y-6">
       {/* Header */}
@@ -385,33 +403,67 @@ export default function MantenimientoView() {
         </button>
       </div>
 
-      {/* Selector de semana */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3">
-        <label className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Semana</label>
-        <select
-          value={selectedWeekId}
-          onChange={(e) => handleWeekChange(e.target.value)}
-          className="flex-1 bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
-        >
-          {weeks.map((w) => (
-            <option key={w.id} value={w.id}>
-              {weekOptionLabel(w)}{weeksWithSheet.has(w.id) ? '  ✓' : ''}
-            </option>
-          ))}
-        </select>
-        {sheet && (
-          <div className="flex gap-2">
-            <button onClick={handleRegenerate} disabled={regenerating}
-              className="inline-flex items-center gap-2 text-zinc-300 hover:text-white border border-zinc-700 hover:border-zinc-500 disabled:opacity-40 font-semibold px-4 py-2 rounded-lg text-sm transition-colors"
-              title="Reemplaza las tareas con la plantilla actual (resetea los SÍ/NO)">
-              {regenerating ? 'Regenerando...' : '↻ Regenerar'}
-            </button>
-            <button onClick={exportPDF}
-              className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold px-4 py-2 rounded-lg text-sm transition-colors">
-              📄 Exportar PDF
-            </button>
+      {/* Navegador de semana: flechas + semana actual + salto por fecha */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-3">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => canOlder && handleWeekChange(weeks[selIdx + 1].id)}
+            disabled={!canOlder}
+            title="Semana anterior"
+            className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-lg border border-zinc-700 text-zinc-300 hover:border-amber-500 hover:text-amber-400 disabled:opacity-30 disabled:cursor-not-allowed text-xl transition-colors"
+          >‹</button>
+
+          <div className="flex-1 text-center">
+            <div className="text-white font-bold text-lg leading-tight">
+              {selWeek ? `Semana ${selWeek.week_number}` : 'Sin semanas'}
+            </div>
+            {selWeek && (
+              <div className="text-zinc-400 text-sm mt-0.5">
+                {weekRangeLabel(selWeek)}
+                {selWeek.id === currentWeekId && <span className="text-amber-400"> · actual</span>}
+                {selHasSheet && <span className="text-emerald-400"> · ✓ con planilla</span>}
+              </div>
+            )}
           </div>
-        )}
+
+          <button
+            onClick={() => canNewer && handleWeekChange(weeks[selIdx - 1].id)}
+            disabled={!canNewer}
+            title="Semana siguiente"
+            className="w-10 h-10 flex-shrink-0 flex items-center justify-center rounded-lg border border-zinc-700 text-zinc-300 hover:border-amber-500 hover:text-amber-400 disabled:opacity-30 disabled:cursor-not-allowed text-xl transition-colors"
+          >›</button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2 pt-1 border-t border-zinc-800">
+          {currentWeekId && selectedWeekId !== currentWeekId && (
+            <button
+              onClick={() => handleWeekChange(currentWeekId)}
+              className="text-xs font-semibold text-amber-400 hover:text-amber-300 transition-colors"
+            >
+              ⤺ Ir a la semana actual
+            </button>
+          )}
+          <label className="text-xs text-zinc-500 ml-auto">Ir a fecha</label>
+          <input
+            type="date"
+            value={selWeek ? selWeek.start_date : ''}
+            onChange={(e) => jumpToDate(e.target.value)}
+            className="bg-zinc-800 border border-zinc-700 text-zinc-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:border-amber-500"
+          />
+          {sheet && (
+            <>
+              <button onClick={handleRegenerate} disabled={regenerating}
+                className="inline-flex items-center gap-2 text-zinc-300 hover:text-white border border-zinc-700 hover:border-zinc-500 disabled:opacity-40 font-semibold px-3 py-1.5 rounded-lg text-xs transition-colors"
+                title="Reemplaza las tareas con la plantilla actual (resetea los SÍ/NO)">
+                {regenerating ? 'Regenerando...' : '↻ Regenerar'}
+              </button>
+              <button onClick={exportPDF}
+                className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold px-3 py-1.5 rounded-lg text-xs transition-colors">
+                📄 Exportar PDF
+              </button>
+            </>
+          )}
+        </div>
       </div>
 
       {actionError && <p className="text-red-400 text-sm">{actionError}</p>}
