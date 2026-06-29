@@ -41,6 +41,11 @@ import type {
   Benefit,
   BenefitInsert,
   BenefitUpdate,
+  MaintenanceSettings,
+  MaintenanceTemplateBlockWithTasks,
+  MaintenanceSheetWithItems,
+  MaintenanceSheetItem,
+  MaintenanceTemplateDraftBlock,
 } from './database.types'
 
 // ============================================================
@@ -1955,4 +1960,195 @@ export async function getExpensesByBranch(
 
   if (error) throw new Error(`[getExpensesByBranch] ${error.message}`)
   return data || []
+}
+
+// ============================================================
+// MANTENIMIENTO / ORDEN SEMANAL
+// ============================================================
+
+/** Config de aprobación de la sucursal (default 100% si no hay fila). */
+export async function getMaintenanceSettings(branchId: string): Promise<MaintenanceSettings> {
+  const { data, error } = await supabase
+    .from('maintenance_settings')
+    .select('*')
+    .eq('branch_id', branchId)
+    .maybeSingle()
+  if (error) throw new Error(`[getMaintenanceSettings] ${error.message}`)
+  return data ?? { branch_id: branchId, min_approval_pct: 100, updated_at: '' }
+}
+
+export async function upsertMaintenanceSettings(branchId: string, pct: number): Promise<void> {
+  const { error } = await supabase
+    .from('maintenance_settings')
+    .upsert({ branch_id: branchId, min_approval_pct: pct, updated_at: new Date().toISOString() }, { onConflict: 'branch_id' })
+  if (error) throw new Error(`[upsertMaintenanceSettings] ${error.message}`)
+}
+
+/** Plantilla editable: bloques (barbero + zona) con sus tareas, ordenados. */
+export async function getMaintenanceTemplate(branchId: string): Promise<MaintenanceTemplateBlockWithTasks[]> {
+  const { data, error } = await supabase
+    .from('maintenance_template_blocks')
+    .select('*, barber:profiles!barber_id ( id, full_name ), tasks:maintenance_template_tasks ( * )')
+    .eq('branch_id', branchId)
+    .order('sort_order', { ascending: true })
+  if (error) throw new Error(`[getMaintenanceTemplate] ${error.message}`)
+  const blocks = (data ?? []) as unknown as MaintenanceTemplateBlockWithTasks[]
+  // Ordenar las tareas de cada bloque por sort_order (el orden embebido no está garantizado)
+  blocks.forEach((b) => b.tasks.sort((a, z) => a.sort_order - z.sort_order))
+  return blocks
+}
+
+/**
+ * Guarda la plantilla completa (reemplazo): borra los bloques del branch (cascade a
+ * tareas) y reinserta. Los ids no importan porque las planillas guardan snapshot.
+ */
+export async function saveMaintenanceTemplate(
+  branchId: string,
+  blocks: MaintenanceTemplateDraftBlock[],
+): Promise<void> {
+  const { error: delErr } = await supabase
+    .from('maintenance_template_blocks')
+    .delete()
+    .eq('branch_id', branchId)
+  if (delErr) throw new Error(`[saveMaintenanceTemplate:delete] ${delErr.message}`)
+
+  if (blocks.length === 0) return
+
+  const blockRows = blocks.map((b, i) => ({
+    branch_id: branchId,
+    barber_id: b.barber_id,
+    zone_label: b.zone_label,
+    sort_order: i,
+  }))
+  const { data: inserted, error: insErr } = await supabase
+    .from('maintenance_template_blocks')
+    .insert(blockRows)
+    .select('id, barber_id')
+  if (insErr) throw new Error(`[saveMaintenanceTemplate:blocks] ${insErr.message}`)
+
+  const idByBarber = new Map((inserted ?? []).map((r) => [r.barber_id as string, r.id as string]))
+  const taskRows: Array<{ branch_id: string; block_id: string; item_number: number; description: string; sort_order: number }> = []
+  blocks.forEach((b) => {
+    const blockId = idByBarber.get(b.barber_id)
+    if (!blockId) return
+    b.tasks.forEach((t, j) => {
+      if (!t.description.trim()) return
+      taskRows.push({
+        branch_id: branchId,
+        block_id: blockId,
+        item_number: t.item_number,
+        description: t.description.trim(),
+        sort_order: j,
+      })
+    })
+  })
+  if (taskRows.length > 0) {
+    const { error: tErr } = await supabase.from('maintenance_template_tasks').insert(taskRows)
+    if (tErr) throw new Error(`[saveMaintenanceTemplate:tasks] ${tErr.message}`)
+  }
+}
+
+/** Planilla de una semana (con sus ítems), o null si todavía no se creó. */
+export async function getMaintenanceSheetByWeek(
+  branchId: string,
+  weekId: string,
+): Promise<MaintenanceSheetWithItems | null> {
+  const { data: sheet, error } = await supabase
+    .from('maintenance_sheets')
+    .select('*')
+    .eq('branch_id', branchId)
+    .eq('week_id', weekId)
+    .maybeSingle()
+  if (error) throw new Error(`[getMaintenanceSheetByWeek] ${error.message}`)
+  if (!sheet) return null
+
+  const { data: items, error: iErr } = await supabase
+    .from('maintenance_sheet_items')
+    .select('*')
+    .eq('sheet_id', sheet.id)
+    .order('sort_order', { ascending: true })
+  if (iErr) throw new Error(`[getMaintenanceSheetByWeek:items] ${iErr.message}`)
+
+  return { ...sheet, items: (items ?? []) as MaintenanceSheetItem[] }
+}
+
+/** Crea la planilla de la semana copiando la plantilla actual (snapshot de ítems). */
+export async function createMaintenanceSheetFromTemplate(
+  branchId: string,
+  weekId: string,
+  minPct: number,
+  createdBy: string,
+): Promise<MaintenanceSheetWithItems> {
+  const template = await getMaintenanceTemplate(branchId)
+  const hasTasks = template.some((b) => b.tasks.length > 0)
+  if (!hasTasks) {
+    throw new Error('La plantilla está vacía. Configurá las tareas por barbero antes de crear la planilla.')
+  }
+
+  const { data: sheet, error } = await supabase
+    .from('maintenance_sheets')
+    .insert({ branch_id: branchId, week_id: weekId, min_approval_pct: minPct, created_by: createdBy })
+    .select()
+    .single()
+  if (error) throw new Error(`[createMaintenanceSheetFromTemplate] ${error.message}`)
+
+  // sort_order es un índice GLOBAL creciente: mantiene a los barberos agrupados y en
+  // el orden de la plantilla al ordenar los ítems solo por sort_order.
+  const itemRows: Array<Omit<MaintenanceSheetItem, 'id' | 'created_at'>> = []
+  let order = 0
+  template.forEach((b) => {
+    b.tasks.forEach((t) => {
+      itemRows.push({
+        branch_id: branchId,
+        sheet_id: sheet.id,
+        barber_id: b.barber_id,
+        zone_label: b.zone_label,
+        item_number: t.item_number,
+        description: t.description,
+        done: false,
+        sort_order: order++,
+      })
+    })
+  })
+
+  let items: MaintenanceSheetItem[] = []
+  if (itemRows.length > 0) {
+    const { data: ins, error: iErr } = await supabase
+      .from('maintenance_sheet_items')
+      .insert(itemRows)
+      .select()
+    if (iErr) throw new Error(`[createMaintenanceSheetFromTemplate:items] ${iErr.message}`)
+    items = (ins ?? []) as MaintenanceSheetItem[]
+    items.sort((a, z) => a.sort_order - z.sort_order)
+  }
+
+  return { ...sheet, items }
+}
+
+/** Marca/desmarca el cumplimiento de una tarea de la planilla. */
+export async function setMaintenanceItemDone(itemId: string, done: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('maintenance_sheet_items')
+    .update({ done })
+    .eq('id', itemId)
+  if (error) throw new Error(`[setMaintenanceItemDone] ${error.message}`)
+}
+
+/** Cambia el % mínimo de aprobación de una planilla ya creada. */
+export async function setMaintenanceSheetMinPct(sheetId: string, pct: number): Promise<void> {
+  const { error } = await supabase
+    .from('maintenance_sheets')
+    .update({ min_approval_pct: pct, updated_at: new Date().toISOString() })
+    .eq('id', sheetId)
+  if (error) throw new Error(`[setMaintenanceSheetMinPct] ${error.message}`)
+}
+
+/** week_ids de la sucursal que ya tienen planilla (para marcar en el selector). */
+export async function getMaintenanceWeeksWithSheet(branchId: string): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('maintenance_sheets')
+    .select('week_id')
+    .eq('branch_id', branchId)
+  if (error) throw new Error(`[getMaintenanceWeeksWithSheet] ${error.message}`)
+  return (data ?? []).map((r) => r.week_id as string)
 }

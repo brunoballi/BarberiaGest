@@ -1,0 +1,137 @@
+// ============================================================
+// GENERADOR DE PDF — Planilla de Orden & Mantenimiento semanal
+// Usa jsPDF + jspdf-autotable (texto nítido, seleccionable).
+// Replica el formato del Excel: bloques por barbero con sus tareas,
+// check de cumplimiento y RESULTADO FINAL, + notas al pie.
+// ============================================================
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
+
+export interface MaintenanceTaskRow {
+  item_number: number
+  description: string
+  done: boolean
+}
+
+export interface MaintenanceBlock {
+  barberName: string
+  zoneLabel: string
+  tasks: MaintenanceTaskRow[]
+}
+
+export interface MaintenanceSheetOptions {
+  branchName: string
+  weekLabel: string       // "09 al 13 jun" o rango de la semana
+  minApprovalPct: number
+  blocks: MaintenanceBlock[]
+}
+
+const BARBERSHOP_NAME = 'Valhalla'
+
+// Notas fijas al pie de la planilla (replican el Excel original).
+const FOOTER_NOTES = [
+  'Los insumos (limpieza o barbería) se reponen los días lunes.',
+  'Tolerancia de la planilla semanal de cortes: hasta las 14 hs del lunes.',
+  'Todos los martes, al limpiar el calentador de toallas, se deben cambiar por toallas limpias.',
+]
+
+/** APROBADO si el % de tareas cumplidas alcanza el mínimo. */
+function blockResult(tasks: MaintenanceTaskRow[], minPct: number): { label: string; pct: number } {
+  if (tasks.length === 0) return { label: '—', pct: 0 }
+  const done = tasks.filter((t) => t.done).length
+  const pct = Math.round((done / tasks.length) * 100)
+  return { label: pct >= minPct ? 'APROBADO' : 'NO APROBADO', pct }
+}
+
+/**
+ * Genera y descarga el PDF de la planilla semanal. Client-side.
+ */
+export function generateMaintenanceSheet(options: MaintenanceSheetOptions): void {
+  const { branchName, weekLabel, minApprovalPct, blocks } = options
+
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' })
+  const pageWidth = doc.internal.pageSize.getWidth()
+  const pageHeight = doc.internal.pageSize.getHeight()
+
+  // ── Encabezado ──────────────────────────────────────────
+  doc.setFontSize(16)
+  doc.setTextColor(24, 24, 27)
+  doc.text(`${BARBERSHOP_NAME} · ${branchName}`, 14, 18)
+
+  doc.setFontSize(11)
+  doc.setTextColor(82, 82, 91)
+  doc.text('Planilla de orden & mantenimiento', 14, 25)
+  doc.setFontSize(10)
+  doc.setTextColor(113, 113, 122)
+  doc.text(`Semana ${weekLabel}  ·  Aprobación mínima: ${minApprovalPct}%`, 14, 31)
+  doc.text(`Generado: ${new Date().toLocaleString('es-AR')}`, pageWidth - 14, 18, { align: 'right' })
+
+  // ── Un bloque (tabla) por barbero ───────────────────────
+  let cursorY = 37
+  blocks.forEach((b) => {
+    const res = blockResult(b.tasks, minApprovalPct)
+
+    // Salto de página si no entra el encabezado del bloque
+    if (cursorY > pageHeight - 50) {
+      doc.addPage()
+      cursorY = 18
+    }
+
+    doc.setFontSize(11)
+    doc.setTextColor(24, 24, 27)
+    const zone = b.zoneLabel ? `${b.zoneLabel.toUpperCase()} — ` : ''
+    doc.text(`${zone}${b.barberName}`, 14, cursorY)
+    cursorY += 3
+
+    autoTable(doc, {
+      startY: cursorY,
+      head: [['N°', 'Tarea', 'Cumple']],
+      body: b.tasks.map((t) => [String(t.item_number), t.description, t.done ? 'SÍ' : 'NO']),
+      theme: 'striped',
+      headStyles: { fillColor: [63, 63, 70], textColor: [255, 255, 255], fontStyle: 'bold' },
+      columnStyles: {
+        0: { halign: 'center', cellWidth: 12 },
+        2: { halign: 'center', cellWidth: 20 },
+      },
+      styles: { fontSize: 9, cellPadding: 2.5 },
+      // Pinta la celda "Cumple" verde (SÍ) o rojo (NO)
+      didParseCell: (data) => {
+        if (data.section === 'body' && data.column.index === 2) {
+          const isYes = data.cell.raw === 'SÍ'
+          data.cell.styles.textColor = isYes ? [22, 163, 74] : [220, 38, 38]
+          data.cell.styles.fontStyle = 'bold'
+        }
+      },
+    })
+
+    // @ts-expect-error lastAutoTable lo agrega el plugin en runtime
+    const afterTableY: number = doc.lastAutoTable.finalY
+    doc.setFontSize(10)
+    const approved = res.label === 'APROBADO'
+    doc.setTextColor(...(res.label === '—' ? [113, 113, 122] : approved ? [22, 163, 74] : [220, 38, 38]) as [number, number, number])
+    doc.text(`RESULTADO: ${res.label}${res.label === '—' ? '' : ` (${res.pct}%)`}`, 14, afterTableY + 6)
+    cursorY = afterTableY + 14
+  })
+
+  // ── Notas al pie ────────────────────────────────────────
+  if (cursorY > pageHeight - 40) {
+    doc.addPage()
+    cursorY = 18
+  }
+  doc.setDrawColor(212, 212, 216)
+  doc.line(14, cursorY, pageWidth - 14, cursorY)
+  cursorY += 6
+  doc.setFontSize(9)
+  doc.setTextColor(82, 82, 91)
+  doc.text('Notas:', 14, cursorY)
+  cursorY += 5
+  doc.setTextColor(113, 113, 122)
+  FOOTER_NOTES.forEach((note) => {
+    const lines = doc.splitTextToSize(`•  ${note}`, pageWidth - 28)
+    doc.text(lines, 16, cursorY)
+    cursorY += lines.length * 4.5
+  })
+
+  const safeWeek = weekLabel.replace(/\s+/g, '-').toLowerCase()
+  doc.save(`mantenimiento-${safeWeek}.pdf`)
+}

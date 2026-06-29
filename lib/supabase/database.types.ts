@@ -498,3 +498,78 @@ export const ADVANCE_STATUS_LABELS: Record<AdvanceStatus, string> = {
   deducted:  'Descontado',
   cancelled: 'Cancelado',
 }
+
+// ============================================================
+// MANTENIMIENTO / ORDEN SEMANAL
+// ============================================================
+
+/** Config de aprobación por sucursal */
+export interface MaintenanceSettings {
+  branch_id: string
+  min_approval_pct: number
+  updated_at: string
+}
+
+/** Bloque de plantilla: una zona asignada a un barbero */
+export interface MaintenanceTemplateBlock {
+  id: string
+  branch_id: string
+  barber_id: string
+  zone_label: string
+  sort_order: number
+  created_at: string
+}
+
+/** Tarea de la plantilla (N° + descripción) */
+export interface MaintenanceTemplateTask {
+  id: string
+  branch_id: string
+  block_id: string
+  item_number: number
+  description: string
+  sort_order: number
+  created_at: string
+}
+
+/** Planilla semanal (instancia atada a una semana) */
+export interface MaintenanceSheet {
+  id: string
+  branch_id: string
+  week_id: string
+  min_approval_pct: number
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** Ítem de una planilla semanal (snapshot de la plantilla + check) */
+export interface MaintenanceSheetItem {
+  id: string
+  branch_id: string
+  sheet_id: string
+  barber_id: string
+  zone_label: string
+  item_number: number
+  description: string
+  done: boolean
+  sort_order: number
+  created_at: string
+}
+
+/** Bloque de plantilla con sus tareas (para edición) */
+export interface MaintenanceTemplateBlockWithTasks extends MaintenanceTemplateBlock {
+  barber: Pick<Profile, 'id' | 'full_name'>
+  tasks: MaintenanceTemplateTask[]
+}
+
+/** Planilla semanal con sus ítems (para carga / PDF) */
+export interface MaintenanceSheetWithItems extends MaintenanceSheet {
+  items: MaintenanceSheetItem[]
+}
+
+/** Borrador de plantilla en la UI (antes de guardar) */
+export interface MaintenanceTemplateDraftBlock {
+  barber_id: string
+  zone_label: string
+  tasks: { item_number: number; description: string }[]
+}
