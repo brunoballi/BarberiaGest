@@ -230,53 +230,19 @@ export default function ReportesView() {
         </div>
       </div>
 
-      {/* ── Ganancia neta del mes (saldo inicial + ingresos + inyecciones − gastos) ── */}
+      {/* ── Historial de inversiones (inyección de dinero) ── */}
       {monthFins.length > 0 && (
         <section className="report-section">
-          <h2 className="report-section__title">Ganancia neta del mes</h2>
+          <h2 className="report-section__title">Historial de inversiones</h2>
           <div className="report-cards-grid">
-            {monthFins.map(({ branchId, branchName, fin, monthId }) => (
+            {monthFins.map(({ branchId, branchName, monthId }) => (
               <div key={branchId} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
                 <p className="font-bold text-zinc-100 mb-3">{branchName}</p>
-                <div className="space-y-1.5 text-sm">
-                  <div className="flex justify-between">
-                    <span className="text-zinc-400">Saldo inicial</span>
-                    <span className={fin.initialBalance < 0 ? 'text-red-400' : 'text-zinc-200'}>{formatARS(fin.initialBalance)}</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-zinc-400">+ Ingresos barbería <em className="text-zinc-600 not-italic">(comisiones + box)</em></span>
-                    <span className="text-emerald-400">{formatARS(fin.branchIncome)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs text-zinc-500">
-                    <span className="pl-4">· Comisiones de cortes</span>
-                    <span>{formatARS(fin.branchShareCuts)}</span>
-                  </div>
-                  <div className="flex justify-between text-xs text-zinc-500">
-                    <span className="pl-4">· Alquileres de box</span>
-                    <span>{formatARS(fin.boxRentTotal)}</span>
-                  </div>
-                  {fin.capitalInjections > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-zinc-400">+ Inyecciones de capital</span>
-                      <span className="text-blue-400">{formatARS(fin.capitalInjections)}</span>
-                    </div>
-                  )}
-                  <div className="flex justify-between">
-                    <span className="text-zinc-400">− Gastos del mes</span>
-                    <span className="text-red-400">{formatARS(fin.totalExpenses)}</span>
-                  </div>
-                  <div className="flex justify-between pt-2 border-t border-zinc-800 font-bold">
-                    <span className="text-zinc-200">= Ganancia neta del mes</span>
-                    <span className={fin.netProfit < 0 ? 'text-red-400' : 'text-emerald-400'}>{formatARS(fin.netProfit)}</span>
-                  </div>
-                  <div className="pt-3 border-t border-zinc-800">
-                    <CapitalInjectionsView
-                      branchId={branchId}
-                      monthId={monthId}
-                      onInjectionChange={() => load()}
-                    />
-                  </div>
-                </div>
+                <CapitalInjectionsView
+                  branchId={branchId}
+                  monthId={monthId}
+                  onInjectionChange={() => load()}
+                />
               </div>
             ))}
           </div>
