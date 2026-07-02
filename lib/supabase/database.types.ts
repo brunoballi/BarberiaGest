@@ -352,7 +352,7 @@ export type ExpenseForm = Omit<Expense, 'id' | 'created_at' | 'registered_by' | 
 
 /** Transaction con datos del barbero y servicio (para admin dashboard) */
 export interface TransactionWithRelations extends Transaction {
-  barber: Pick<Profile, 'id' | 'full_name' | 'compensation_type' | 'receives_transfers'>
+  barber: Pick<Profile, 'id' | 'full_name' | 'compensation_type' | 'receives_transfers' | 'box_rental_amount'>
   service: Pick<ServiceCatalog, 'id' | 'name'> | null
 }
 

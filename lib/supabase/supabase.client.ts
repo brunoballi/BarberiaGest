@@ -846,16 +846,34 @@ export async function registerCut(
   createdBy?: string,
 ): Promise<Transaction> {
   const commissionRate = barber.commission_rate ?? 0.5
-  // Alquiler de box: el barbero se queda el 100% de cada corte; la barbería no toma
-  // nada del corte (su ingreso es el alquiler, que se carga en la liquidación).
   const isBoxRental = barber.compensation_type === 'box_rental'
   // La comisión del barbero es el % sobre el monto facturado (ya con el
   // descuento aplicado). El descuento lo absorben barbero y barbería en
   // proporción a su split: cada uno su % sobre el monto efectivamente cobrado.
   const barberShareRaw = Number((payload.amount * commissionRate).toFixed(2))
+
   // Constraints DB: barber_share >= 0, branch_share >= 0, branch_share + barber_share = amount.
-  const barberShare = isBoxRental ? payload.amount : Math.max(0, Math.min(barberShareRaw, payload.amount))
-  const branchShare = isBoxRental ? 0 : Number((payload.amount - barberShare).toFixed(2))
+  let barberShare: number
+  let branchShare: number
+  if (isBoxRental) {
+    // Alquiler de box DIARIO: los primeros $box_rental_amount de cortes de cada día
+    // saldan el alquiler (van a la barbería); lo que exceda ese monto es del barbero.
+    // Partimos ESTE corte según el acumulado del día previo a él.
+    const dailyRent = barber.box_rental_amount ?? 0
+    const { data: prior, error: pErr } = await supabase
+      .from('transactions')
+      .select('amount')
+      .eq('barber_id', barber.id)
+      .eq('transaction_date', payload.transaction_date)
+    if (pErr) throw new Error(`[registerCut] acumulado del día: ${pErr.message}`)
+    const accumulatedToday = (prior ?? []).reduce((s, t) => s + Number(t.amount), 0)
+    const toShop = Math.min(payload.amount, Math.max(0, dailyRent - accumulatedToday))
+    branchShare = Number(toShop.toFixed(2))
+    barberShare = Number((payload.amount - toShop).toFixed(2))
+  } else {
+    barberShare = Math.max(0, Math.min(barberShareRaw, payload.amount))
+    branchShare = Number((payload.amount - barberShare).toFixed(2))
+  }
 
   // ── Split payment: si vienen montos parciales, los usamos.
   // Si no, cae todo al payment_method principal.
@@ -877,12 +895,13 @@ export async function registerCut(
   //   - ya cobrado < lo que le corresponde  → la barbería le debe al barbero
   // Si NO recibe transferencias, la plata va a la cuenta de Valhalla → ya cobrado = 0.
   // Efectivo/tarjeta no se acreditan a la cuenta del barbero → no suman a "ya cobrado".
-  // box_rental: ya tiene el 100% del corte (efectivo o transferencia).
+  // box_rental: se queda su parte del corte (lo que excede el alquiler diario),
+  // ya sea efectivo o transferencia; la parte de alquiler (branchShare) va a la barbería.
   const barberAlreadyCollected: number =
     payload.barber_already_collected_override !== undefined
       ? payload.barber_already_collected_override
       : isBoxRental
-      ? payload.amount
+      ? barberShare
       : barber.receives_transfers
       ? transferAmount
       : 0
@@ -935,8 +954,28 @@ export async function updateCut(
   const commissionRate = barber.commission_rate ?? 0.5
   const isBoxRental = barber.compensation_type === 'box_rental'
   const barberShareRaw = Number((payload.amount * commissionRate).toFixed(2))
-  const barberShare = isBoxRental ? payload.amount : Math.max(0, Math.min(barberShareRaw, payload.amount))
-  const branchShare = isBoxRental ? 0 : Number((payload.amount - barberShare).toFixed(2))
+
+  let barberShare: number
+  let branchShare: number
+  if (isBoxRental) {
+    // Alquiler de box DIARIO (mismo criterio que registerCut). Acumulado del día
+    // considerando los OTROS cortes de esa fecha (excluye el que estamos editando).
+    const dailyRent = barber.box_rental_amount ?? 0
+    const { data: prior, error: pErr } = await supabase
+      .from('transactions')
+      .select('amount')
+      .eq('barber_id', barber.id)
+      .eq('transaction_date', payload.transaction_date)
+      .neq('id', txId)
+    if (pErr) throw new Error(`[updateCut] acumulado del día: ${pErr.message}`)
+    const accumulatedToday = (prior ?? []).reduce((s, t) => s + Number(t.amount), 0)
+    const toShop = Math.min(payload.amount, Math.max(0, dailyRent - accumulatedToday))
+    branchShare = Number(toShop.toFixed(2))
+    barberShare = Number((payload.amount - toShop).toFixed(2))
+  } else {
+    barberShare = Math.max(0, Math.min(barberShareRaw, payload.amount))
+    branchShare = Number((payload.amount - barberShare).toFixed(2))
+  }
 
   const cashAmount     = payload.cash_amount     ?? (payload.payment_method === 'cash'     ? payload.amount : 0)
   const transferAmount = payload.transfer_amount ?? (payload.payment_method === 'transfer' ? payload.amount : 0)
@@ -951,7 +990,7 @@ export async function updateCut(
     payload.barber_already_collected_override !== undefined
       ? payload.barber_already_collected_override
       : isBoxRental
-      ? payload.amount
+      ? barberShare
       : barber.receives_transfers
       ? transferAmount
       : 0
@@ -973,6 +1012,10 @@ export async function updateCut(
     discount_amount: payload.discount_amount ?? 0,
     discount_reason: payload.discount_reason ?? null,
     benefit_id: payload.benefit_id ?? null,
+    // Una edición del barbero NO es un override de admin: reseteamos el flag para
+    // cumplir la RLS del barbero (WITH CHECK exige is_manual_override = false) y
+    // permitir re-editar cortes que el admin haya tocado antes.
+    is_manual_override: false,
   }
 
   const { data, error } = await supabase
@@ -983,7 +1026,58 @@ export async function updateCut(
     .single()
 
   if (error) throw new Error(`[updateCut] ${error.message}`)
+
+  // Box_rental: editar un corte cambia el umbral del día, así que el split (alquiler
+  // vs barbero) de TODOS los cortes de esa fecha se puede correr. Recalculamos el día
+  // completo en orden cronológico y devolvemos el corte editado ya actualizado.
+  if (isBoxRental) {
+    await resyncBoxRentalDaySplits(barber.id, payload.transaction_date, barber.box_rental_amount ?? 0, true)
+    const { data: fresh, error: fErr } = await supabase
+      .from('transactions').select().eq('id', txId).single()
+    if (fErr) throw new Error(`[updateCut] refetch: ${fErr.message}`)
+    return fresh
+  }
   return data
+}
+
+/**
+ * Recalcula el reparto alquiler/barbero de TODOS los cortes de un barbero box_rental
+ * en un día, en orden cronológico: los primeros $dailyRent van a la barbería y el
+ * resto al barbero. Se usa tras editar un corte (el umbral del día se corre).
+ */
+async function resyncBoxRentalDaySplits(
+  barberId: string,
+  date: string,
+  dailyRent: number,
+  // Edición del barbero: resetea is_manual_override para cumplir su RLS (WITH CHECK
+  // exige false). Edición del admin: lo deja como está (preserva el flag de auditoría).
+  clearOverride: boolean,
+): Promise<void> {
+  const { data: cuts, error } = await supabase
+    .from('transactions')
+    .select('id, amount')
+    .eq('barber_id', barberId)
+    .eq('transaction_date', date)
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+  if (error) throw new Error(`[resyncBoxRentalDaySplits] ${error.message}`)
+  let acc = 0
+  for (const c of cuts ?? []) {
+    const amt = Number(c.amount)
+    const toShop = Math.min(amt, Math.max(0, dailyRent - acc))
+    const branch = Number(toShop.toFixed(2))
+    const barber = Number((amt - toShop).toFixed(2))
+    acc += amt
+    const patch: Record<string, number | boolean> = {
+      branch_share: branch, barber_share: barber, barber_already_collected: barber,
+    }
+    if (clearOverride) patch.is_manual_override = false
+    const { error: uErr } = await supabase
+      .from('transactions')
+      .update(patch)
+      .eq('id', c.id)
+    if (uErr) throw new Error(`[resyncBoxRentalDaySplits] ${uErr.message}`)
+  }
 }
 
 /**
@@ -1054,7 +1148,7 @@ export async function getWeekTransactions(
       commission_rate_snapshot, is_manual_override, override_notes,
       created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount,
       client_name, client_surname, discount_amount, discount_reason, benefit_id,
-      barber:profiles!barber_id ( id, full_name, compensation_type, receives_transfers ),
+      barber:profiles!barber_id ( id, full_name, compensation_type, receives_transfers, box_rental_amount ),
       service:service_catalog!service_id ( id, name )
     `)
     .eq('week_id', weekId)
@@ -1131,6 +1225,43 @@ export async function fullEditTransaction(
     .update({ ...updates, is_manual_override: true })
     .eq('id', txId)
   if (error) throw new Error(`[fullEditTransaction] ${error.message}`)
+
+  // Box_rental: editar corre el umbral del día → recalcular el reparto alquiler/barbero
+  // de TODOS los cortes de esa fecha (fuente de verdad del split diario).
+  const { data: row } = await supabase
+    .from('transactions')
+    .select('barber_id, transaction_date, barber:profiles!barber_id ( compensation_type, box_rental_amount )')
+    .eq('id', txId)
+    .single()
+  const b = (row as { barber?: { compensation_type?: string; box_rental_amount?: number | null } } | null)?.barber
+  if (b?.compensation_type === 'box_rental') {
+    await resyncBoxRentalDaySplits(
+      (row as { barber_id: string }).barber_id,
+      (row as { transaction_date: string }).transaction_date,
+      Number(b.box_rental_amount ?? 0),
+      false, // admin: preserva el flag is_manual_override que ya fijó fullEditTransaction
+    )
+  }
+}
+
+/**
+ * Suma facturada (amount) de un barbero en una fecha. `excludeTxId` permite excluir
+ * el corte que se está editando para calcular el acumulado "previo" del día.
+ */
+export async function getBarberDayGross(
+  barberId: string,
+  date: string,
+  excludeTxId?: string,
+): Promise<number> {
+  let q = supabase
+    .from('transactions')
+    .select('amount')
+    .eq('barber_id', barberId)
+    .eq('transaction_date', date)
+  if (excludeTxId) q = q.neq('id', excludeTxId)
+  const { data, error } = await q
+  if (error) throw new Error(`[getBarberDayGross] ${error.message}`)
+  return (data ?? []).reduce((s, t) => s + Number(t.amount), 0)
 }
 
 /**

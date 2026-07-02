@@ -176,7 +176,16 @@ function CompensationFields({
     return salaryFields
   }
 
-  return moneyInput('Alquiler mensual ($)', 'box_rental_amount', form.box_rental_amount)
+  // Alquiler de box DIARIO: los primeros $X de cortes de cada día van a la barbería
+  // (saldan el alquiler); superado ese monto, el resto del día es del barbero.
+  return (
+    <div className="space-y-1.5">
+      {moneyInput('Alquiler diario ($)', 'box_rental_amount', form.box_rental_amount)}
+      <p className="text-xs text-zinc-500">
+        Los cortes del día saldan primero este monto para la barbería; lo que exceda queda para el barbero.
+      </p>
+    </div>
+  )
 }
 
 // ─── Main component ────────────────────────────────────────────────────────
@@ -292,10 +301,11 @@ export default function BarbersAbm() {
           inviteForm.objetivo_min_cuts ? parseInt(inviteForm.objetivo_min_cuts, 10) : null,
         box_rental_amount:
           inviteForm.box_rental_amount ? parseFloat(inviteForm.box_rental_amount) : null,
-        receives_transfers: inviteForm.receives_transfers,
-        advance_enabled: inviteForm.advance_enabled,
+        // Box_rental: transferencias y adelantos no aplican → valores neutros.
+        receives_transfers: inviteForm.compensation_type === 'box_rental' ? true : inviteForm.receives_transfers,
+        advance_enabled: inviteForm.compensation_type === 'box_rental' ? false : inviteForm.advance_enabled,
         advance_limit:
-          inviteForm.advance_enabled && inviteForm.advance_limit
+          inviteForm.compensation_type !== 'box_rental' && inviteForm.advance_enabled && inviteForm.advance_limit
             ? parseFloat(inviteForm.advance_limit)
             : 0,
       }
@@ -364,9 +374,10 @@ export default function BarbersAbm() {
         objetivo_rate: editForm.objetivo_rate ? parseFloat(editForm.objetivo_rate) / 100 : null,
         objetivo_min_cuts: editForm.objetivo_min_cuts ? parseInt(editForm.objetivo_min_cuts, 10) : null,
         box_rental_amount: editForm.box_rental_amount ? parseFloat(editForm.box_rental_amount) : null,
-        receives_transfers: editForm.receives_transfers,
-        advance_enabled: editForm.advance_enabled,
-        advance_limit: editForm.advance_enabled && editForm.advance_limit
+        // Box_rental: transferencias y adelantos no aplican → valores neutros.
+        receives_transfers: editForm.compensation_type === 'box_rental' ? true : editForm.receives_transfers,
+        advance_enabled: editForm.compensation_type === 'box_rental' ? false : editForm.advance_enabled,
+        advance_limit: editForm.compensation_type !== 'box_rental' && editForm.advance_enabled && editForm.advance_limit
           ? parseFloat(editForm.advance_limit)
           : 0,
       }
@@ -635,6 +646,10 @@ export default function BarbersAbm() {
               }
             />
 
+            {/* Transferencias y adelantos: NO aplican a alquiler de box (el barbero
+                maneja su plata y el alquiler se salda con los cortes del día). */}
+            {inviteForm.compensation_type !== 'box_rental' && (
+            <>
             {/* Transferencias */}
             <div className="bg-zinc-800/40 border border-zinc-700 rounded-lg px-4 py-3">
               <label className="flex items-start gap-3 cursor-pointer">
@@ -691,6 +706,8 @@ export default function BarbersAbm() {
                 </div>
               )}
             </div>
+            </>
+            )}
 
             {inviteError && <p className="text-red-400 text-sm">{inviteError}</p>}
 
@@ -789,6 +806,9 @@ export default function BarbersAbm() {
                 </div>
               </div>
 
+              {/* Transferencias y adelantos: NO aplican a alquiler de box. */}
+              {editForm.compensation_type !== 'box_rental' && (
+              <>
               {/* Mejora 3: configuración de transferencias */}
               <div className="bg-zinc-800/40 border border-zinc-700 rounded-lg px-4 py-3">
                 <label className="flex items-start gap-3 cursor-pointer">
@@ -845,6 +865,8 @@ export default function BarbersAbm() {
                   </div>
                 )}
               </div>
+              </>
+              )}
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
@@ -1117,7 +1139,7 @@ function BarberRow({
         ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(b.base_salary_rate)
         : '—'
     return b.box_rental_amount != null
-      ? new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(b.box_rental_amount)
+      ? `${new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS', maximumFractionDigits: 0 }).format(b.box_rental_amount)}/día`
       : '—'
   }
 

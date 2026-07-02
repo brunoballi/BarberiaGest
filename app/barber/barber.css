@@ -192,6 +192,42 @@
 }
 .settl-page-btn:not(:disabled):hover { border-color: #f59e0b; color: #f59e0b; }
 
+/* ─── Totalizador de liquidaciones del mes ──────────────────── */
+.settl-total {
+  margin: 0 1.25rem;
+  padding: 0.75rem 0.875rem;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+.settl-total__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 0.15rem;
+}
+.settl-total__title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #a1a1aa;
+}
+.settl-total__meta { font-size: 0.7rem; color: #71717a; }
+.settl-total__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+}
+.settl-total__label { color: #a1a1aa; }
+.settl-total__val { color: #e4e4e7; font-weight: 600; }
+.settl-total__net { color: #f59e0b; font-weight: 800; font-size: 1rem; }
+.settl-total__net--neg { color: #f87171; }
+
 /* ─── Bloques de días de la semana ──────────────────────────── */
 .day-blocks {
   display: grid;
@@ -383,6 +419,28 @@
   padding-top: 0.55rem;
   border-top: 1px solid #27272a;
 }
+/* Box_rental: estado del alquiler diario del día (saldado / falta saldar) */
+.rent-status {
+  grid-column: 1 / -1;
+  margin-top: 0.55rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  text-align: center;
+  border: 1px solid transparent;
+}
+.rent-status strong { font-weight: 800; }
+.rent-status--ok {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.1);
+  border-color: rgba(52, 211, 153, 0.3);
+}
+.rent-status--due {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.1);
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
 .filter-summary__chip {
   display: inline-flex;
   align-items: center;
@@ -774,6 +832,49 @@
 }
 .amount-input::placeholder {
   color: #3f3f46;
+}
+
+/* Variante compacta para campos de split payment (columnas mitad de ancho) */
+.amount-input-wrapper--split {
+  padding: 0 0.625rem;
+  min-height: 44px;
+}
+.amount-prefix--split {
+  font-size: 1rem;
+  padding-right: 0.25rem;
+}
+.amount-input--split {
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0.5rem 0;
+}
+
+/* ── Box_rental: panel de alquiler diario ─────────────────────────── */
+.box-rent-panel {
+  background: #18181b;
+  border: 1px solid #27272a;
+  border-radius: 0.75rem;
+  padding: 0.75rem 0.875rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.box-rent-panel__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.8125rem;
+  color: #d4d4d8;
+}
+.box-rent-panel__row--muted { color: #71717a; font-size: 0.75rem; }
+.box-rent-panel__rent { font-weight: 700; color: #f4f4f5; }
+.box-rent-panel__shop { font-weight: 700; color: #60a5fa; }
+.box-rent-panel__mine { font-weight: 700; color: #34d399; }
+.box-rent-panel__divider { height: 1px; background: #27272a; margin: 0.15rem 0; }
+.box-rent-panel__hint {
+  font-size: 0.72rem;
+  color: #fbbf24;
+  margin-top: 0.15rem;
 }
 
 /* Preview row (amount + barber share) */

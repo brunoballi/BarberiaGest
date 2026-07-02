@@ -333,11 +333,31 @@ export default function BarberMobileView() {
     ? parseFloat(customAmount)
     : selectedServiceData?.base_price ?? 0
 
+  // Box_rental: alquiler de box DIARIO. Los primeros $box_rental_amount de cortes
+  // de cada día saldan el alquiler (van a la barbería); lo que exceda es del barbero.
+  // Las transferencias se reflejan hacia el barbero (el alquiler se concilia en la
+  // liquidación), así que no pedimos datos para transferencia a Valhalla.
+  const isBoxRental = profile?.compensation_type === 'box_rental'
+  const dailyRent = profile?.box_rental_amount ?? 0
   const commissionRate = profile?.commission_rate ?? 0.5
+  const receivesTransfers = isBoxRental ? true : (profile?.receives_transfers ?? true)
+  // Los barberos de alquiler de box NO piden adelantos (su circuito es el alquiler diario).
+  const advancesAllowed = !isBoxRental && (profile?.advance_enabled ?? false)
   // Aplicar descuento al amount efectivo (lo que paga el cliente)
   const discountNum = parseFloat(discountAmount) || 0
   const effectiveAmount = Math.max(0, resolvedAmount - discountNum)
   const selectedBenefit = benefits.find((b) => b.id === benefitId)
+
+  // Acumulado del día del corte (registro = hoy; edición = fecha original), excluyendo
+  // el corte que se está editando. Sirve para saber cuánto de este corte salda alquiler.
+  const cutDate = editingTx ? editingTx.transaction_date : today
+  const accumulatedForCutDate = transactions
+    .filter((t) => t.transaction_date === cutDate && t.id !== editingTx?.id)
+    .reduce((s, t) => s + t.amount, 0)
+  const rentRemaining = Math.max(0, dailyRent - accumulatedForCutDate)
+  // Parte de ESTE corte que va a la barbería (alquiler) y parte que queda para el barbero.
+  const boxToShop = isBoxRental ? Math.min(effectiveAmount, rentRemaining) : 0
+  const boxToBarber = Math.max(0, effectiveAmount - boxToShop)
 
   // Mejora 1: al elegir un beneficio, pre-rellenar descuento y motivo (50/50 sin cambios)
   useEffect(() => {
@@ -362,7 +382,10 @@ export default function BarberMobileView() {
   }, [effectiveAmount, splitPayment, editingTx])
 
   // Comisión = % sobre el monto facturado (ya con el descuento aplicado).
-  const previewBarberShare = Math.max(0, Math.round(effectiveAmount * commissionRate))
+  // Box_rental: la "parte del barbero" es lo que excede el alquiler diario.
+  const previewBarberShare = isBoxRental
+    ? Math.max(0, Math.round(boxToBarber))
+    : Math.max(0, Math.round(effectiveAmount * commissionRate))
   // Transferencia → barbero ya tiene su parte; efectivo → queda en caja
   const previewAlreadyCollected = paymentMethod === 'transfer' ? previewBarberShare : 0
 
@@ -370,7 +393,7 @@ export default function BarberMobileView() {
   // cuenta de Valhalla. En ese caso pedimos nombre + apellido del cliente para que
   // el dueño pueda verificar contra el home banking.
   const transferGoesToValhalla =
-    !(profile?.receives_transfers ?? true) &&
+    !receivesTransfers &&
     (splitPayment ? (parseFloat(transferPart) || 0) > 0 : paymentMethod === 'transfer')
 
   async function handleSubmit() {
@@ -444,9 +467,20 @@ export default function BarberMobileView() {
       }
       if (editingTx) {
         const updated = await updateCut(editingTx.id, payload, profile)
-        // Reflejar el cambio en ambas listas (semana actual y filtro por rango)
-        setTransactions((prev) => prev.map((t) => t.id === updated.id ? updated : t))
-        setFilteredTxs((prev) => prev ? prev.map((t) => t.id === updated.id ? updated : t) : prev)
+        if (isBoxRental) {
+          // Editar corre el umbral del día → el split de TODOS los cortes del día pudo
+          // cambiar. Refrescamos la semana completa (y el rango si está activo).
+          const txs = await getBarberTransactionsForWeek(profile.id, week.id)
+          setTransactions(txs)
+          if (filteredTxs && filterFrom && filterTo) {
+            const data = await getBarberTransactionsByDateRange(profile.id, filterFrom, filterTo)
+            setFilteredTxs(data)
+          }
+        } else {
+          // Reflejar el cambio en ambas listas (semana actual y filtro por rango)
+          setTransactions((prev) => prev.map((t) => t.id === updated.id ? updated : t))
+          setFilteredTxs((prev) => prev ? prev.map((t) => t.id === updated.id ? updated : t) : prev)
+        }
         setEditingTx(null)
         setView('home')
       } else {
@@ -495,6 +529,7 @@ export default function BarberMobileView() {
 
   async function handleRequestAdvance() {
     if (!profile) return
+    if (isBoxRental) { setAdvanceError('Los barberos de alquiler de box no piden adelantos.'); return }
     if (!profile.advance_enabled) { setAdvanceError('No tenés adelantos habilitados. Contactá al admin.'); return }
     const amount = parseFloat(advanceAmount)
     if (!amount || amount <= 0) { setAdvanceError('Ingresá un monto válido'); return }
@@ -798,10 +833,44 @@ export default function BarberMobileView() {
                 style={{ opacity: 0.6, cursor: 'not-allowed' }}
               />
             </div>
-            {effectiveAmount > 0 && (
+            {effectiveAmount > 0 && !isBoxRental && (
               <div className="preview-row mt-3">
                 <span className="text-zinc-400 text-sm">Tu parte ({Math.round(commissionRate * 100)}%)</span>
                 <span className="text-amber-400 font-bold text-lg">{formatARS(previewBarberShare)}</span>
+              </div>
+            )}
+
+            {/* ── Box_rental: progreso del alquiler diario + reparto de este corte ── */}
+            {isBoxRental && dailyRent > 0 && (
+              <div className="box-rent-panel mt-3">
+                <div className="box-rent-panel__row">
+                  <span>Alquiler del día</span>
+                  <span className="box-rent-panel__rent">{formatARS(dailyRent)}</span>
+                </div>
+                <div className="box-rent-panel__row box-rent-panel__row--muted">
+                  <span>Ya saldado con cortes previos</span>
+                  <span>{formatARS(Math.min(accumulatedForCutDate, dailyRent))}</span>
+                </div>
+                {effectiveAmount > 0 && (
+                  <>
+                    <div className="box-rent-panel__divider" />
+                    {boxToShop > 0 && (
+                      <div className="box-rent-panel__row">
+                        <span>De este corte → barbería (alquiler)</span>
+                        <span className="box-rent-panel__shop">{formatARS(boxToShop)}</span>
+                      </div>
+                    )}
+                    <div className="box-rent-panel__row">
+                      <span>De este corte → tuyo</span>
+                      <span className="box-rent-panel__mine">{formatARS(previewBarberShare)}</span>
+                    </div>
+                    {rentRemaining > effectiveAmount && (
+                      <p className="box-rent-panel__hint">
+                        Todavía falta saldar {formatARS(rentRemaining - effectiveAmount)} del alquiler de hoy.
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
             )}
           </section>
@@ -914,7 +983,7 @@ export default function BarberMobileView() {
                   >
                     <Icon />
                     <span className="text-xs mt-1">{label}</span>
-                    {paymentMethod === method && method !== 'cash' && resolvedAmount > 0 && (
+                    {!isBoxRental && paymentMethod === method && method !== 'cash' && resolvedAmount > 0 && (
                       <span className="text-xs text-emerald-400 mt-0.5">Ya en tu cuenta</span>
                     )}
                   </button>
@@ -951,8 +1020,8 @@ export default function BarberMobileView() {
               <div className="grid grid-cols-2 gap-2 mt-3">
                 <div>
                   <p className="text-xs text-zinc-500 mb-1">Efectivo</p>
-                  <div className="amount-input-wrapper">
-                    <span className="amount-prefix">$</span>
+                  <div className="amount-input-wrapper amount-input-wrapper--split">
+                    <span className="amount-prefix amount-prefix--split">$</span>
                     <CurrencyInput
                       placeholder="0"
                       value={cashPart}
@@ -961,14 +1030,14 @@ export default function BarberMobileView() {
                         const rest = effectiveAmount - (parseFloat(v) || 0)
                         if (rest >= 0) setTransferPart(String(Math.round(rest)))
                       }}
-                      className="amount-input"
+                      className="amount-input amount-input--split"
                     />
                   </div>
                 </div>
                 <div>
                   <p className="text-xs text-zinc-500 mb-1">Transferencia</p>
-                  <div className="amount-input-wrapper">
-                    <span className="amount-prefix">$</span>
+                  <div className="amount-input-wrapper amount-input-wrapper--split">
+                    <span className="amount-prefix amount-prefix--split">$</span>
                     <CurrencyInput
                       placeholder="0"
                       value={transferPart}
@@ -977,7 +1046,7 @@ export default function BarberMobileView() {
                         const rest = effectiveAmount - (parseFloat(v) || 0)
                         if (rest >= 0) setCashPart(String(Math.round(rest)))
                       }}
-                      className="amount-input"
+                      className="amount-input amount-input--split"
                     />
                   </div>
                 </div>
@@ -1007,15 +1076,21 @@ export default function BarberMobileView() {
                   {splitPayment ? `Mixto: ${formatARS(cashNum)} ef + ${formatARS(transferNum)} transf` : PAYMENT_METHOD_LABELS[paymentMethod!]}
                 </span>
               </div>
+              {isBoxRental && boxToShop > 0 && (
+                <div className="flex justify-between text-sm">
+                  <span className="text-zinc-400">A la barbería (alquiler)</span>
+                  <span className="text-sky-400 font-semibold">{formatARS(boxToShop)}</span>
+                </div>
+              )}
               <div className="divider" />
               <div className="flex justify-between">
                 <span className="text-zinc-400 text-sm">Tu parte</span>
                 <span className="text-amber-400 font-bold text-lg">{formatARS(previewBarberShare)}</span>
               </div>
-              {!splitPayment && paymentMethod === 'transfer' && (
+              {!isBoxRental && !splitPayment && paymentMethod === 'transfer' && (
                 <p className="text-xs text-emerald-400 text-right">Ya depositado en tu cuenta</p>
               )}
-              {splitPayment && transferNum > 0 && (
+              {!isBoxRental && splitPayment && transferNum > 0 && (
                 <p className="text-xs text-emerald-400 text-right">{formatARS(transferNum)} ya en tu cuenta</p>
               )}
             </div>
@@ -1077,6 +1152,11 @@ export default function BarberMobileView() {
       (!settlFilterWeek || s.week_id === settlFilterWeek) &&
       (!settlFilterStatus || s.status === settlFilterStatus)
     )
+
+    // ── Totalizador del mes (acumula TODAS las semanas del filtro, no solo la página) ──
+    const totalNet   = filtered.reduce((sum, s) => sum + s.net_payable, 0)
+    const totalGross = filtered.reduce((sum, s) => sum + s.gross_amount, 0)
+    const totalCuts  = filtered.reduce((sum, s) => sum + s.total_cuts, 0)
 
     // ── Paginación ──
     const pageCount = Math.max(1, Math.ceil(filtered.length / SETTL_PAGE_SIZE))
@@ -1221,6 +1301,26 @@ export default function BarberMobileView() {
           })}
         </div>
 
+        {/* Totalizador del mes — acumulado de todas las liquidaciones filtradas */}
+        {filtered.length > 0 && (
+          <div className="settl-total">
+            <div className="settl-total__head">
+              <span className="settl-total__title">Total {monthLabel(settlFilterMonth)}</span>
+              <span className="settl-total__meta">{filtered.length} sem · {totalCuts} cortes</span>
+            </div>
+            <div className="settl-total__row">
+              <span className="settl-total__label">Facturado</span>
+              <span className="settl-total__val">{formatARS(totalGross)}</span>
+            </div>
+            <div className="settl-total__row">
+              <span className="settl-total__label">Total a recibir</span>
+              <span className={`settl-total__net ${totalNet < 0 ? 'settl-total__net--neg' : ''}`}>
+                {formatARS(totalNet)}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Paginación */}
         {filtered.length > SETTL_PAGE_SIZE && (
           <div className="px-5 pb-safe pb-6 pt-3 border-t border-zinc-800 flex items-center justify-between">
@@ -1256,7 +1356,7 @@ export default function BarberMobileView() {
       onRegisterCut={() => { setIsDrawerOpen(false); goToRegister() }}
       onViewLiquidations={() => { setIsDrawerOpen(false); goToSettlements() }}
       onRequestAdvance={() => { setIsDrawerOpen(false); setShowAdvanceModal(true); setAdvanceDone(false) }}
-      advanceEnabled={profile?.advance_enabled ?? false}
+      advanceEnabled={advancesAllowed}
       barberName={profile?.full_name || 'Barbero'}
     />
     <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
@@ -1318,7 +1418,7 @@ export default function BarberMobileView() {
 
         <button
           onClick={goToRegister}
-          disabled={weekClosed || !todayAllowedForBarber || (!!selectedDay && selectedDay !== today)}
+          disabled={weekClosed || !todayAllowedForBarber}
           className="register-btn w-full disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <div className="flex items-center justify-center gap-3">
@@ -1329,8 +1429,9 @@ export default function BarberMobileView() {
             <p className="text-xs text-amber-200/60 mt-1">Semana cerrada: tu liquidación ya fue confirmada</p>
           ) : !todayAllowedForBarber ? (
             <p className="text-xs text-amber-200/60 mt-1">Hoy no se cargan cortes (domingo/lunes). Si se trabaja, pedile al admin que habilite el día.</p>
-          ) : !!selectedDay && selectedDay !== today && (
-            <p className="text-xs text-amber-200/60 mt-1">Solo podés registrar cortes del día de hoy</p>
+          ) : (!!selectedDay && selectedDay !== today) && (
+            // El selector de días es solo para VER cortes; el registro siempre es de hoy.
+            <p className="text-xs text-amber-200/60 mt-1">Registrás el corte de hoy ({formatDate(today).replace(/^\w/, (c) => c.toUpperCase())})</p>
           )}
         </button>
 
@@ -1346,7 +1447,7 @@ export default function BarberMobileView() {
             <span className="text-zinc-600 text-lg">›</span>
           </button>
 
-          {profile?.advance_enabled && (
+          {advancesAllowed && (
             <button
               onClick={() => { setShowAdvanceModal(true); setAdvanceDone(false) }}
               className="bg-zinc-900 border border-zinc-800 rounded-2xl px-4 py-4 flex items-center justify-between text-left hover:border-violet-700 transition-colors"
@@ -1437,6 +1538,9 @@ export default function BarberMobileView() {
             const list = filterMode === 'range' ? (filteredTxs ?? []) : dayTxs
             const totalAmount = list.reduce((s, t) => s + t.amount, 0)
             const totalBarber = list.reduce((s, t) => s + t.barber_share, 0)
+            // Box_rental: saldo del alquiler diario del día seleccionado (solo modo semana).
+            const showRentStatus = isBoxRental && filterMode === 'week' && dailyRent > 0
+            const dayRentRemaining = Math.max(0, dailyRent - totalAmount)
             const totalCash = list.reduce((s, t) => s + (t.cash_amount || 0), 0)
             const totalTransfer = list.reduce((s, t) => s + (t.transfer_amount || 0), 0)
             const totalCard = list.reduce((s, t) => s + (t.card_amount || 0), 0)
@@ -1458,6 +1562,15 @@ export default function BarberMobileView() {
                       <span className="filter-summary__label">Cortes</span>
                       <span className="filter-summary__value">{list.length}</span>
                     </div>
+                    {showRentStatus && (
+                      <div className={`rent-status ${dayRentRemaining <= 0 ? 'rent-status--ok' : 'rent-status--due'}`}>
+                        {dayRentRemaining <= 0 ? (
+                          <span>Alquiler diario: <strong>Saldado ✓</strong></span>
+                        ) : (
+                          <span>Alquiler diario: falta saldar <strong>{formatARS(dayRentRemaining)}</strong></span>
+                        )}
+                      </div>
+                    )}
                     <div className="filter-summary__breakdown">
                       <span className="filter-summary__chip">
                         <span className="payment-dot payment-dot--cash" />

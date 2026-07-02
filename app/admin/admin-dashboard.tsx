@@ -41,7 +41,6 @@ import {
   setPresentismo,
   recalculateSettlementFull,
   setObjetivo,
-  setBoxRent,
   setBonusPresentismoOverride,
   setBonusObjetivoOverride,
   deleteTransaction,
@@ -58,6 +57,7 @@ import {
   type MonthFinancials,
   overrideTransactionSplit,
   fullEditTransaction,
+  getBarberDayGross,
   getServicesByBranch,
   getWeeksByBranch,
   getCurrentProfile,
@@ -561,23 +561,6 @@ export default function AdminDashboard() {
       await loadTabData()
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al eliminar la transacción')
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
-  async function handleSetBoxRent(
-    settlementId: string,
-    weekId: string,
-    barberId: string,
-    amount: number
-  ) {
-    try {
-      setActionLoading(`boxrent-${settlementId}`)
-      await setBoxRent(settlementId, weekId, barberId, amount)
-      await loadTabData()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error actualizando alquiler de box')
     } finally {
       setActionLoading(null)
     }
@@ -1109,14 +1092,14 @@ export default function AdminDashboard() {
                             <div>
                               <p className="barber-name">{s.barber.full_name}</p>
                               <p className="barber-type">
-                                {s.barber.compensation_type === 'percentage' ? '% comisión' : 'Salario'}
+                                {s.barber.compensation_type === 'percentage' ? '% comisión' : s.barber.compensation_type === 'box_rental' ? 'Alquiler box' : 'Salario'}
                               </p>
                             </div>
                           </div>
                         </td>
                         <td className="td-center">{s.total_cuts}</td>
                         <td>{formatARS(s.gross_amount)}</td>
-                        <td>{formatARS(s.barber_gross)}</td>
+                        <td>{hasBonuses ? formatARS(s.barber_gross) : <span className="td-na">—</span>}</td>
                         <td>
                           {hasBonuses ? (
                             s.status === 'draft' ? (
@@ -1213,21 +1196,9 @@ export default function AdminDashboard() {
                         </td>
                         <td>
                           {s.barber.compensation_type === 'box_rental' ? (
-                            s.status === 'draft' ? (
-                              <CurrencyInputInline
-                                defaultValue={s.box_rent || ''}
-                                placeholder="0"
-                                disabled={loadingKey === `boxrent-${s.id}`}
-                                onCommit={(v) => {
-                                  if (v !== s.box_rent) handleSetBoxRent(s.id, s.week_id, s.barber_id, v)
-                                }}
-                                className="filter-input"
-                                style={{ width: 90 }}
-                                title="Alquiler del box que paga el barbero esta semana"
-                              />
-                            ) : (
-                              <span className="td-muted">{formatARS(s.box_rent)}</span>
-                            )
+                            <span className="td-muted" title="Alquiler devengado: alquiler diario × días con cortes en la semana">
+                              {formatARS(s.box_rent)}
+                            </span>
                           ) : (
                             <span className="td-na">—</span>
                           )}
@@ -2228,6 +2199,8 @@ function EditTransactionModal({
 
   const [effectiveWeekId,    setEffectiveWeekId]    = useState(tx.week_id)
   const [effectiveWeekLabel, setEffectiveWeekLabel] = useState<string | null>(null)
+  // Box_rental: acumulado facturado del día (otros cortes de esa fecha, excluye este).
+  const [dayOtherGross, setDayOtherGross] = useState(0)
 
   const scrollDays = buildEditScrollDays(date)
   const dayRef  = useRef<HTMLButtonElement>(null)
@@ -2253,6 +2226,13 @@ function EditTransactionModal({
     }
     load()
   }, [tx.branch_id])
+
+  // Box_rental: cargar acumulado del día (excluyendo este corte) para calcular el
+  // reparto alquiler/barbero y el saldo del alquiler diario.
+  useEffect(() => {
+    if (tx.barber.compensation_type !== 'box_rental') return
+    getBarberDayGross(tx.barber_id, date, tx.id).then(setDayOtherGross).catch(() => {})
+  }, [date, tx.barber_id, tx.id, tx.barber.compensation_type])
 
   useEffect(() => {
     if (allWeeks.length === 0) return
@@ -2283,6 +2263,15 @@ function EditTransactionModal({
     effectiveAmount
   ))
   const branchShareCalc = Number((effectiveAmount - barberShareCalc).toFixed(2))
+
+  // ── Box_rental: alquiler DIARIO. Los primeros $dailyRent de cortes del día van a
+  // la barbería; lo que exceda es del barbero. Reparto de ESTE corte según el
+  // acumulado previo del día + saldo pendiente del alquiler.
+  const isBoxRental  = tx.barber.compensation_type === 'box_rental'
+  const dailyRent    = tx.barber.box_rental_amount ?? 0
+  const boxToShop    = isBoxRental ? Math.min(effectiveAmount, Math.max(0, dailyRent - dayOtherGross)) : 0
+  const boxToBarber  = Math.max(0, effectiveAmount - boxToShop)
+  const dayRentRemaining = Math.max(0, dailyRent - (dayOtherGross + effectiveAmount))
 
   useEffect(() => {
     if (!splitPayment || effectiveAmount < 0) return
@@ -2322,14 +2311,13 @@ function EditTransactionModal({
       transferAmt = method === 'transfer' ? effectiveAmount : 0
     }
 
-    // Alquiler de box: el barbero se queda el 100%; la barbería no toma nada del corte.
-    const isBox = tx.barber.compensation_type === 'box_rental'
-    const barberShareFinal = isBox ? effectiveAmount : barberShareCalc
-    const branchShareFinal = isBox ? 0 : branchShareCalc
-    // box_rental ya tiene el 100%. Si recibe transferencias, retiene el TOTAL transferido;
-    // efectivo/tarjeta o transfer-a-Valhalla → 0.
-    const barberAlreadyCollected = isBox
-      ? effectiveAmount
+    // Alquiler de box DIARIO: reparto según el acumulado del día (los primeros
+    // $dailyRent van a la barbería; el resto al barbero). fullEditTransaction
+    // recalcula además el día completo (el umbral se corre al editar).
+    const barberShareFinal = isBoxRental ? boxToBarber : barberShareCalc
+    const branchShareFinal = isBoxRental ? boxToShop : branchShareCalc
+    const barberAlreadyCollected = isBoxRental
+      ? boxToBarber
       : (tx.barber.receives_transfers ? transferAmt : 0)
 
     try {
@@ -2518,17 +2506,43 @@ function EditTransactionModal({
                   )}
                   {discountNum > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f59e0b', fontSize: '0.75rem' }}>
-                      <span>Descuento (50/50)</span><span>−{formatARS(discountNum)}</span>
+                      <span>Descuento{isBoxRental ? '' : ' (50/50)'}</span><span>−{formatARS(discountNum)}</span>
                     </div>
                   )}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.35rem' }}>
-                    <span style={{ color: '#a1a1aa' }}>Parte barbero ({Math.round(commissionRate * 100)}%)</span>
-                    <span style={{ color: '#f59e0b', fontWeight: 600 }}>{formatARS(barberShareCalc)}</span>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                    <span style={{ color: '#a1a1aa' }}>Parte barbería</span>
-                    <span style={{ color: '#fff' }}>{formatARS(branchShareCalc)}</span>
-                  </div>
+                  {isBoxRental ? (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.35rem' }}>
+                        <span style={{ color: '#a1a1aa' }}>A la barbería (alquiler)</span>
+                        <span style={{ color: '#60a5fa', fontWeight: 600 }}>{formatARS(boxToShop)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#a1a1aa' }}>Parte barbero</span>
+                        <span style={{ color: '#f59e0b', fontWeight: 600 }}>{formatARS(boxToBarber)}</span>
+                      </div>
+                      <div style={{
+                        marginTop: '0.5rem', padding: '0.4rem 0.55rem', borderRadius: '0.4rem',
+                        textAlign: 'center', fontSize: '0.78rem',
+                        color: dayRentRemaining <= 0 ? '#34d399' : '#f87171',
+                        background: dayRentRemaining <= 0 ? 'rgba(52,211,153,0.1)' : 'rgba(248,113,113,0.1)',
+                        border: `1px solid ${dayRentRemaining <= 0 ? 'rgba(52,211,153,0.3)' : 'rgba(248,113,113,0.3)'}`,
+                      }}>
+                        {dayRentRemaining <= 0
+                          ? <>Alquiler diario ({formatARS(dailyRent)}): <strong>Saldado ✓</strong></>
+                          : <>Alquiler diario ({formatARS(dailyRent)}): falta saldar <strong>{formatARS(dayRentRemaining)}</strong></>}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.35rem' }}>
+                        <span style={{ color: '#a1a1aa' }}>Parte barbero ({Math.round(commissionRate * 100)}%)</span>
+                        <span style={{ color: '#f59e0b', fontWeight: 600 }}>{formatARS(barberShareCalc)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#a1a1aa' }}>Parte barbería</span>
+                        <span style={{ color: '#fff' }}>{formatARS(branchShareCalc)}</span>
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>
