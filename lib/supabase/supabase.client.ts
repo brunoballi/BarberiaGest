@@ -256,30 +256,33 @@ export async function getOpenWeek(branchId: string): Promise<Week | null> {
       .eq('branch_id', branchId)
       .eq('status', 'open')
 
-  // Prioridad 1: semana abierta que contiene hoy
-  const { data: current, error: e1 } = await base()
-    .lte('start_date', today)
-    .gte('end_date', today)
-    .order('start_date', { ascending: false })
-    .limit(1)
-  if (e1) throw new Error(`[getOpenWeek] ${e1.message}`)
-  if (current?.length) return current[0]
-
-  // Prioridad 2: próxima semana abierta futura (la más cercana)
-  const { data: future, error: e2 } = await base()
-    .gt('start_date', today)
-    .order('start_date', { ascending: true })
-    .limit(1)
-  if (e2) throw new Error(`[getOpenWeek] ${e2.message}`)
-  if (future?.length) return future[0]
-
-  // Prioridad 3: semana abierta pasada más reciente
-  const { data: past, error: e3 } = await base()
-    .lt('start_date', today)
-    .order('start_date', { ascending: false })
-    .limit(1)
-  if (e3) throw new Error(`[getOpenWeek] ${e3.message}`)
-  return past?.[0] ?? null
+  // Las 3 prioridades se disparan en paralelo (esta función está en el camino
+  // crítico del arranque del mobile): 1 RTT en vez de hasta 3 secuenciales.
+  const [
+    { data: current, error: e1 },
+    { data: future, error: e2 },
+    { data: past, error: e3 },
+  ] = await Promise.all([
+    // Prioridad 1: semana abierta que contiene hoy
+    base()
+      .lte('start_date', today)
+      .gte('end_date', today)
+      .order('start_date', { ascending: false })
+      .limit(1),
+    // Prioridad 2: próxima semana abierta futura (la más cercana)
+    base()
+      .gt('start_date', today)
+      .order('start_date', { ascending: true })
+      .limit(1),
+    // Prioridad 3: semana abierta pasada más reciente
+    base()
+      .lt('start_date', today)
+      .order('start_date', { ascending: false })
+      .limit(1),
+  ])
+  const err = e1 ?? e2 ?? e3
+  if (err) throw new Error(`[getOpenWeek] ${err.message}`)
+  return current?.[0] ?? future?.[0] ?? past?.[0] ?? null
 }
 
 export async function getWeeksByBranch(branchId: string): Promise<Week[]> {
@@ -1029,13 +1032,12 @@ export async function updateCut(
 
   // Box_rental: editar un corte cambia el umbral del día, así que el split (alquiler
   // vs barbero) de TODOS los cortes de esa fecha se puede correr. Recalculamos el día
-  // completo en orden cronológico y devolvemos el corte editado ya actualizado.
+  // completo en orden cronológico; el resync devuelve los splits finales, así que
+  // armamos el corte actualizado en memoria sin un refetch extra.
   if (isBoxRental) {
-    await resyncBoxRentalDaySplits(barber.id, payload.transaction_date, barber.box_rental_amount ?? 0, true)
-    const { data: fresh, error: fErr } = await supabase
-      .from('transactions').select().eq('id', txId).single()
-    if (fErr) throw new Error(`[updateCut] refetch: ${fErr.message}`)
-    return fresh
+    const splits = await resyncBoxRentalDaySplits(barber.id, payload.transaction_date, barber.box_rental_amount ?? 0, true)
+    const s = splits.get(txId)
+    return s ? { ...data, ...s } : data
   }
   return data
 }
@@ -1052,32 +1054,49 @@ async function resyncBoxRentalDaySplits(
   // Edición del barbero: resetea is_manual_override para cumplir su RLS (WITH CHECK
   // exige false). Edición del admin: lo deja como está (preserva el flag de auditoría).
   clearOverride: boolean,
-): Promise<void> {
+): Promise<Map<string, { branch_share: number; barber_share: number; barber_already_collected: number }>> {
   const { data: cuts, error } = await supabase
     .from('transactions')
-    .select('id, amount')
+    .select('id, amount, branch_share, barber_share, barber_already_collected, is_manual_override')
     .eq('barber_id', barberId)
     .eq('transaction_date', date)
     .order('created_at', { ascending: true })
     .order('id', { ascending: true })
   if (error) throw new Error(`[resyncBoxRentalDaySplits] ${error.message}`)
   let acc = 0
+  const splits = new Map<string, { branch_share: number; barber_share: number; barber_already_collected: number }>()
+  const updates: PromiseLike<void>[] = []
   for (const c of cuts ?? []) {
     const amt = Number(c.amount)
     const toShop = Math.min(amt, Math.max(0, dailyRent - acc))
     const branch = Number(toShop.toFixed(2))
     const barber = Number((amt - toShop).toFixed(2))
     acc += amt
+    splits.set(c.id, { branch_share: branch, barber_share: barber, barber_already_collected: barber })
+    // Solo se escriben los cortes cuyo split realmente cambió (una edición suele
+    // mover 1-2 cortes del día), y todos los updates salen en paralelo.
+    const unchanged =
+      Number(c.branch_share) === branch &&
+      Number(c.barber_share) === barber &&
+      Number(c.barber_already_collected) === barber &&
+      (!clearOverride || !c.is_manual_override)
+    if (unchanged) continue
     const patch: Record<string, number | boolean> = {
       branch_share: branch, barber_share: barber, barber_already_collected: barber,
     }
     if (clearOverride) patch.is_manual_override = false
-    const { error: uErr } = await supabase
-      .from('transactions')
-      .update(patch)
-      .eq('id', c.id)
-    if (uErr) throw new Error(`[resyncBoxRentalDaySplits] ${uErr.message}`)
+    updates.push(
+      supabase
+        .from('transactions')
+        .update(patch)
+        .eq('id', c.id)
+        .then(({ error: uErr }) => {
+          if (uErr) throw new Error(`[resyncBoxRentalDaySplits] ${uErr.message}`)
+        })
+    )
   }
+  await Promise.all(updates)
+  return splits
 }
 
 /**
@@ -1087,15 +1106,18 @@ async function resyncBoxRentalDaySplits(
  */
 export async function getBarberClosedWeekIds(
   barberId: string,
-  weekIds: string[],
+  // Sin weekIds devuelve TODAS las semanas liquidadas del barbero (son pocas),
+  // lo que permite pedirlas en paralelo con las transacciones del rango.
+  weekIds?: string[],
 ): Promise<string[]> {
-  if (weekIds.length === 0) return []
-  const { data, error } = await supabase
+  if (weekIds && weekIds.length === 0) return []
+  let query = supabase
     .from('settlements')
-    .select('week_id, status')
+    .select('week_id')
     .eq('barber_id', barberId)
-    .in('week_id', weekIds)
     .in('status', ['confirmed', 'paid'])
+  if (weekIds) query = query.in('week_id', weekIds)
+  const { data, error } = await query
   if (error) throw new Error(`[getBarberClosedWeekIds] ${error.message}`)
   return (data ?? []).map((r) => r.week_id as string)
 }

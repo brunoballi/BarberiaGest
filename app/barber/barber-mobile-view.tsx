@@ -469,13 +469,14 @@ export default function BarberMobileView() {
         const updated = await updateCut(editingTx.id, payload, profile)
         if (isBoxRental) {
           // Editar corre el umbral del día → el split de TODOS los cortes del día pudo
-          // cambiar. Refrescamos la semana completa (y el rango si está activo).
-          const txs = await getBarberTransactionsForWeek(profile.id, week.id)
+          // cambiar. Refrescamos la semana completa (y el rango si está activo) en paralelo.
+          const refreshRange = !!(filteredTxs && filterFrom && filterTo)
+          const [txs, rangeData] = await Promise.all([
+            getBarberTransactionsForWeek(profile.id, week.id),
+            refreshRange ? getBarberTransactionsByDateRange(profile.id, filterFrom, filterTo) : Promise.resolve(null),
+          ])
           setTransactions(txs)
-          if (filteredTxs && filterFrom && filterTo) {
-            const data = await getBarberTransactionsByDateRange(profile.id, filterFrom, filterTo)
-            setFilteredTxs(data)
-          }
+          if (rangeData) setFilteredTxs(rangeData)
         } else {
           // Reflejar el cambio en ambas listas (semana actual y filtro por rango)
           setTransactions((prev) => prev.map((t) => t.id === updated.id ? updated : t))
@@ -505,12 +506,15 @@ export default function BarberMobileView() {
     }
     try {
       setFilterLoading(true)
-      const data = await getBarberTransactionsByDateRange(profile.id, filterFrom, filterTo)
+      // Transacciones del rango y semanas liquidadas del barbero en paralelo
+      // (el Set solo se consulta con .has(week_id), así que traer TODAS las
+      // liquidadas del barbero es equivalente y evita el viaje encadenado).
+      const [data, closed] = await Promise.all([
+        getBarberTransactionsByDateRange(profile.id, filterFrom, filterTo),
+        getBarberClosedWeekIds(profile.id),
+      ])
       setFilteredTxs(data)
       setFilterMode('range')
-      // Determinar qué semanas del rango están liquidadas (bloquean edición)
-      const weekIds = [...new Set(data.map((t) => t.week_id))]
-      const closed = await getBarberClosedWeekIds(profile.id, weekIds)
       setClosedWeekIds(new Set(closed))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al filtrar')
@@ -1154,9 +1158,13 @@ export default function BarberMobileView() {
     )
 
     // ── Totalizador del mes (acumula TODAS las semanas del filtro, no solo la página) ──
-    const totalNet   = filtered.reduce((sum, s) => sum + s.net_payable, 0)
-    const totalGross = filtered.reduce((sum, s) => sum + s.gross_amount, 0)
-    const totalCuts  = filtered.reduce((sum, s) => sum + s.total_cuts, 0)
+    const totalNet     = filtered.reduce((sum, s) => sum + s.net_payable, 0)
+    const totalGross   = filtered.reduce((sum, s) => sum + s.gross_amount, 0)
+    const totalCuts    = filtered.reduce((sum, s) => sum + s.total_cuts, 0)
+    // Box_rental: el barbero cobra durante la semana; su "resultado" es lo que se
+    // llevó tras el alquiler (total_earned), no el neto a recibir (que tiende a 0).
+    const isBoxRentalBarber = profile?.compensation_type === 'box_rental'
+    const totalEarnedMonth  = filtered.reduce((sum, s) => sum + s.total_earned, 0)
 
     // ── Paginación ──
     const pageCount = Math.max(1, Math.ceil(filtered.length / SETTL_PAGE_SIZE))
@@ -1250,7 +1258,11 @@ export default function BarberMobileView() {
                       <span className="text-zinc-700">·</span>
                       <span className="text-zinc-400">Facturado {formatARS(s.gross_amount)}</span>
                       <span className="text-zinc-700">·</span>
-                      <span className="text-amber-400 font-semibold">Neto {formatARS(s.net_payable)}</span>
+                      {profile?.compensation_type === 'box_rental' ? (
+                        <span className="text-amber-400 font-semibold">Llevado {formatARS(s.total_earned)}</span>
+                      ) : (
+                        <span className="text-amber-400 font-semibold">Neto {formatARS(s.net_payable)}</span>
+                      )}
                     </div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
@@ -1267,32 +1279,58 @@ export default function BarberMobileView() {
 
                 {isExpanded && (
                   <div className="border-t border-zinc-800 px-4 py-3 space-y-2">
-                    <SettlRow label={profile?.compensation_type === 'salary' ? 'Sueldo base' : 'Comisión'} value={formatARS(s.barber_gross)} />
-                    {s.bonus_presentismo > 0 && <SettlRow label="+ Presentismo" value={formatARS(s.bonus_presentismo)} valueClass="text-emerald-400" />}
-                    {s.bonus_objetivo > 0 && <SettlRow label="+ Objetivo" value={formatARS(s.bonus_objetivo)} valueClass="text-emerald-400" />}
-                    <div className="h-px bg-zinc-800 my-0.5" />
-                    <SettlRow label="Ganado" value={formatARS(s.total_earned)} />
-                    {s.already_collected > 0 && <SettlRow label="– Ya cobrado (transf.)" value={formatARS(s.already_collected)} valueClass="text-zinc-400" />}
-                    {s.advances_deducted > 0 && <SettlRow label="– Adelantos" value={formatARS(s.advances_deducted)} valueClass="text-red-400" />}
-                    <div className="h-px bg-zinc-800 my-0.5" />
-                    <SettlRow label="A recibir" value={formatARS(s.net_payable)} bold />
-                    {s.net_payable < 0 && s.status === 'paid' && (
-                      <p className="text-xs text-emerald-400 mt-1 flex items-center gap-1">
-                        <span>✓</span>
-                        <span>Saldado con la barbería</span>
-                      </p>
-                    )}
-                    {s.net_payable < 0 && s.status !== 'paid' && (
-                      <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
-                        <span>ℹ️</span>
-                        <span>Se debe a la barbería</span>
-                      </p>
-                    )}
-                    {s.presentismo_met !== null && (
-                      <p className="text-xs text-zinc-600 mt-1">
-                        Presentismo: {s.presentismo_met ? 'marcado' : 'no marcado'}
-                        {s.objetivo_met !== null && <span> · Objetivo: {s.objetivo_met ? 'alcanzado' : 'no alcanzado'}</span>}
-                      </p>
+                    {profile?.compensation_type === 'box_rental' ? (
+                      // ── Alquiler de box: facturado − alquiler diario = saldo que se llevó ──
+                      <>
+                        <SettlRow label="Facturado" value={formatARS(s.gross_amount)} />
+                        <SettlRow label="– Alquiler del box" value={formatARS(s.box_rent)} valueClass="text-sky-400" />
+                        <div className="h-px bg-zinc-800 my-0.5" />
+                        <SettlRow label="Saldo que te llevaste" value={formatARS(s.total_earned)} bold />
+                        {s.advances_deducted > 0 && <SettlRow label="– Adelantos" value={formatARS(s.advances_deducted)} valueClass="text-red-400" />}
+                        {s.net_payable < 0 && (
+                          <>
+                            <div className="h-px bg-zinc-800 my-0.5" />
+                            <SettlRow label="Saldo con la barbería" value={formatARS(s.net_payable)} bold />
+                            <p className={`text-xs mt-1 flex items-center gap-1 ${s.status === 'paid' ? 'text-emerald-400' : 'text-red-400'}`}>
+                              <span>{s.status === 'paid' ? '✓' : 'ℹ️'}</span>
+                              <span>{s.status === 'paid' ? 'Saldado con la barbería' : 'Se debe a la barbería'}</span>
+                            </p>
+                          </>
+                        )}
+                        <p className="text-xs text-zinc-500 mt-1">
+                          Cobrás tus cortes durante la semana; la barbería descuenta el alquiler diario del box.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <SettlRow label={profile?.compensation_type === 'salary' ? 'Sueldo base' : 'Comisión'} value={formatARS(s.barber_gross)} />
+                        {s.bonus_presentismo > 0 && <SettlRow label="+ Presentismo" value={formatARS(s.bonus_presentismo)} valueClass="text-emerald-400" />}
+                        {s.bonus_objetivo > 0 && <SettlRow label="+ Objetivo" value={formatARS(s.bonus_objetivo)} valueClass="text-emerald-400" />}
+                        <div className="h-px bg-zinc-800 my-0.5" />
+                        <SettlRow label="Ganado" value={formatARS(s.total_earned)} />
+                        {s.already_collected > 0 && <SettlRow label="– Ya cobrado (transf.)" value={formatARS(s.already_collected)} valueClass="text-zinc-400" />}
+                        {s.advances_deducted > 0 && <SettlRow label="– Adelantos" value={formatARS(s.advances_deducted)} valueClass="text-red-400" />}
+                        <div className="h-px bg-zinc-800 my-0.5" />
+                        <SettlRow label="A recibir" value={formatARS(s.net_payable)} bold />
+                        {s.net_payable < 0 && s.status === 'paid' && (
+                          <p className="text-xs text-emerald-400 mt-1 flex items-center gap-1">
+                            <span>✓</span>
+                            <span>Saldado con la barbería</span>
+                          </p>
+                        )}
+                        {s.net_payable < 0 && s.status !== 'paid' && (
+                          <p className="text-xs text-red-400 mt-1 flex items-center gap-1">
+                            <span>ℹ️</span>
+                            <span>Se debe a la barbería</span>
+                          </p>
+                        )}
+                        {s.presentismo_met !== null && (
+                          <p className="text-xs text-zinc-600 mt-1">
+                            Presentismo: {s.presentismo_met ? 'marcado' : 'no marcado'}
+                            {s.objetivo_met !== null && <span> · Objetivo: {s.objetivo_met ? 'alcanzado' : 'no alcanzado'}</span>}
+                          </p>
+                        )}
+                      </>
                     )}
                   </div>
                 )}
@@ -1313,9 +1351,9 @@ export default function BarberMobileView() {
               <span className="settl-total__val">{formatARS(totalGross)}</span>
             </div>
             <div className="settl-total__row">
-              <span className="settl-total__label">Total a recibir</span>
-              <span className={`settl-total__net ${totalNet < 0 ? 'settl-total__net--neg' : ''}`}>
-                {formatARS(totalNet)}
+              <span className="settl-total__label">{isBoxRentalBarber ? 'Total llevado' : 'Total a recibir'}</span>
+              <span className={`settl-total__net ${(isBoxRentalBarber ? totalEarnedMonth : totalNet) < 0 ? 'settl-total__net--neg' : ''}`}>
+                {formatARS(isBoxRentalBarber ? totalEarnedMonth : totalNet)}
               </span>
             </div>
           </div>
@@ -1418,7 +1456,7 @@ export default function BarberMobileView() {
 
         <button
           onClick={goToRegister}
-          disabled={weekClosed || !todayAllowedForBarber}
+          disabled={weekClosed || !todayAllowedForBarber || (!!selectedDay && selectedDay > today)}
           className="register-btn w-full disabled:opacity-40 disabled:cursor-not-allowed"
         >
           <div className="flex items-center justify-center gap-3">
@@ -1429,6 +1467,9 @@ export default function BarberMobileView() {
             <p className="text-xs text-amber-200/60 mt-1">Semana cerrada: tu liquidación ya fue confirmada</p>
           ) : !todayAllowedForBarber ? (
             <p className="text-xs text-amber-200/60 mt-1">Hoy no se cargan cortes (domingo/lunes). Si se trabaja, pedile al admin que habilite el día.</p>
+          ) : (!!selectedDay && selectedDay > today) ? (
+            // Día futuro seleccionado: no se cargan cortes por adelantado.
+            <p className="text-xs text-amber-200/60 mt-1">No se cargan cortes en días futuros. Volvé a hoy para registrar.</p>
           ) : (!!selectedDay && selectedDay !== today) && (
             // El selector de días es solo para VER cortes; el registro siempre es de hoy.
             <p className="text-xs text-amber-200/60 mt-1">Registrás el corte de hoy ({formatDate(today).replace(/^\w/, (c) => c.toUpperCase())})</p>
