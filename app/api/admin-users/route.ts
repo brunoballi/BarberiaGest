@@ -103,6 +103,23 @@ export async function PUT(request: NextRequest) {
   if (!profileId || !full_name || !branch_ids)
     return NextResponse.json({ error: 'Faltan campos obligatorios' }, { status: 400 })
 
+  // 0. Si cambia el email, validar que no lo use OTRA cuenta ANTES de tocar nada.
+  // Evita el error críptico "Error updating user" de Supabase y no deja el nombre
+  // actualizado a medias si el email falla.
+  if (email) {
+    const { data: list, error: listErr } = await adminClient.auth.admin.listUsers({ page: 1, perPage: 1000 })
+    if (listErr) return NextResponse.json({ error: listErr.message }, { status: 500 })
+    const clash = (list?.users ?? []).find(
+      (u) => u.email?.toLowerCase() === email.toLowerCase() && u.id !== profileId
+    )
+    if (clash) {
+      return NextResponse.json(
+        { error: `Ese email ya está en uso por otra cuenta${clash.user_metadata?.full_name ? ` (${clash.user_metadata.full_name})` : ''}. Usá uno distinto.` },
+        { status: 409 }
+      )
+    }
+  }
+
   // 1. Actualizar nombre en profiles
   const { error: profileErr } = await adminClient
     .from('profiles')
@@ -113,7 +130,8 @@ export async function PUT(request: NextRequest) {
   // 2. Actualizar email en auth si cambió
   if (email) {
     const { error: emailErr } = await adminClient.auth.admin.updateUserById(profileId, { email })
-    if (emailErr) return NextResponse.json({ error: emailErr.message }, { status: 500 })
+    if (emailErr)
+      return NextResponse.json({ error: `No se pudo actualizar el email: ${emailErr.message}` }, { status: 500 })
   }
 
   // 3. Reemplazar sucursales asignadas
