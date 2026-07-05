@@ -2,7 +2,32 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@supabase/ssr'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
+import type { SupabaseClient } from '@supabase/supabase-js'
 import type { ProfileUpdate } from '@/lib/supabase/database.types'
+
+/**
+ * ¿El admin puede operar sobre un barbero de la sucursal `targetBranchId`?
+ * Un admin multi-sucursal tiene sus sucursales en `admin_branches`, no solo en
+ * su `profiles.branch_id`. Antes se comparaba únicamente contra la sucursal
+ * "home" (profiles.branch_id), lo que rompía el borrado/edición de barberos de
+ * cualquier otra sucursal asignada. Se acepta la home como fallback para admins
+ * legacy sin filas en admin_branches.
+ */
+async function adminHasBranch(
+  adminClient: SupabaseClient,
+  adminId: string,
+  targetBranchId: string | null,
+  homeBranchId: string | null,
+): Promise<boolean> {
+  if (!targetBranchId) return false
+  if (targetBranchId === homeBranchId) return true
+  const { count } = await adminClient
+    .from('admin_branches')
+    .select('branch_id', { count: 'exact', head: true })
+    .eq('admin_id', adminId)
+    .eq('branch_id', targetBranchId)
+  return (count ?? 0) > 0
+}
 
 export async function PATCH(
   request: NextRequest,
@@ -55,7 +80,7 @@ export async function PATCH(
     .eq('id', id)
     .single()
 
-  if (!target || target.branch_id !== caller.branch_id) {
+  if (!target || !(await adminHasBranch(adminClient, user.id, target.branch_id, caller.branch_id))) {
     return NextResponse.json({ error: 'Barbero no encontrado en tu sucursal' }, { status: 404 })
   }
 
@@ -119,7 +144,7 @@ export async function DELETE(
     .eq('id', id)
     .single()
 
-  if (!target || target.branch_id !== caller.branch_id) {
+  if (!target || !(await adminHasBranch(adminClient, user.id, target.branch_id, caller.branch_id))) {
     return NextResponse.json({ error: 'Barbero no encontrado en tu sucursal' }, { status: 404 })
   }
 
