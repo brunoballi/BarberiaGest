@@ -150,3 +150,73 @@ export async function PUT(request: NextRequest) {
 
   return NextResponse.json({ ok: true })
 }
+
+/**
+ * Elimina un administrador. Solo si:
+ *  - no es el propio usuario que hace la petición,
+ *  - no tiene actividad registrada (cierres de semana, transacciones o gastos),
+ *    para no perder atribución histórica.
+ * Borra sus asignaciones de sucursal y el usuario de auth (cascade → profiles).
+ * Irreversible.
+ */
+export async function DELETE(request: NextRequest) {
+  const cookieStore = await cookies()
+  const serverClient = createServerClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    { cookies: { getAll: () => cookieStore.getAll(), setAll: () => {} } }
+  )
+
+  const { data: { user } } = await serverClient.auth.getUser()
+  if (!user) return NextResponse.json({ error: 'No autenticado' }, { status: 401 })
+
+  const { data: callerProfile } = await serverClient
+    .from('profiles').select('role').eq('id', user.id).single()
+  if (callerProfile?.role !== 'admin')
+    return NextResponse.json({ error: 'Sin permisos' }, { status: 403 })
+
+  const profileId = request.nextUrl.searchParams.get('profileId')
+  if (!profileId)
+    return NextResponse.json({ error: 'Falta profileId' }, { status: 400 })
+
+  if (profileId === user.id)
+    return NextResponse.json({ error: 'No podés eliminar tu propia cuenta.' }, { status: 409 })
+
+  const adminClient = createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    { auth: { autoRefreshToken: false, persistSession: false } }
+  )
+
+  const { data: target } = await adminClient
+    .from('profiles').select('id, role').eq('id', profileId).single()
+  if (!target || target.role !== 'admin')
+    return NextResponse.json({ error: 'Administrador no encontrado' }, { status: 404 })
+
+  // No perder histórico: bloquear si tiene actividad registrada.
+  const [{ count: weeksClosed }, { count: txCreated }, { count: expReg }] = await Promise.all([
+    adminClient.from('weeks').select('id', { count: 'exact', head: true }).eq('closed_by', profileId),
+    adminClient.from('transactions').select('id', { count: 'exact', head: true }).eq('created_by', profileId),
+    adminClient.from('expenses').select('id', { count: 'exact', head: true }).eq('registered_by', profileId),
+  ])
+
+  if ((weeksClosed ?? 0) > 0 || (txCreated ?? 0) > 0 || (expReg ?? 0) > 0) {
+    return NextResponse.json(
+      { error: 'No se puede eliminar: este admin tiene actividad registrada (cierres de semana, transacciones o gastos). Se perdería el historial.' },
+      { status: 409 }
+    )
+  }
+
+  // Limpiar asignaciones de sucursal y atribuciones que bloquean el borrado.
+  await adminClient.from('admin_branches').delete().eq('admin_id', profileId)
+  await adminClient.from('admin_branches').update({ granted_by: null }).eq('granted_by', profileId)
+
+  // Borrar usuario de auth → cascade a profiles. Fallback: borrar profile directo.
+  const { error: authErr } = await adminClient.auth.admin.deleteUser(profileId)
+  if (authErr) {
+    const { error: profErr } = await adminClient.from('profiles').delete().eq('id', profileId)
+    if (profErr) return NextResponse.json({ error: profErr.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ ok: true })
+}

@@ -10,6 +10,8 @@ interface AdminSideDrawerProps {
   onRegisterCut: () => void
   adminName?: string
   isWeekClosed?: boolean
+  /** Dual role: si el admin también atiende (is_barber), ofrecer su vista de barbero. */
+  showBarberView?: boolean
 }
 
 export function AdminSideDrawer({
@@ -19,6 +21,7 @@ export function AdminSideDrawer({
   onRegisterCut,
   adminName = 'Admin',
   isWeekClosed = false,
+  showBarberView = false,
 }: AdminSideDrawerProps) {
   const [showConfigSubmenu, setShowConfigSubmenu] = useState(false)
 
@@ -63,6 +66,17 @@ export function AdminSideDrawer({
 
         {/* Contenido - Opciones principales */}
         <div className="flex-1 flex flex-col p-5 space-y-1 overflow-y-auto">
+          {showBarberView && (
+            <Link
+              href="/barber"
+              onClick={onClose}
+              className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg bg-amber-500/10 hover:bg-amber-500/20 transition-colors text-amber-400 mb-2"
+            >
+              <span className="text-xl">✂️</span>
+              <span className="font-medium">Mi vista de barbero</span>
+            </Link>
+          )}
+
           <button
             onClick={() => {
               if (isWeekClosed) return

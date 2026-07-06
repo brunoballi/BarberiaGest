@@ -12,6 +12,9 @@ interface BarberSideDrawerProps {
   /** Igual que el botón principal: solo muestra "Pedir adelanto" si está habilitado. */
   advanceEnabled?: boolean
   barberName?: string
+  /** Dual role: si el barbero también es admin, ofrecer volver al panel. */
+  showAdminPanel?: boolean
+  onGoToAdminPanel?: () => void
 }
 
 export function BarberSideDrawer({
@@ -23,6 +26,8 @@ export function BarberSideDrawer({
   onRequestAdvance,
   advanceEnabled = false,
   barberName = 'Barbero',
+  showAdminPanel = false,
+  onGoToAdminPanel,
 }: BarberSideDrawerProps) {
   // Marca el body cuando el drawer está abierto, para que el FAB de ayuda
   // se desplace junto con el panel y no quede tapando "Cerrar sesión".
@@ -90,6 +95,16 @@ export function BarberSideDrawer({
             >
               <span className="text-xl">📤</span>
               <span className="font-medium">Pedir adelanto</span>
+            </button>
+          )}
+
+          {showAdminPanel && onGoToAdminPanel && (
+            <button
+              onClick={() => { onGoToAdminPanel(); onClose() }}
+              className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-amber-400 mt-2 border-t border-zinc-800 pt-4"
+            >
+              <span className="text-xl">🛠️</span>
+              <span className="font-medium">Panel de administración</span>
             </button>
           )}
         </div>

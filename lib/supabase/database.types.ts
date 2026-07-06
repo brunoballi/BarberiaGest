@@ -42,6 +42,8 @@ export interface Profile {
   // Modelo 'box_rental'
   box_rental_amount: number | null
   is_active: boolean
+  // Capacidad dual: admin (dueño) que además atiende como barbero
+  is_barber: boolean
   created_at: string
   // Datos personales
   dni: string | null

@@ -2034,12 +2034,16 @@ export async function getReportByPeriod(
 // ============================================================
 // PROFILES (Admin)
 // ============================================================
+// Incluye barberos puros (role='barber') y admins-que-atienden (is_barber=true)
+// de la sucursal. La capacidad de barbero se define por branch_id + (role o flag).
+const BARBER_OR_DUAL = 'role.eq.barber,is_barber.eq.true'
+
 export async function getBarbersByBranch(branchId: string): Promise<Profile[]> {
   const { data, error } = await supabase
     .from('profiles')
     .select('*')
     .eq('branch_id', branchId)
-    .eq('role', 'barber')
+    .or(BARBER_OR_DUAL)
     .eq('is_active', true)
     .order('full_name')
 
@@ -2052,7 +2056,7 @@ export async function getAllBarbersByBranch(branchId: string): Promise<Profile[]
     .from('profiles')
     .select('*')
     .eq('branch_id', branchId)
-    .eq('role', 'barber')
+    .or(BARBER_OR_DUAL)
     .order('full_name')
 
   if (error) throw new Error(`[getAllBarbersByBranch] ${error.message}`)

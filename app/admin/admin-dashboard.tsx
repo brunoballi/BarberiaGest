@@ -123,6 +123,7 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string>('')
   const [adminName, setAdminName]         = useState<string>('')
+  const [adminIsBarber, setAdminIsBarber] = useState<boolean>(false)
   const [showManualCut, setShowManualCut] = useState(false)
   const [debtModal, setDebtModal] = useState<{ settlementId: string; barberId: string; branchId: string; barberName: string; outstanding: number } | null>(null)
   const [isDrawerOpen, setIsDrawerOpen] = useState(false)
@@ -267,6 +268,7 @@ export default function AdminDashboard() {
         }
         setCurrentUserId(profile.id)
         setAdminName(profile.full_name ?? '')
+        setAdminIsBarber(profile.is_barber ?? false)
         setBranches(branchList)
 
         // Validar sucursal almacenada contra las sucursales asignadas
@@ -744,6 +746,7 @@ export default function AdminDashboard() {
         onRegisterCut={() => { setIsDrawerOpen(false); setShowManualCut(true) }}
         adminName={adminName}
         isWeekClosed={selectedWeek?.status !== 'open'}
+        showBarberView={adminIsBarber}
       />
       {/* ── HEADER WRAPPER (sticky) ── */}
       <div className="admin-header-wrapper">

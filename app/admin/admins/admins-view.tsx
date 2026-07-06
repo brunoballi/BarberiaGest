@@ -37,6 +37,7 @@ export default function AdminsView() {
   const [credentials, setCredentials] = useState<Credentials | null>(null)
   const [resettingId, setResettingId] = useState<string | null>(null)
   const [resetError, setResetError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // Edit admin
   const [editingAdmin, setEditingAdmin] = useState<AdminUser | null>(null)
@@ -182,6 +183,22 @@ export default function AdminsView() {
     }
   }
 
+  async function handleDelete(adminId: string, adminName: string) {
+    if (!confirm(`¿Eliminar al administrador "${adminName}"?\n\nEsta acción es irreversible y borra su cuenta de acceso.`)) return
+    setResetError(null)
+    setDeletingId(adminId)
+    try {
+      const res = await fetch(`/api/admin-users?profileId=${adminId}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Error al eliminar')
+      await load()
+    } catch (e) {
+      setResetError(e instanceof Error ? e.message : 'Error al eliminar')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   if (loading) return (
     <div className="admin-app flex-center">
       <div className="admin-loader" />
@@ -282,6 +299,15 @@ export default function AdminsView() {
                           title={a.id === currentUserId ? 'No podés resetear tu propia contraseña desde aquí' : 'Generar nueva contraseña'}
                         >
                           {resettingId === a.id ? 'Generando...' : '🔑 Credenciales'}
+                        </button>
+                        <button
+                          onClick={() => handleDelete(a.id, a.full_name)}
+                          disabled={deletingId === a.id || a.id === currentUserId}
+                          className="admin-btn admin-btn--ghost"
+                          style={{ fontSize: '0.8rem', padding: '0.375rem 0.75rem', color: a.id === currentUserId ? undefined : '#f87171' }}
+                          title={a.id === currentUserId ? 'No podés eliminar tu propia cuenta' : 'Eliminar administrador'}
+                        >
+                          {deletingId === a.id ? 'Eliminando...' : '🗑️ Eliminar'}
                         </button>
                       </div>
                     </td>

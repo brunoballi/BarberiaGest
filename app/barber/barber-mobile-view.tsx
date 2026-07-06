@@ -1396,6 +1396,8 @@ export default function BarberMobileView() {
       onRequestAdvance={() => { setIsDrawerOpen(false); setShowAdvanceModal(true); setAdvanceDone(false) }}
       advanceEnabled={advancesAllowed}
       barberName={profile?.full_name || 'Barbero'}
+      showAdminPanel={profile?.role === 'admin'}
+      onGoToAdminPanel={() => { window.location.href = '/admin' }}
     />
     <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
       <header className="barber-header">

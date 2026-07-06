@@ -13,7 +13,9 @@ export default async function BarberPage() {
   const profile = await getServerProfile()
 
   if (!profile) redirect('/login')
-  if (profile.role !== 'barber') redirect('/admin')
+  // Permite barberos puros y admins-que-atienden (is_barber). Un admin sin
+  // capacidad de barbero se va a /admin.
+  if (profile.role !== 'barber' && !profile.is_barber) redirect('/admin')
 
   return <BarberMobileView />
 }
