@@ -293,6 +293,7 @@ export default function ReportesView() {
       ) : (
         <>
           {/* ── Tarjetas por sucursal ──────────────────────────── */}
+          <h2 className="report-section__title">Ganancia Neta por Sucursal</h2>
           <div className="report-cards-grid">
             {reports.map((r) => (
               <div key={r.branchId} className="report-card">
