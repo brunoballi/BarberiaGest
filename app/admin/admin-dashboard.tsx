@@ -105,6 +105,27 @@ function txBarberSide(t: { amount: number; branch_share: number; barber_share: n
   return barberGetsFull ? t.amount : t.barber_already_collected
 }
 
+// Liquidaciones — "Total cobrado" del barbero en la semana:
+// - comisión: su ganancia total (comisión + bonos). El cliente maneja a estos
+//   barberos como que cobran su parte durante la semana, así que se muestra
+//   siempre lo ganado, sin importar el medio de pago (reciba o no transferencias).
+// - alquiler de box: el facturado de la semana (lo cobró en sus cortes).
+// - sueldo: lo que ya cobró por transferencia (comportamiento previo).
+function settlTotalCobrado(s: SettlementWithBarber): number {
+  if (s.barber.compensation_type === 'box_rental') return s.gross_amount
+  if (s.barber.compensation_type === 'percentage') return s.total_earned
+  return s.already_collected
+}
+
+// Liquidaciones — "A pagar" (movimiento de plata al cerrar la semana):
+// - alquiler de box: el alquiler que el barbero le paga a la barbería.
+// - comisión / sueldo: el neto (diferencia) que queda por saldar entre lo
+//   ganado y lo ya cobrado.
+function settlAPagar(s: SettlementWithBarber): number {
+  if (s.barber.compensation_type === 'box_rental') return s.box_rent
+  return s.net_payable
+}
+
 // ─── Tipos de tab ──────────────────────────────────────────────────────────
 type Tab = 'live' | 'liquidaciones' | 'transacciones' | 'gastos' | 'saldo' | 'adelantos'
 const TAB_LABELS: Record<Tab, string> = {
@@ -1087,7 +1108,7 @@ export default function AdminDashboard() {
                     <th>Objetivo</th>
                     <th>Alquiler box</th>
                     <th>Total ganado</th>
-                    <th>Ya cobrado</th>
+                    <th>Total cobrado</th>
                     <th>Adelantos</th>
                     <th className="th-highlight">A pagar</th>
                     <th>Estado</th>
@@ -1230,13 +1251,10 @@ export default function AdminDashboard() {
                         </td>
                         <td className="td-bold">{formatARS(s.total_earned)}</td>
                         <td className="td-muted">
-                          {isBoxRentalRow ? (
-                            // Alquiler de box: el cliente pidió ver acá el facturado de la
-                            // semana (no el neteo de "ya en la mano" día a día).
-                            <span className="td-collected">{formatARS(s.gross_amount)}</span>
-                          ) : s.already_collected > 0 ? (
-                            <span className="td-collected">{formatARS(s.already_collected)}</span>
-                          ) : '—'}
+                          {(() => {
+                            const v = settlTotalCobrado(s)
+                            return v > 0 ? <span className="td-collected">{formatARS(v)}</span> : '—'
+                          })()}
                         </td>
                         <td className="td-muted">
                           {s.advances_deducted > 0 ? (
@@ -1371,9 +1389,9 @@ export default function AdminDashboard() {
                     <td colSpan={2}><strong>TOTALES</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.gross_amount, 0))}</strong></td>
                     <td colSpan={5}></td>
-                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.already_collected, 0))}</strong></td>
+                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + settlTotalCobrado(x), 0))}</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.advances_deducted, 0))}</strong></td>
-                    <td><strong className="net-payable--pos">{formatARS(filteredSettlements.reduce((s, x) => s + Math.max(x.net_payable, 0), 0))}</strong></td>
+                    <td><strong className="net-payable--pos">{formatARS(filteredSettlements.reduce((s, x) => s + Math.max(settlAPagar(x), 0), 0))}</strong></td>
                     <td colSpan={2}></td>
                   </tr>
                 </tfoot>
