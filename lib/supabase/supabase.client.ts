@@ -1250,6 +1250,7 @@ export async function fullEditTransaction(
     branch_share: number
     barber_already_collected: number
     override_notes: string
+    benefit_id?: string | null
   }
 ): Promise<void> {
   const { error } = await supabase

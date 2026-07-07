@@ -19,6 +19,7 @@ import {
   type RevenueBalance,
   type ServiceCatalog,
   type PaymentMethod,
+  type Benefit,
   PAYMENT_METHOD_LABELS,
   WEEK_STATUS_LABELS,
   SETTLEMENT_STATUS_LABELS,
@@ -60,6 +61,8 @@ import {
   getBarberDayGross,
   getServicesByBranch,
   getWeeksByBranch,
+  getActiveBenefitsByBranch,
+  computeBenefitDiscount,
   getCurrentProfile,
   getAdvancesPendingForBarber,
   todayLocal,
@@ -2219,6 +2222,7 @@ function EditTransactionModal({
   const todayStr = todayLocal()
 
   const [services,  setServices]  = useState<ServiceCatalog[]>([])
+  const [benefits,  setBenefits]  = useState<Benefit[]>([])
   const [allWeeks,  setAllWeeks]  = useState<Week[]>([])
   const [loading,   setLoading]   = useState(true)
   const [saving,    setSaving]    = useState(false)
@@ -2231,6 +2235,7 @@ function EditTransactionModal({
   const [clientSurname, setClientSurname] = useState(tx.client_surname ?? '')
   const [discount,      setDiscount]      = useState(String(tx.discount_amount ?? 0))
   const [discountReason, setDiscountReason] = useState(tx.discount_reason ?? '')
+  const [benefitId,     setBenefitId]     = useState(tx.benefit_id ?? '')
   const [method,        setMethod]        = useState<PaymentMethod | ''>(tx.payment_method === 'mixed' ? '' : tx.payment_method as PaymentMethod)
   const [splitPayment,  setSplitPayment]  = useState(tx.payment_method === 'mixed')
   const [cashPart,      setCashPart]      = useState(String(tx.cash_amount ?? ''))
@@ -2251,12 +2256,14 @@ function EditTransactionModal({
   useEffect(() => {
     async function load() {
       try {
-        const [svcs, weeks] = await Promise.all([
+        const [svcs, weeks, bnfs] = await Promise.all([
           getServicesByBranch(tx.branch_id),
           getWeeksByBranch(tx.branch_id),
+          getActiveBenefitsByBranch(tx.branch_id),
         ])
         setServices(svcs.filter((s) => s.is_active))
         setAllWeeks(weeks)
+        setBenefits(bnfs)
       } catch (e) {
         setErr(e instanceof Error ? e.message : 'Error cargando datos')
       } finally {
@@ -2291,6 +2298,22 @@ function EditTransactionModal({
 
   const selectedService = services.find((s) => s.id === serviceId)
   const resolvedAmount  = customAmt ? parseFloat(customAmt) : (selectedService?.base_price ?? 0)
+  const selectedBenefit = benefits.find((b) => b.id === benefitId)
+  // VIP: en barberos de comisión %, la barbería absorbe el descuento y el barbero
+  // se lleva el 100% del corte (branch_share 0). Sin efecto en alquiler de box.
+  const isVipFull = !!selectedBenefit?.full_amount_to_barber && tx.barber.compensation_type === 'percentage'
+
+  // Al elegir/cambiar servicio con un beneficio activo, recalcular el descuento
+  // sobre el nuevo precio (mismo criterio que al registrar el corte).
+  useEffect(() => {
+    if (!benefitId) return
+    const b = benefits.find((x) => x.id === benefitId)
+    if (!b) return
+    const d = computeBenefitDiscount(b, resolvedAmount)
+    setDiscount(d > 0 ? String(d) : '0')
+    setDiscountReason(b.name)
+  }, [benefitId, resolvedAmount, benefits])
+
   const discountNum     = parseFloat(discount) || 0
   const effectiveAmount = Math.max(0, resolvedAmount - discountNum)
   const cashNum         = parseFloat(cashPart) || 0
@@ -2353,8 +2376,9 @@ function EditTransactionModal({
     // Alquiler de box DIARIO: reparto según el acumulado del día (los primeros
     // $dailyRent van a la barbería; el resto al barbero). fullEditTransaction
     // recalcula además el día completo (el umbral se corre al editar).
-    const barberShareFinal = isBoxRental ? boxToBarber : barberShareCalc
-    const branchShareFinal = isBoxRental ? boxToShop : branchShareCalc
+    // VIP (comisión %): 100% al barbero, la barbería absorbe el descuento.
+    const barberShareFinal = isBoxRental ? boxToBarber : (isVipFull ? effectiveAmount : barberShareCalc)
+    const branchShareFinal = isBoxRental ? boxToShop : (isVipFull ? 0 : branchShareCalc)
     const barberAlreadyCollected = isBoxRental
       ? boxToBarber
       : (tx.barber.receives_transfers ? transferAmt : 0)
@@ -2378,6 +2402,7 @@ function EditTransactionModal({
         branch_share:     branchShareFinal,
         barber_already_collected: barberAlreadyCollected,
         override_notes:   'Editado manualmente',
+        benefit_id:       benefitId || null,
       })
       onSaved()
     } catch (e) {
@@ -2472,6 +2497,40 @@ function EditTransactionModal({
                 <TextInput className="form-input" placeholder="Apellido del cliente" value={clientSurname}
                   onChange={setClientSurname} maxLength={60} style={{ marginTop: 8 }} />
               </div>
+
+              {/* Beneficio */}
+              {benefits.length > 0 && (
+                <div>
+                  <label className="form-label">Beneficio <span style={{ color: '#52525b', fontWeight: 400 }}>(opcional)</span></label>
+                  <select
+                    className="form-input"
+                    value={benefitId}
+                    onChange={(e) => {
+                      const id = e.target.value
+                      setBenefitId(id)
+                      if (!id) { setDiscount('0'); setDiscountReason(''); return }
+                      const b = benefits.find((x) => x.id === id)
+                      if (b) {
+                        const d = computeBenefitDiscount(b, resolvedAmount)
+                        setDiscount(d > 0 ? String(d) : '0')
+                        setDiscountReason(b.name)
+                      }
+                    }}
+                  >
+                    <option value="">— sin beneficio —</option>
+                    {benefits.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name} ({b.discount_type === 'percentage' ? `${b.discount_value}%` : formatARS(b.discount_value)})
+                      </option>
+                    ))}
+                  </select>
+                  {isVipFull && (
+                    <p style={{ color: '#f59e0b', fontSize: '0.75rem', marginTop: '0.3rem' }}>
+                      ⚠️ Beneficio VIP: el monto cobrado va 100% al barbero, la barbería no gana nada de este corte.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Descuento */}
               <div>
