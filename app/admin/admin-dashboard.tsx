@@ -106,14 +106,11 @@ function txBarberSide(t: { amount: number; branch_share: number; barber_share: n
 }
 
 // Liquidaciones — "Total cobrado" del barbero en la semana:
-// - comisión: su ganancia total (comisión + bonos). El cliente maneja a estos
-//   barberos como que cobran su parte durante la semana, así que se muestra
-//   siempre lo ganado, sin importar el medio de pago (reciba o no transferencias).
+// - comisión / sueldo: lo que efectivamente cobró (transferencias que entraron
+//   a su cuenta); coincide con la columna "Barbero" de Transacciones.
 // - alquiler de box: el facturado de la semana (lo cobró en sus cortes).
-// - sueldo: lo que ya cobró por transferencia (comportamiento previo).
 function settlTotalCobrado(s: SettlementWithBarber): number {
   if (s.barber.compensation_type === 'box_rental') return s.gross_amount
-  if (s.barber.compensation_type === 'percentage') return s.total_earned
   return s.already_collected
 }
 
