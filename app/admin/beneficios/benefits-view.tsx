@@ -386,7 +386,14 @@ function BenefitRow({
       ) : (
         <div className="flex items-center justify-between gap-4">
           <div>
-            <p className="text-white font-semibold text-sm">{benefit.name}</p>
+            <div className="flex items-center gap-1.5">
+              <p className="text-white font-semibold text-sm">{benefit.name}</p>
+              {benefit.full_amount_to_barber && (
+                <span className="text-[0.65rem] font-bold uppercase tracking-wide text-amber-400 border border-amber-500/40 rounded px-1.5 py-0.5">
+                  VIP
+                </span>
+              )}
+            </div>
             <p className="text-amber-400 text-sm font-medium mt-0.5">{describeBenefit(benefit)}</p>
             {benefit.description && <p className="text-zinc-500 text-xs mt-0.5">{benefit.description}</p>}
           </div>

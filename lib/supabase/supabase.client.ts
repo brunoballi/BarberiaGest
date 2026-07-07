@@ -185,7 +185,7 @@ export async function updateService(
 export async function getBenefitsByBranch(branchId: string): Promise<Benefit[]> {
   const { data, error } = await supabase
     .from('benefits')
-    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at')
+    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at, full_amount_to_barber')
     .eq('branch_id', branchId)
     .order('name')
 
@@ -197,7 +197,7 @@ export async function getBenefitsByBranch(branchId: string): Promise<Benefit[]> 
 export async function getActiveBenefitsByBranch(branchId: string): Promise<Benefit[]> {
   const { data, error } = await supabase
     .from('benefits')
-    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at')
+    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at, full_amount_to_barber')
     .eq('branch_id', branchId)
     .eq('is_active', true)
     .order('name')
@@ -873,6 +873,12 @@ export async function registerCut(
     const toShop = Math.min(payload.amount, Math.max(0, dailyRent - accumulatedToday))
     branchShare = Number(toShop.toFixed(2))
     barberShare = Number((payload.amount - toShop).toFixed(2))
+  } else if (payload.benefit_full_amount_to_barber && barber.compensation_type === 'percentage') {
+    // Beneficio VIP: el monto ya descontado va 100% al barbero, la barbería no
+    // gana nada de este corte. Solo aplica a comisión % (sueldo fijo y alquiler
+    // de box no reparten por corte, así que se comportan como beneficio normal).
+    barberShare = payload.amount
+    branchShare = 0
   } else {
     barberShare = Math.max(0, Math.min(barberShareRaw, payload.amount))
     branchShare = Number((payload.amount - barberShare).toFixed(2))
@@ -975,6 +981,10 @@ export async function updateCut(
     const toShop = Math.min(payload.amount, Math.max(0, dailyRent - accumulatedToday))
     branchShare = Number(toShop.toFixed(2))
     barberShare = Number((payload.amount - toShop).toFixed(2))
+  } else if (payload.benefit_full_amount_to_barber && barber.compensation_type === 'percentage') {
+    // Beneficio VIP: ver comentario equivalente en registerCut.
+    barberShare = payload.amount
+    branchShare = 0
   } else {
     barberShare = Math.max(0, Math.min(barberShareRaw, payload.amount))
     branchShare = Number((payload.amount - barberShare).toFixed(2))

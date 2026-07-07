@@ -242,6 +242,9 @@ export default function ManualCutModal({
   const resolvedAmount  = customAmt ? parseFloat(customAmt) : (selectedService?.base_price ?? 0)
   const discountNum     = parseFloat(discount) || 0
   const selectedBenefit = benefits.find((b) => b.id === benefitId)
+  const selectedBarber  = barbers.find((b) => b.id === barberId)
+  const isVipFullToBarberPreview =
+    !!selectedBenefit?.full_amount_to_barber && selectedBarber?.compensation_type === 'percentage'
 
   // Mejora 1: al elegir un beneficio, pre-rellenar descuento y motivo.
   // Para % se recalcula si cambia el monto. La matemática del descuento NO cambia (50/50).
@@ -321,6 +324,7 @@ export default function ManualCutModal({
         discount_amount:  discountNum > 0 ? discountNum : 0,
         discount_reason:  discountReasonFinal,
         benefit_id:       benefitId || null,
+        benefit_full_amount_to_barber: isVipFullToBarberPreview,
       }
       await registerCut(payload, barber, effectiveWeekId, adminId)
       onSuccess()
@@ -440,6 +444,11 @@ export default function ManualCutModal({
                   {selectedBenefit && discountNum > 0 && (
                     <p style={{ color: '#34d399', fontSize: '0.75rem', marginTop: '0.3rem' }}>
                       Ahorra {formatARS(discountNum)} con &quot;{selectedBenefit.name}&quot;
+                    </p>
+                  )}
+                  {isVipFullToBarberPreview && (
+                    <p style={{ color: '#f59e0b', fontSize: '0.75rem', marginTop: '0.3rem' }}>
+                      ⚠️ Beneficio VIP: el monto cobrado va 100% al barbero, la barbería no gana nada de este corte.
                     </p>
                   )}
                 </div>

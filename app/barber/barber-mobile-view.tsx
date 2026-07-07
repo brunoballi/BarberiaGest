@@ -381,10 +381,16 @@ export default function BarberMobileView() {
     setTransferPart(String(effectiveAmount - half))
   }, [effectiveAmount, splitPayment, editingTx])
 
+  // Beneficio VIP: en comisión %, el monto ya descontado va 100% al barbero.
+  const isVipFullToBarber =
+    !!selectedBenefit?.full_amount_to_barber && profile?.compensation_type === 'percentage'
+
   // Comisión = % sobre el monto facturado (ya con el descuento aplicado).
   // Box_rental: la "parte del barbero" es lo que excede el alquiler diario.
   const previewBarberShare = isBoxRental
     ? Math.max(0, Math.round(boxToBarber))
+    : isVipFullToBarber
+    ? Math.max(0, Math.round(effectiveAmount))
     : Math.max(0, Math.round(effectiveAmount * commissionRate))
   // Transferencia → barbero ya tiene su parte; efectivo → queda en caja
   const previewAlreadyCollected = paymentMethod === 'transfer' ? previewBarberShare : 0
@@ -464,6 +470,7 @@ export default function BarberMobileView() {
         discount_amount:  discountNum > 0 ? discountNum : 0,
         discount_reason:  discountReasonFinal,
         benefit_id:       benefitId || null,
+        benefit_full_amount_to_barber: isVipFullToBarber,
       }
       if (editingTx) {
         const updated = await updateCut(editingTx.id, payload, profile)

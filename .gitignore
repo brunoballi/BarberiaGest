@@ -33,6 +33,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# supabase (estado local del CLI / Docker — no versionar)
+/supabase/.branches
+/supabase/.temp
+
 # vercel
 .vercel
 

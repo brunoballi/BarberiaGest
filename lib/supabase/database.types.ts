@@ -64,6 +64,10 @@ export interface Benefit {
   discount_value: number
   is_active: boolean
   created_at: string
+  /** Beneficio VIP: en barberos de comisión %, el monto descontado va 100% al
+   *  barbero (branch_share=0) en vez de partirse por la comisión. Sin efecto
+   *  en sueldo fijo ni alquiler de box (se comportan como beneficio normal). */
+  full_amount_to_barber: boolean
 }
 
 export interface ServiceCatalog {
@@ -251,12 +255,13 @@ export type ProfileInsert = Omit<Profile, 'created_at' | 'receives_transfers' | 
   advance_limit?: number
 }
 
-export type BenefitInsert = Omit<Benefit, 'id' | 'created_at' | 'is_active'> & {
+export type BenefitInsert = Omit<Benefit, 'id' | 'created_at' | 'is_active' | 'full_amount_to_barber'> & {
   is_active?: boolean
+  full_amount_to_barber?: boolean
 }
 
 export type BenefitUpdate = Partial<
-  Pick<Benefit, 'name' | 'description' | 'discount_type' | 'discount_value' | 'is_active'>
+  Pick<Benefit, 'name' | 'description' | 'discount_type' | 'discount_value' | 'is_active' | 'full_amount_to_barber'>
 >
 
 export type ServiceCatalogInsert = Omit<ServiceCatalog, 'id' | 'created_at'>
@@ -417,6 +422,9 @@ export interface RegisterCutPayload {
   discount_reason?: string | null
   // Mejora 1: beneficio seleccionado (pre-rellena descuento)
   benefit_id?: string | null
+  // Beneficio VIP: si el beneficio elegido tiene full_amount_to_barber=true y el
+  // barbero es de comisión %, el monto ya descontado va 100% al barbero.
+  benefit_full_amount_to_barber?: boolean
 }
 
 /** Resultado del cálculo de un settlement para mostrar en UI */

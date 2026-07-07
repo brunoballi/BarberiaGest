@@ -1080,13 +1080,18 @@ export default function AdminDashboard() {
                 <tbody>
                   {pagedSettlements.map((s) => {
                     const hasBonuses = s.barber.compensation_type !== 'box_rental'
+                    const isBoxRentalRow = s.barber.compensation_type === 'box_rental'
                     const isPositive = s.net_payable >= 0
                     // Deuda saldada: liquidación negativa ya marcada como pagada.
                     // Ya no debe nada, así que no se muestra como "Debe" ni en rojo.
                     const isSettledDebt = s.status === 'paid' && s.net_payable < 0
                     const loadingKey = actionLoading
+                    // Alquiler de box: el neteo es SEMANAL (alquiler diario × días con
+                    // cortes), no día a día — que un día puntual no cubra el alquiler no
+                    // es una "deuda" en rojo, es normal y se compensa dentro de la misma
+                    // semana. No pintamos la fila en rojo por eso.
                     return (
-                      <tr key={s.id} className={!isPositive && !isSettledDebt ? 'tr-danger' : ''}>
+                      <tr key={s.id} className={!isBoxRentalRow && !isPositive && !isSettledDebt ? 'tr-danger' : ''}>
                         <td>
                           <div className="barber-cell">
                             <div className="barber-avatar">
@@ -1208,9 +1213,13 @@ export default function AdminDashboard() {
                         </td>
                         <td className="td-bold">{formatARS(s.total_earned)}</td>
                         <td className="td-muted">
-                          {s.already_collected > 0
-                            ? <span className="td-collected">{formatARS(s.already_collected)}</span>
-                            : '—'}
+                          {isBoxRentalRow ? (
+                            // Alquiler de box: el cliente pidió ver acá el facturado de la
+                            // semana (no el neteo de "ya en la mano" día a día).
+                            <span className="td-collected">{formatARS(s.gross_amount)}</span>
+                          ) : s.already_collected > 0 ? (
+                            <span className="td-collected">{formatARS(s.already_collected)}</span>
+                          ) : '—'}
                         </td>
                         <td className="td-muted">
                           {s.advances_deducted > 0 ? (
@@ -1225,10 +1234,21 @@ export default function AdminDashboard() {
                           ) : '—'}
                         </td>
                         <td>
-                          <span className={`net-payable ${isPositive || isSettledDebt ? 'net-payable--pos' : 'net-payable--neg'}`}>
-                            {isSettledDebt ? '✓ Saldado ' : isPositive ? '' : '↑ Debe '}
-                            {formatARS(Math.abs(s.net_payable))}
-                          </span>
+                          {isBoxRentalRow ? (
+                            // Alquiler de box: acá se muestra el alquiler devengado de la
+                            // semana completa (mismo valor que la columna "Alquiler box"),
+                            // no el neteo día a día. Al marcar la liquidación "pagado" queda
+                            // saldado, sin importar cómo se cubrió día por día.
+                            <span className={`net-payable ${s.status === 'paid' ? 'net-payable--pos' : ''}`}>
+                              {s.status === 'paid' ? '✓ Saldado ' : ''}
+                              {formatARS(s.box_rent)}
+                            </span>
+                          ) : (
+                            <span className={`net-payable ${isPositive || isSettledDebt ? 'net-payable--pos' : 'net-payable--neg'}`}>
+                              {isSettledDebt ? '✓ Saldado ' : isPositive ? '' : '↑ Debe '}
+                              {formatARS(Math.abs(s.net_payable))}
+                            </span>
+                          )}
                         </td>
                         <td>
                           <span className={`badge badge--${s.status}`}>
