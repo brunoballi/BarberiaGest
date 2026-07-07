@@ -634,7 +634,11 @@ export default function AdminDashboard() {
     // Si el barbero debía (liquidación negativa), abrir primero el modal de
     // devolución. Marcar como pagada se hace recién al confirmar dentro del
     // modal (cancelar o cerrar NO cambia el estado). Opción C.
-    if (s.net_payable < 0) {
+    // Alquiler de box: el net_payable negativo es solo el neteo día a día del
+    // alquiler devengado (ver "A pagar"), no una deuda real del barbero — el
+    // alquiler total de la semana se cobra igual. No corresponde el modal de
+    // devolución acá, se marca pagado directo.
+    if (s.net_payable < 0 && s.barber.compensation_type !== 'box_rental') {
       setDebtModal({
         settlementId: s.id,
         barberId:     s.barber_id,

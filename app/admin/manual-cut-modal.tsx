@@ -337,7 +337,7 @@ export default function ManualCutModal({
 
   // ── Render ────────────────────────────────────────────────────────────────
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay">
       <div className="modal-box" style={{ maxWidth: '540px' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Registrar corte (admin)</h3>
