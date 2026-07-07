@@ -1294,15 +1294,14 @@ export default function BarberMobileView() {
                         <div className="h-px bg-zinc-800 my-0.5" />
                         <SettlRow label="Saldo que te llevaste" value={formatARS(s.total_earned)} bold />
                         {s.advances_deducted > 0 && <SettlRow label="– Adelantos" value={formatARS(s.advances_deducted)} valueClass="text-red-400" />}
-                        {s.net_payable < 0 && (
-                          <>
-                            <div className="h-px bg-zinc-800 my-0.5" />
-                            <SettlRow label="Saldo con la barbería" value={formatARS(s.net_payable)} bold />
-                            <p className={`text-xs mt-1 flex items-center gap-1 ${s.status === 'paid' ? 'text-emerald-400' : 'text-red-400'}`}>
-                              <span>{s.status === 'paid' ? '✓' : 'ℹ️'}</span>
-                              <span>{s.status === 'paid' ? 'Saldado con la barbería' : 'Se debe a la barbería'}</span>
-                            </p>
-                          </>
+                        {/* El alquiler se cobra por semana completa (suma de los alquileres
+                            diarios), no día a día: que un día puntual no lo cubra no es una
+                            deuda a mostrar acá, ya está reflejado arriba en "Alquiler del box". */}
+                        {s.status === 'paid' && (
+                          <p className="text-xs mt-1 flex items-center gap-1 text-emerald-400">
+                            <span>✓</span>
+                            <span>Alquiler de la semana saldado</span>
+                          </p>
                         )}
                         <p className="text-xs text-zinc-500 mt-1">
                           Cobrás tus cortes durante la semana; la barbería descuenta el alquiler diario del box.
