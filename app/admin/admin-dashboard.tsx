@@ -92,6 +92,16 @@ function formatDate(d: string): string {
   })
 }
 
+// Grilla de Transacciones: monto a mostrar del lado del BARBERO. Por defecto es
+// lo que el barbero ya tiene en la mano (transferencia; el efectivo queda en
+// caja). Excepción VIP: la barbería absorbe el descuento y el barbero se lleva
+// el 100% del corte, sin importar el medio de pago → se muestra el monto
+// completo. Se detecta por el split económico (branch_share 0 y barber_share = total).
+function txBarberSide(t: { amount: number; branch_share: number; barber_share: number; barber_already_collected: number }): number {
+  const barberGetsFull = Number(t.branch_share) === 0 && Number(t.barber_share) === Number(t.amount)
+  return barberGetsFull ? t.amount : t.barber_already_collected
+}
+
 // ─── Tipos de tab ──────────────────────────────────────────────────────────
 type Tab = 'live' | 'liquidaciones' | 'transacciones' | 'gastos' | 'saldo' | 'adelantos'
 const TAB_LABELS: Record<Tab, string> = {
@@ -1474,7 +1484,9 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody>
-                  {txPaged.map((tx) => (
+                  {txPaged.map((tx) => {
+                    const barberSide = txBarberSide(tx)
+                    return (
                     <tr key={tx.id} className={tx.is_manual_override ? 'tr-override' : ''}>
                       <td className="td-date td-left">{formatDate(tx.transaction_date)}</td>
                       <td className="td-left">{tx.barber.full_name}</td>
@@ -1486,10 +1498,10 @@ export default function AdminDashboard() {
                         </span>
                       </td>
                       <td className="td-bold">{formatARS(tx.amount)}</td>
-                      <td>{formatARS(tx.amount - tx.barber_already_collected)}</td>
+                      <td>{formatARS(tx.amount - barberSide)}</td>
                       <td>
-                        {tx.barber_already_collected > 0
-                          ? <span className="td-collected">{formatARS(tx.barber_already_collected)}</span>
+                        {barberSide > 0
+                          ? <span className="td-collected">{formatARS(barberSide)}</span>
                           : formatARS(0)}
                       </td>
                       <td>
@@ -1534,14 +1546,14 @@ export default function AdminDashboard() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
                 <tfoot>
                   <tr className="tfoot-row">
                     <td colSpan={5}><strong>{filtered.length} transacción{filtered.length !== 1 ? 'es' : ''}</strong></td>
                     <td><strong>{formatARS(filtered.reduce((s, t) => s + t.amount, 0))}</strong></td>
-                    <td><strong>{formatARS(filtered.reduce((s, t) => s + (t.amount - t.barber_already_collected), 0))}</strong></td>
-                    <td><strong>{formatARS(filtered.reduce((s, t) => s + t.barber_already_collected, 0))}</strong></td>
+                    <td><strong>{formatARS(filtered.reduce((s, t) => s + (t.amount - txBarberSide(t)), 0))}</strong></td>
+                    <td><strong>{formatARS(filtered.reduce((s, t) => s + txBarberSide(t), 0))}</strong></td>
                     <td colSpan={2}></td>
                   </tr>
                 </tfoot>
