@@ -350,6 +350,44 @@ export default function ReportesView() {
             </div>
           </div>
 
+          {/* ── Saldo del mes (saldo inicial + ingresos − gastos = saldo actual) ── */}
+          {monthFins.length > 0 && (
+            <div className="report-section">
+              <h2 className="report-section__title">Saldo del mes</h2>
+              <div className="report-cards-grid">
+                {monthFins.map(({ branchId, branchName, fin }) => (
+                  <div key={branchId} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+                    <p className="font-bold text-zinc-100 mb-3">{branchName}</p>
+                    <div className="space-y-1.5 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-zinc-400">Saldo inicial</span>
+                        <span className={fin.initialBalance < 0 ? 'text-red-400' : 'text-zinc-200'}>{formatARS(fin.initialBalance)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-zinc-400">+ Ingresos totales <em className="text-zinc-600 not-italic">(comisiones + box)</em></span>
+                        <span className="text-emerald-400">{formatARS(fin.branchIncome)}</span>
+                      </div>
+                      {fin.capitalInjections > 0 && (
+                        <div className="flex justify-between">
+                          <span className="text-zinc-400">+ Inyecciones de capital</span>
+                          <span className="text-blue-400">{formatARS(fin.capitalInjections)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between">
+                        <span className="text-zinc-400">− Gastos totales</span>
+                        <span className="text-red-400">{formatARS(fin.totalExpenses)}</span>
+                      </div>
+                      <div className="flex justify-between pt-2 border-t border-zinc-800 font-bold">
+                        <span className="text-zinc-200">= Saldo actual</span>
+                        <span className={fin.netProfit < 0 ? 'text-red-400' : 'text-emerald-400'}>{formatARS(fin.netProfit)}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* ── Gráfico comparativo ────────────────────────────── */}
           {barData.length > 0 && (
             <div className="report-section">
