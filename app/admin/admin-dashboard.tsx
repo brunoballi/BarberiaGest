@@ -1385,7 +1385,9 @@ export default function AdminDashboard() {
                   <tr className="tfoot-row">
                     <td colSpan={2}><strong>TOTALES</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.gross_amount, 0))}</strong></td>
-                    <td colSpan={5}></td>
+                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + (x.barber.compensation_type !== 'box_rental' ? x.barber_gross : 0), 0))}</strong></td>
+                    <td colSpan={3}></td>
+                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.total_earned, 0))}</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + settlTotalCobrado(x), 0))}</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.advances_deducted, 0))}</strong></td>
                     <td><strong className="net-payable--pos">{formatARS(filteredSettlements.reduce((s, x) => s + Math.max(settlAPagar(x), 0), 0))}</strong></td>
