@@ -355,7 +355,14 @@ export default function ReportesView() {
             <div className="report-section">
               <h2 className="report-section__title">Saldo del mes</h2>
               <div className="report-cards-grid">
-                {monthFins.map(({ branchId, branchName, fin }) => (
+                {monthFins.map(({ branchId, branchName, fin }) => {
+                  // Ingresos = "Total barbería", tomado del MISMO dato que la tarjeta
+                  // de arriba (Ganancia Neta por Sucursal) para que ambos reportes
+                  // muestren idéntico número: ingresos de semanas liquidadas menos el
+                  // total de los barberos (con bonos).
+                  const totalBarberia = reports.find((r) => r.branchId === branchId)?.branchShare ?? 0
+                  const saldoActual = fin.initialBalance + totalBarberia + fin.capitalInjections - fin.totalExpenses
+                  return (
                   <div key={branchId} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
                     <p className="font-bold text-zinc-100 mb-3">{branchName}</p>
                     <div className="space-y-1.5 text-sm">
@@ -364,8 +371,8 @@ export default function ReportesView() {
                         <span className={fin.initialBalance < 0 ? 'text-red-400' : 'text-zinc-200'}>{formatARS(fin.initialBalance)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-zinc-400">+ Ingresos totales <em className="text-zinc-600 not-italic">(comisiones + box)</em></span>
-                        <span className="text-emerald-400">{formatARS(fin.branchIncome)}</span>
+                        <span className="text-zinc-400">+ Total barbería</span>
+                        <span className="text-emerald-400">{formatARS(totalBarberia)}</span>
                       </div>
                       {fin.capitalInjections > 0 && (
                         <div className="flex justify-between">
@@ -379,11 +386,12 @@ export default function ReportesView() {
                       </div>
                       <div className="flex justify-between pt-2 border-t border-zinc-800 font-bold">
                         <span className="text-zinc-200">= Saldo actual</span>
-                        <span className={fin.netProfit < 0 ? 'text-red-400' : 'text-emerald-400'}>{formatARS(fin.netProfit)}</span>
+                        <span className={saldoActual < 0 ? 'text-red-400' : 'text-emerald-400'}>{formatARS(saldoActual)}</span>
                       </div>
                     </div>
                   </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
