@@ -2644,7 +2644,7 @@ function EditTransactionModal({
                   )}
                   {discountNum > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f59e0b', fontSize: '0.75rem' }}>
-                      <span>Descuento{isBoxRental ? '' : ' (50/50)'}</span><span>−{formatARS(discountNum)}</span>
+                      <span>Descuento{isBoxRental || isVipFull ? '' : ' (50/50)'}</span><span>−{formatARS(discountNum)}</span>
                     </div>
                   )}
                   {isBoxRental ? (
@@ -2671,13 +2671,14 @@ function EditTransactionModal({
                     </>
                   ) : (
                     <>
+                      {/* VIP: el barbero se lleva el 100% del monto descontado; la barbería absorbe el descuento */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.35rem' }}>
-                        <span style={{ color: '#a1a1aa' }}>Parte barbero ({Math.round(commissionRate * 100)}%)</span>
-                        <span style={{ color: '#f59e0b', fontWeight: 600 }}>{formatARS(barberShareCalc)}</span>
+                        <span style={{ color: '#a1a1aa' }}>Parte barbero ({isVipFull ? '100% VIP' : `${Math.round(commissionRate * 100)}%`})</span>
+                        <span style={{ color: '#f59e0b', fontWeight: 600 }}>{formatARS(isVipFull ? effectiveAmount : barberShareCalc)}</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: '#a1a1aa' }}>Parte barbería</span>
-                        <span style={{ color: '#fff' }}>{formatARS(branchShareCalc)}</span>
+                        <span style={{ color: '#fff' }}>{formatARS(isVipFull ? 0 : branchShareCalc)}</span>
                       </div>
                     </>
                   )}
