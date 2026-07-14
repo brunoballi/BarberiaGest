@@ -2352,13 +2352,10 @@ function EditTransactionModal({
   const boxToBarber  = Math.max(0, effectiveAmount - boxToShop)
   const dayRentRemaining = Math.max(0, dailyRent - (dayOtherGross + effectiveAmount))
 
-  useEffect(() => {
-    if (!splitPayment || effectiveAmount < 0) return
-    if (effectiveAmount === 0) { setCashPart('0'); setTransferPart('0'); return }
-    const half = Math.round(effectiveAmount / 2)
-    setCashPart(String(half))
-    setTransferPart(String(effectiveAmount - half))
-  }, [effectiveAmount, splitPayment])
+  // NO auto-balancear el split al editar: respetamos los montos reales del corte
+  // (mismo criterio que la vista del barbero). El 50/50 solo se pre-carga cuando
+  // el admin activa el toggle de pago mixto a mano; si cambia el monto, ajusta el
+  // split manualmente y la validación de la suma lo obliga antes de guardar.
 
   const splitValid = splitPayment
     ? effectiveAmount === 0 || (cashNum + transferNum > 0 && Math.abs(cashNum + transferNum - effectiveAmount) <= 1)
