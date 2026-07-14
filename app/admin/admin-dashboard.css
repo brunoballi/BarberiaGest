@@ -813,6 +813,7 @@
 .td-amber  { color: #fbbf24; }
 .td-collected { color: #34d399; font-size: 0.8rem; }
 .td-advance   { color: #fb923c; font-size: 0.8rem; }
+.td-subnote   { color: #71717a; font-size: 0.68rem; margin-top: 0.15rem; white-space: nowrap; }
 
 /* ─── Barber cell ───────────────────────────────────────────── */
 .barber-cell {

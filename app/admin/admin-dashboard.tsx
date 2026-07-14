@@ -105,13 +105,30 @@ function txBarberSide(t: { amount: number; branch_share: number; barber_share: n
   return barberGetsFull ? t.amount : t.barber_already_collected
 }
 
+// Liquidaciones — desglose del beneficio VIP (comisión %).
+// El barbero se lleva el 100% de esos cortes y ya se los llevó en el momento, así
+// que no se liquidan: se muestran aparte en "Ingresos por benef. VIP" y se restan
+// de "Total ganado" y "Total cobrado". Clave: se resta SIEMPRE el mismo valor
+// (vip_settled) de los dos lados, con lo cual la diferencia sigue siendo exactamente
+// net_payable. Restarlo de un solo lado le pagaría el VIP dos veces.
+// vip_settled < vip_amount solo si el VIP se cobró por transferencia y el barbero no
+// las recibe (fue a la cuenta de Valhalla): esa parte no está saldada y sigue dentro
+// del "Total ganado" porque la barbería se la debe.
+function settlComisionBase(s: SettlementWithBarber): number {
+  return s.barber_gross - s.vip_amount
+}
+
+function settlTotalGanado(s: SettlementWithBarber): number {
+  return s.total_earned - s.vip_settled
+}
+
 // Liquidaciones — "Total cobrado" del barbero en la semana:
 // - comisión / sueldo: lo que efectivamente cobró (transferencias que entraron
-//   a su cuenta); coincide con la columna "Barbero" de Transacciones.
+//   a su cuenta), sin el VIP ya saldado.
 // - alquiler de box: el facturado de la semana (lo cobró en sus cortes).
 function settlTotalCobrado(s: SettlementWithBarber): number {
   if (s.barber.compensation_type === 'box_rental') return s.gross_amount
-  return s.already_collected
+  return s.already_collected - s.vip_settled
 }
 
 // Liquidaciones — "A pagar" (movimiento de plata al cerrar la semana):
@@ -750,8 +767,11 @@ export default function AdminDashboard() {
   const kpis = {
     grossTotal: settlements.reduce((s, x) => s + x.gross_amount, 0),
     branchTotal: settlements.reduce((s, x) => s + (x.gross_amount - x.barber_gross - x.bonus_presentismo - x.bonus_objetivo), 0),
-    // Total que cobra el barbero (comisión + bonos = total_earned), todos los barberos.
+    // Total que cobra el barbero (comisión + bonos + VIP = total_earned), todos los
+    // barberos. Incluye el VIP a propósito: es plata que se lleva el barbero, así que
+    // restarla del facturado es lo que da la ganancia real de la barbería (branchTotal).
     barberTotal: settlements.reduce((s, x) => s + x.total_earned, 0),
+    vipTotal: settlements.reduce((s, x) => s + x.vip_amount, 0),
     totalPayable: settlements.reduce((s, x) => s + Math.max(x.net_payable, 0), 0),
     totalCuts: settlements.reduce((s, x) => s + x.total_cuts, 0),
     cashTotal: settlements.reduce((s, x) => s + x.cash_amount, 0),
@@ -937,7 +957,8 @@ export default function AdminDashboard() {
             <KpiCard
               label="Total barbero"
               value={formatARS(kpis.barberTotal)}
-              tooltip="Lo que ganan los barberos: comisión + bonos (total devengado de la semana)."
+              sub={kpis.vipTotal > 0 ? `incl. ${formatARS(kpis.vipTotal)} VIP` : undefined}
+              tooltip="Lo que ganan los barberos: comisión + bonos + lo que se llevan por cortes con beneficio VIP (total devengado de la semana)."
             />
             <KpiCard
               label="A pagar barberos"
@@ -1100,6 +1121,7 @@ export default function AdminDashboard() {
                     <th>Barbero</th>
                     <th>Cortes</th>
                     <th>Facturado</th>
+                    <th title="Cortes con beneficio VIP: el barbero se lleva el 100% y ya se lo llevó. Informativo: no se liquida.">Ingresos por benef. VIP</th>
                     <th>Comisión base</th>
                     <th>Presentismo</th>
                     <th>Objetivo</th>
@@ -1141,8 +1163,18 @@ export default function AdminDashboard() {
                           </div>
                         </td>
                         <td className="td-center">{s.total_cuts}</td>
-                        <td>{formatARS(s.gross_amount)}</td>
-                        <td>{hasBonuses ? formatARS(s.barber_gross) : <span className="td-na">—</span>}</td>
+                        <td>
+                          {formatARS(s.gross_amount)}
+                          {s.vip_amount > 0 && (
+                            <div className="td-subnote">incl. {formatARS(s.vip_amount)} VIP</div>
+                          )}
+                        </td>
+                        <td>
+                          {s.vip_amount > 0
+                            ? <span className="badge badge--violet" title="El barbero se lleva el 100% de estos cortes; la barbería no gana nada. Ya cobrado, no se liquida.">{formatARS(s.vip_amount)}</span>
+                            : <span className="td-na">—</span>}
+                        </td>
+                        <td>{hasBonuses ? formatARS(settlComisionBase(s)) : <span className="td-na">—</span>}</td>
                         <td>
                           {hasBonuses ? (
                             s.status === 'draft' ? (
@@ -1246,7 +1278,7 @@ export default function AdminDashboard() {
                             <span className="td-na">—</span>
                           )}
                         </td>
-                        <td className="td-bold">{formatARS(s.total_earned)}</td>
+                        <td className="td-bold">{formatARS(settlTotalGanado(s))}</td>
                         <td className="td-muted">
                           {(() => {
                             const v = settlTotalCobrado(s)
@@ -1385,12 +1417,29 @@ export default function AdminDashboard() {
                   <tr className="tfoot-row">
                     <td colSpan={2}><strong>TOTALES</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.gross_amount, 0))}</strong></td>
-                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + (x.barber.compensation_type !== 'box_rental' ? x.barber_gross : 0), 0))}</strong></td>
+                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.vip_amount, 0))}</strong></td>
+                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + (x.barber.compensation_type !== 'box_rental' ? settlComisionBase(x) : 0), 0))}</strong></td>
                     <td colSpan={3}></td>
-                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.total_earned, 0))}</strong></td>
+                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + settlTotalGanado(x), 0))}</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + settlTotalCobrado(x), 0))}</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.advances_deducted, 0))}</strong></td>
-                    <td><strong className="net-payable--pos">{formatARS(filteredSettlements.reduce((s, x) => s + Math.max(settlAPagar(x), 0), 0))}</strong></td>
+                    <td>
+                      {(() => {
+                        // "A pagar" neteado: lo que la barbería paga (netos positivos) y,
+                        // aparte, lo que los barberos deben (netos negativos sin saldar).
+                        const aPagar = filteredSettlements.reduce((s, x) => s + Math.max(settlAPagar(x), 0), 0)
+                        const deuda = filteredSettlements.reduce(
+                          (s, x) => s + (x.barber.compensation_type !== 'box_rental' && x.status !== 'paid' && x.net_payable < 0 ? -x.net_payable : 0), 0)
+                        return (
+                          <>
+                            <strong className="net-payable--pos">{formatARS(aPagar)}</strong>
+                            {deuda > 0 && (
+                              <div className="td-subnote net-payable--neg">Deuda {formatARS(deuda)}</div>
+                            )}
+                          </>
+                        )
+                      })()}
+                    </td>
                     <td colSpan={2}></td>
                   </tr>
                 </tfoot>

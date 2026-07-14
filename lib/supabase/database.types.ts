@@ -172,6 +172,11 @@ export interface Settlement {
   cash_amount: number
   transfer_amount: number
   card_amount: number
+  // Beneficio VIP (comisión %): vip_amount = lo que se llevó el barbero por esos
+  // cortes (informativo, la barbería no gana nada); vip_settled = la parte ya
+  // cobrada en el momento. Ver settlVipBreakdown() en el panel de liquidaciones.
+  vip_amount: number
+  vip_settled: number
   // Snapshots para auditoría (solo modelo salary)
   base_salary_rate_snap: number | null
   presentismo_rate_snap: number | null
