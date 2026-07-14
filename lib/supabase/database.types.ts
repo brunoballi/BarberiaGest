@@ -361,6 +361,7 @@ export type ExpenseForm = Omit<Expense, 'id' | 'created_at' | 'registered_by' | 
 export interface TransactionWithRelations extends Transaction {
   barber: Pick<Profile, 'id' | 'full_name' | 'compensation_type' | 'receives_transfers' | 'box_rental_amount'>
   service: Pick<ServiceCatalog, 'id' | 'name'> | null
+  benefit: Pick<Benefit, 'id' | 'name' | 'full_amount_to_barber'> | null
 }
 
 /** Settlement con datos del barbero (para panel de liquidación) */

@@ -1195,7 +1195,8 @@ export async function getWeekTransactions(
       created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount,
       client_name, client_surname, discount_amount, discount_reason, benefit_id,
       barber:profiles!barber_id ( id, full_name, compensation_type, receives_transfers, box_rental_amount ),
-      service:service_catalog!service_id ( id, name )
+      service:service_catalog!service_id ( id, name ),
+      benefit:benefits!benefit_id ( id, name, full_amount_to_barber )
     `)
     .eq('week_id', weekId)
     .order('transaction_date', { ascending: false })

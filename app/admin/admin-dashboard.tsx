@@ -1492,6 +1492,7 @@ export default function AdminDashboard() {
                     <th rowSpan={2}>Barbero</th>
                     <th rowSpan={2}>Servicio</th>
                     <th rowSpan={2}>Cliente</th>
+                    <th rowSpan={2}>Beneficio</th>
                     <th rowSpan={2}>Método</th>
                     <th rowSpan={2}>Total</th>
                     <th colSpan={2} style={{ textAlign: 'center' }}>Detalle</th>
@@ -1512,6 +1513,22 @@ export default function AdminDashboard() {
                       <td className="td-left">{tx.barber.full_name}</td>
                       <td className="td-left">{tx.service?.name ?? '—'}</td>
                       <td className="td-muted td-left">{[tx.client_name, tx.client_surname].filter(Boolean).join(' ') || '—'}</td>
+                      <td className="td-left">
+                        {tx.benefit ? (
+                          <>
+                            <span className={`badge ${tx.benefit.full_amount_to_barber ? 'badge--violet' : 'badge--gray'}`}>{tx.benefit.name}</span>
+                            {(tx.discount_amount ?? 0) > 0 && (
+                              <div style={{ fontSize: '0.7rem', color: '#a1a1aa', marginTop: '0.2rem', whiteSpace: 'nowrap' }}>
+                                −{formatARS(tx.discount_amount ?? 0)} desc.
+                              </div>
+                            )}
+                          </>
+                        ) : (tx.discount_amount ?? 0) > 0 ? (
+                          <span className="td-muted" style={{ fontSize: '0.75rem' }} title={tx.discount_reason ?? ''}>
+                            Desc. −{formatARS(tx.discount_amount ?? 0)}
+                          </span>
+                        ) : '—'}
+                      </td>
                       <td>
                         <span className={`dot-badge dot-badge--${tx.payment_method}`}>
                           {PAYMENT_METHOD_LABELS[tx.payment_method]}
@@ -1575,7 +1592,7 @@ export default function AdminDashboard() {
                 </tbody>
                 <tfoot>
                   <tr className="tfoot-row">
-                    <td colSpan={5}><strong>{filtered.length} transacción{filtered.length !== 1 ? 'es' : ''}</strong></td>
+                    <td colSpan={6}><strong>{filtered.length} transacción{filtered.length !== 1 ? 'es' : ''}</strong></td>
                     <td><strong>{formatARS(filtered.reduce((s, t) => s + t.amount, 0))}</strong></td>
                     <td><strong>{formatARS(filtered.reduce((s, t) => s + (t.amount - txBarberSide(t)), 0))}</strong></td>
                     <td><strong>{formatARS(filtered.reduce((s, t) => s + txBarberSide(t), 0))}</strong></td>
