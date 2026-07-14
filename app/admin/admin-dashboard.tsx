@@ -114,8 +114,24 @@ function txBarberSide(t: { amount: number; branch_share: number; barber_share: n
 // vip_settled < vip_amount solo si el VIP se cobró por transferencia y el barbero no
 // las recibe (fue a la cuenta de Valhalla): esa parte no está saldada y sigue dentro
 // del "Total ganado" porque la barbería se la debe.
+// Facturado NETO = lo que realmente comisiona: el bruto menos los cortes VIP.
+// En un corte VIP barber_share = amount (el barbero se lleva el 100%), así que
+// vip_amount equivale al facturado de esos cortes y se puede restar del bruto.
+function settlFacturadoNeto(s: SettlementWithBarber): number {
+  return s.gross_amount - s.vip_amount
+}
+
 function settlComisionBase(s: SettlementWithBarber): number {
   return s.barber_gross - s.vip_amount
+}
+
+// % efectivo de comisión, derivado de los montos ya guardados (no de la tasa
+// actual del perfil): así el subtexto no miente si la comisión cambió después
+// o si algún corte se editó a mano.
+function settlComisionPct(s: SettlementWithBarber): number | null {
+  const neto = settlFacturadoNeto(s)
+  if (neto <= 0) return null
+  return Math.round((settlComisionBase(s) / neto) * 100)
 }
 
 function settlTotalGanado(s: SettlementWithBarber): number {
@@ -1120,7 +1136,8 @@ export default function AdminDashboard() {
                   <tr>
                     <th>Barbero</th>
                     <th>Cortes</th>
-                    <th>Facturado</th>
+                    <th title="Todo lo que pagaron los clientes en la semana, incluidos los cortes con beneficio VIP.">Facturado bruto</th>
+                    <th title="El bruto menos los cortes con beneficio VIP: es la base sobre la que se calcula la comisión.">Facturado neto</th>
                     <th title="Cortes con beneficio VIP: el barbero se lleva el 100% y ya se lo llevó. Informativo: no se liquida.">Ingresos por benef. VIP</th>
                     <th>Comisión base</th>
                     <th>Presentismo</th>
@@ -1170,11 +1187,29 @@ export default function AdminDashboard() {
                           )}
                         </td>
                         <td>
-                          {s.vip_amount > 0
-                            ? <span className="badge badge--violet" title="El barbero se lleva el 100% de estos cortes; la barbería no gana nada. Ya cobrado, no se liquida.">{formatARS(s.vip_amount)}</span>
-                            : <span className="td-na">—</span>}
+                          {formatARS(settlFacturadoNeto(s))}
+                          {s.vip_amount > 0 && (
+                            <div className="td-subnote">{formatARS(s.gross_amount)} − {formatARS(s.vip_amount)}</div>
+                          )}
                         </td>
-                        <td>{hasBonuses ? formatARS(settlComisionBase(s)) : <span className="td-na">—</span>}</td>
+                        <td>
+                          {s.vip_amount > 0 ? (
+                            <>
+                              <span className="badge badge--violet" title="El barbero se lleva el 100% de estos cortes; la barbería no gana nada. Ya cobrado, no se liquida.">{formatARS(s.vip_amount)}</span>
+                              <div className="td-subnote">100% al barbero</div>
+                            </>
+                          ) : <span className="td-na">—</span>}
+                        </td>
+                        <td>
+                          {hasBonuses ? (
+                            <>
+                              {formatARS(settlComisionBase(s))}
+                              {settlComisionPct(s) != null && (
+                                <div className="td-subnote">{settlComisionPct(s)}% de {formatARS(settlFacturadoNeto(s))}</div>
+                              )}
+                            </>
+                          ) : <span className="td-na">—</span>}
+                        </td>
                         <td>
                           {hasBonuses ? (
                             s.status === 'draft' ? (
@@ -1278,12 +1313,22 @@ export default function AdminDashboard() {
                             <span className="td-na">—</span>
                           )}
                         </td>
-                        <td className="td-bold">{formatARS(settlTotalGanado(s))}</td>
+                        <td className="td-bold">
+                          {formatARS(settlTotalGanado(s))}
+                          {hasBonuses && (s.bonus_presentismo + s.bonus_objetivo) > 0 && (
+                            <div className="td-subnote">
+                              {formatARS(settlComisionBase(s))} + {formatARS(s.bonus_presentismo + s.bonus_objetivo)} bonos
+                            </div>
+                          )}
+                        </td>
                         <td className="td-muted">
                           {(() => {
                             const v = settlTotalCobrado(s)
                             return v > 0 ? <span className="td-collected">{formatARS(v)}</span> : '—'
                           })()}
+                          {s.vip_settled > 0 && (
+                            <div className="td-subnote">sin benef. VIP</div>
+                          )}
                         </td>
                         <td className="td-muted">
                           {s.advances_deducted > 0 ? (
@@ -1417,6 +1462,7 @@ export default function AdminDashboard() {
                   <tr className="tfoot-row">
                     <td colSpan={2}><strong>TOTALES</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.gross_amount, 0))}</strong></td>
+                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + settlFacturadoNeto(x), 0))}</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.vip_amount, 0))}</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + (x.barber.compensation_type !== 'box_rental' ? settlComisionBase(x) : 0), 0))}</strong></td>
                     <td colSpan={3}></td>
