@@ -1516,6 +1516,11 @@ export default function AdminDashboard() {
                         <span className={`dot-badge dot-badge--${tx.payment_method}`}>
                           {PAYMENT_METHOD_LABELS[tx.payment_method]}
                         </span>
+                        {tx.payment_method === 'mixed' && (
+                          <div style={{ fontSize: '0.7rem', color: '#a1a1aa', marginTop: '0.2rem', whiteSpace: 'nowrap' }}>
+                            {formatARS(tx.cash_amount ?? 0)} ef · {formatARS(tx.transfer_amount ?? 0)} transf
+                          </div>
+                        )}
                       </td>
                       <td className="td-bold">{formatARS(tx.amount)}</td>
                       <td>{formatARS(tx.amount - barberSide)}</td>
@@ -2393,8 +2398,12 @@ function EditTransactionModal({
     // VIP (comisión %): 100% al barbero, la barbería absorbe el descuento.
     const barberShareFinal = isBoxRental ? boxToBarber : (isVipFull ? effectiveAmount : barberShareCalc)
     const branchShareFinal = isBoxRental ? boxToShop : (isVipFull ? 0 : branchShareCalc)
+    // VIP (comisión %): el barbero se queda en el momento con todo lo que pagó el
+    // cliente (efectivo incluido); la transferencia solo si le llega a su cuenta.
     const barberAlreadyCollected = isBoxRental
       ? boxToBarber
+      : isVipFull
+      ? cashAmt + (tx.barber.receives_transfers ? transferAmt : 0)
       : (tx.barber.receives_transfers ? transferAmt : 0)
 
     try {
