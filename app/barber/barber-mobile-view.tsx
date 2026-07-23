@@ -264,9 +264,42 @@ export default function BarberMobileView() {
   }
 
   const today = todayLocal()
+
+  // ── Barbero nuevo: el "tuya" se calcula POR DÍA (esquema "2 cortes clásicos"),
+  // no por corte. Necesitamos el precio del corte clásico elegido para el barbero.
+  const isNewBarberPct = profile?.compensation_type === 'percentage' && !!profile?.is_new_barber
+  const classicPrice = isNewBarberPct && profile?.classic_service_id
+    ? services.find((s) => s.id === profile.classic_service_id)?.base_price ?? null
+    : null
+  const basicoDia = classicPrice != null ? 2 * classicPrice : null      // 2 cortes clásicos
+  const dobleDia  = basicoDia != null ? 2 * basicoDia : null             // el doble
+  const cRate     = profile?.commission_rate ?? 0.5
+
+  // Tramo de un DÍA (por su facturado): 0 / lo facturado / básico / % convencional.
+  function dayTierShare(dayNeto: number): number {
+    if (basicoDia == null || dobleDia == null) return 0
+    if (dayNeto <= 0) return 0
+    if (dayNeto <= basicoDia) return dayNeto
+    if (dayNeto <= dobleDia) return basicoDia
+    return Math.round(dayNeto * cRate * 100) / 100
+  }
+  // ¿Ese día trabajó por comisión (superó el doble)? Solo ahí tiene sentido
+  // mostrar el "tuya" por corte (el %); si no, el valor es del día completo.
+  function dayIsCommission(dayNeto: number): boolean {
+    return dobleDia != null && dayNeto > dobleDia
+  }
+  // "Tuya" de un conjunto de cortes: convencional (suma de barber_share) o, para
+  // barbero nuevo, la suma de los tramos por día.
+  function tuyaOf(txs: Transaction[]): number {
+    if (basicoDia == null) return txs.reduce((s, t) => s + t.barber_share, 0)
+    const byDay: Record<string, number> = {}
+    txs.forEach((t) => { byDay[t.transaction_date] = (byDay[t.transaction_date] || 0) + t.amount })
+    return Object.values(byDay).reduce((s, neto) => s + dayTierShare(neto), 0)
+  }
+
   const todayTxs = transactions.filter((t) => t.transaction_date === today)
   const todayTotal = todayTxs.reduce((s, t) => s + t.amount, 0)
-  const todayBarber = todayTxs.reduce((s, t) => s + t.barber_share, 0)
+  const todayBarber = tuyaOf(todayTxs)
 
   // ── Días de la semana según el rango real start_date → end_date ───────────
   // Las semanas son lunes-domingo (7 días). Derivamos la cantidad de días del
@@ -323,9 +356,9 @@ export default function BarberMobileView() {
   // Cortes del día seleccionado
   const dayTxs = txsByDay[selectedDay] ?? []
   const dayTotal = dayTxs.reduce((s, t) => s + t.amount, 0)
-  const dayBarber = dayTxs.reduce((s, t) => s + t.barber_share, 0)
+  const dayBarber = tuyaOf(dayTxs)
   const weekTotal = transactions.reduce((s, t) => s + t.amount, 0)
-  const weekBarber = transactions.reduce((s, t) => s + t.barber_share, 0)
+  const weekBarber = tuyaOf(transactions)
   const weekCuts = transactions.length
 
   const selectedServiceData = services.find((s) => s.name === selectedService)
@@ -1309,9 +1342,27 @@ export default function BarberMobileView() {
                       </>
                     ) : (
                       <>
-                        <SettlRow label={profile?.compensation_type === 'salary' ? 'Sueldo base' : 'Comisión'} value={formatARS(s.barber_gross)} />
+                        {s.barber_basico > 0 ? (
+                          // Barbero nuevo con días mixtos: discriminar comisión (días que
+                          // superaron el doble de 2 cortes clásicos) de básico (días que no).
+                          <>
+                            {s.barber_comision > 0 && (
+                              <SettlRow
+                                label={`Comisión (${s.barber_comision_dias} día${s.barber_comision_dias !== 1 ? 's' : ''})`}
+                                value={formatARS(s.barber_comision)}
+                              />
+                            )}
+                            <SettlRow
+                              label={`Básico (${s.barber_basico_dias} día${s.barber_basico_dias !== 1 ? 's' : ''})`}
+                              value={formatARS(s.barber_basico)}
+                            />
+                          </>
+                        ) : (
+                          <SettlRow label={profile?.compensation_type === 'salary' ? 'Sueldo base' : 'Comisión'} value={formatARS(s.barber_gross)} />
+                        )}
                         {s.bonus_presentismo > 0 && <SettlRow label="+ Presentismo" value={formatARS(s.bonus_presentismo)} valueClass="text-emerald-400" />}
-                        {s.bonus_objetivo > 0 && <SettlRow label="+ Objetivo" value={formatARS(s.bonus_objetivo)} valueClass="text-emerald-400" />}
+                        {s.bonus_mantenimiento > 0 && <SettlRow label="+ Mantenimiento" value={formatARS(s.bonus_mantenimiento)} valueClass="text-emerald-400" />}
+                        {s.bonus_objetivo_pct > 0 && <SettlRow label="+ Objetivo" value={formatARS(s.bonus_objetivo_pct)} valueClass="text-emerald-400" />}
                         <div className="h-px bg-zinc-800 my-0.5" />
                         <SettlRow label="Ganado" value={formatARS(s.total_earned)} />
                         {s.already_collected > 0 && <SettlRow label="– Ya cobrado (transf.)" value={formatARS(s.already_collected)} valueClass="text-zinc-400" />}
@@ -1333,7 +1384,7 @@ export default function BarberMobileView() {
                         {s.presentismo_met !== null && (
                           <p className="text-xs text-zinc-600 mt-1">
                             Presentismo: {s.presentismo_met ? 'marcado' : 'no marcado'}
-                            {s.objetivo_met !== null && <span> · Objetivo: {s.objetivo_met ? 'alcanzado' : 'no alcanzado'}</span>}
+                            {s.mantenimiento_met !== null && <span> · Mantenimiento: {s.mantenimiento_met ? 'alcanzado' : 'no alcanzado'}</span>}
                           </p>
                         )}
                       </>
@@ -1586,7 +1637,7 @@ export default function BarberMobileView() {
           {(() => {
             const list = filterMode === 'range' ? (filteredTxs ?? []) : dayTxs
             const totalAmount = list.reduce((s, t) => s + t.amount, 0)
-            const totalBarber = list.reduce((s, t) => s + t.barber_share, 0)
+            const totalBarber = tuyaOf(list)
             // Box_rental: saldo del alquiler diario del día seleccionado (solo modo semana).
             const showRentStatus = isBoxRental && filterMode === 'week' && dailyRent > 0
             const dayRentRemaining = Math.max(0, dailyRent - totalAmount)
@@ -1660,7 +1711,7 @@ export default function BarberMobileView() {
                         {sortedDates.map((date) => {
                           const dayList = byDate[date]
                           const dayTotal = dayList.reduce((s, t) => s + t.amount, 0)
-                          const dayShare = dayList.reduce((s, t) => s + t.barber_share, 0)
+                          const dayShare = tuyaOf(dayList)
                           const dayCash = dayList.reduce((s, t) => s + (t.cash_amount || 0), 0)
                           const dayTransfer = dayList.reduce((s, t) => s + (t.transfer_amount || 0), 0)
                           const dayCard = dayList.reduce((s, t) => s + (t.card_amount || 0), 0)
@@ -1736,7 +1787,11 @@ export default function BarberMobileView() {
                                           )}
                                         </div>
                                         <div className="tx-card__amount">{formatARS(tx.amount)}</div>
-                                        <div className="tx-card__share">{formatARS(tx.barber_share)} <span className="text-zinc-600 text-xs">tuya</span></div>
+                                        {basicoDia != null && !dayIsCommission(dayTotal) ? (
+                                          <div className="tx-card__share text-zinc-600 text-xs">según el día</div>
+                                        ) : (
+                                          <div className="tx-card__share">{formatARS(tx.barber_share)} <span className="text-zinc-600 text-xs">tuya</span></div>
+                                        )}
                                         {tx.client_name && <div className="tx-card__client">👤 {tx.client_name}</div>}
                                         {tx.discount_amount > 0 && (
                                           <div className="tx-card__discount">-{formatARS(tx.discount_amount)} desc.</div>
@@ -1779,7 +1834,11 @@ export default function BarberMobileView() {
                           )}
                         </div>
                         <div className="tx-card__amount">{formatARS(tx.amount)}</div>
-                        <div className="tx-card__share">{formatARS(tx.barber_share)} <span className="text-zinc-600 text-xs">tuya</span></div>
+                        {basicoDia != null && !dayIsCommission(totalAmount) ? (
+                          <div className="tx-card__share text-zinc-600 text-xs">según el día</div>
+                        ) : (
+                          <div className="tx-card__share">{formatARS(tx.barber_share)} <span className="text-zinc-600 text-xs">tuya</span></div>
+                        )}
                         {tx.client_name && <div className="tx-card__client">👤 {tx.client_name}</div>}
                         {tx.discount_amount > 0 && (
                           <div className="tx-card__discount">-{formatARS(tx.discount_amount)} desc.</div>

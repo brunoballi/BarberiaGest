@@ -711,11 +711,17 @@ function SettlementRow({
             )}
           </div>
           <div>
-            <span className="text-zinc-500 text-xs">Objetivo </span>
+            <span className="text-zinc-500 text-xs">Mantenimiento </span>
             <span className="text-white text-xs">
-              {s.objetivo_met ? `Sí (+${formatARS(s.bonus_objetivo)})` : 'No'}
+              {s.mantenimiento_met ? `Sí (+${formatARS(s.bonus_mantenimiento)})` : 'No'}
             </span>
           </div>
+          {s.bonus_objetivo_pct > 0 && (
+            <div>
+              <span className="text-zinc-500 text-xs">Objetivo </span>
+              <span className="text-white text-xs">+{formatARS(s.bonus_objetivo_pct)}</span>
+            </div>
+          )}
         </div>
       )}
 

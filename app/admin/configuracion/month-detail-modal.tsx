@@ -33,7 +33,7 @@ function formatDate(d: string): string {
 
 /** Parte de la barbería para una liquidación: facturado − (comisión barbero + bonos). */
 function branchShareOf(s: SettlementWithBarber): number {
-  return s.gross_amount - s.barber_gross - s.bonus_presentismo - s.bonus_objetivo
+  return s.gross_amount - s.barber_gross - s.bonus_presentismo - s.bonus_mantenimiento - s.bonus_objetivo_pct
 }
 
 export interface MonthDetailData {

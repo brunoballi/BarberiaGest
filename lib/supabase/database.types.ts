@@ -37,13 +37,18 @@ export interface Profile {
   // Modelo 'salary'
   base_salary_rate: number | null
   presentismo_rate: number | null
-  objetivo_rate: number | null
-  objetivo_min_cuts: number | null
+  mantenimiento_rate: number | null
+  mantenimiento_min_cuts: number | null
   // Modelo 'box_rental'
   box_rental_amount: number | null
   is_active: boolean
   // Capacidad dual: admin (dueño) que además atiende como barbero
   is_barber: boolean
+  // Barbero recién ingresado: en la liquidación su reparto usa el esquema de
+  // tramos (2 cortes clásicos) sobre el total facturado, en vez del % convencional.
+  is_new_barber: boolean
+  // Servicio de referencia ("corte clásico") elegido en el alta del barbero.
+  classic_service_id: string | null
   created_at: string
   // Datos personales
   dni: string | null
@@ -162,8 +167,21 @@ export interface Settlement {
   total_cuts: number
   gross_amount: number
   barber_gross: number
+  // Desglose del ganado por cortes (barbero nuevo): comisión (días > doble) vs
+  // básico (días <= doble, 2 cortes clásicos). En no-nuevos: comision = barber_gross, basico = 0.
+  barber_comision: number
+  barber_basico: number
+  barber_basico_dias: number
+  barber_comision_dias: number
+  // Facturado neto de los días que trabajó por comisión (para mostrar "40% de $X").
+  barber_comision_facturado: number
   bonus_presentismo: number
-  bonus_objetivo: number
+  bonus_mantenimiento: number
+  // Objetivo: Sí/No manual (objetivo_met) + % cargado por liquidación (objetivo_pct).
+  // Si objetivo_met, bonus_objetivo_pct = objetivo_pct * facturado_neto.
+  objetivo_met: boolean | null
+  objetivo_pct: number | null
+  bonus_objetivo_pct: number
   total_earned: number
   already_collected: number
   advances_deducted: number
@@ -180,15 +198,15 @@ export interface Settlement {
   // Snapshots para auditoría (solo modelo salary)
   base_salary_rate_snap: number | null
   presentismo_rate_snap: number | null
-  objetivo_rate_snap: number | null
-  objetivo_min_cuts_snap: number | null
-  objetivo_met: boolean | null
+  mantenimiento_rate_snap: number | null
+  mantenimiento_min_cuts_snap: number | null
+  mantenimiento_met: boolean | null
   presentismo_met: boolean | null
   // Alquiler de box que el barbero (box_rental) paga a la barbería esa semana (editable en borrador)
   box_rent: number
   // Override manual de los montos de bono (null = usar el calculado por tasa)
   bonus_presentismo_override: number | null
-  bonus_objetivo_override: number | null
+  bonus_mantenimiento_override: number | null
   status: SettlementStatus
   confirmed_at: string | null
   paid_at: string | null
@@ -254,10 +272,12 @@ export type BranchInsert = Omit<Branch, 'id' | 'created_at'>
 
 export type BarberDebtPaymentInsert = Omit<BarberDebtPayment, 'id' | 'created_at'>
 
-export type ProfileInsert = Omit<Profile, 'created_at' | 'receives_transfers' | 'advance_enabled' | 'advance_limit'> & {
+export type ProfileInsert = Omit<Profile, 'created_at' | 'receives_transfers' | 'advance_enabled' | 'advance_limit' | 'is_new_barber' | 'classic_service_id'> & {
   receives_transfers?: boolean
   advance_enabled?: boolean
   advance_limit?: number
+  is_new_barber?: boolean
+  classic_service_id?: string | null
 }
 
 export type BenefitInsert = Omit<Benefit, 'id' | 'created_at' | 'is_active' | 'full_amount_to_barber'> & {
@@ -313,11 +333,14 @@ export type SettlementUpdate = Partial<
     Settlement,
     | 'presentismo_met'
     | 'bonus_presentismo'
+    | 'mantenimiento_met'
+    | 'bonus_mantenimiento'
     | 'objetivo_met'
-    | 'bonus_objetivo'
+    | 'objetivo_pct'
+    | 'bonus_objetivo_pct'
     | 'box_rent'
     | 'bonus_presentismo_override'
-    | 'bonus_objetivo_override'
+    | 'bonus_mantenimiento_override'
     | 'net_payable'
     | 'total_deductions'
     | 'status'
@@ -338,8 +361,8 @@ export type ProfileUpdate = Partial<
     | 'commission_rate'
     | 'base_salary_rate'
     | 'presentismo_rate'
-    | 'objetivo_rate'
-    | 'objetivo_min_cuts'
+    | 'mantenimiento_rate'
+    | 'mantenimiento_min_cuts'
     | 'box_rental_amount'
     | 'is_active'
     | 'dni'
@@ -347,6 +370,8 @@ export type ProfileUpdate = Partial<
     | 'receives_transfers'
     | 'advance_enabled'
     | 'advance_limit'
+    | 'is_new_barber'
+    | 'classic_service_id'
   >
 >
 
@@ -364,7 +389,7 @@ export type ExpenseForm = Omit<Expense, 'id' | 'created_at' | 'registered_by' | 
 
 /** Transaction con datos del barbero y servicio (para admin dashboard) */
 export interface TransactionWithRelations extends Transaction {
-  barber: Pick<Profile, 'id' | 'full_name' | 'compensation_type' | 'receives_transfers' | 'box_rental_amount'>
+  barber: Pick<Profile, 'id' | 'full_name' | 'compensation_type' | 'receives_transfers' | 'box_rental_amount' | 'is_new_barber' | 'classic_service_id'>
   service: Pick<ServiceCatalog, 'id' | 'name'> | null
   benefit: Pick<Benefit, 'id' | 'name' | 'full_amount_to_barber'> | null
 }
@@ -446,7 +471,8 @@ export interface SettlementSummary {
   breakdown: {
     barber_gross: number
     bonus_presentismo: number
-    bonus_objetivo: number
+    bonus_mantenimiento: number
+    bonus_objetivo_pct: number
     already_collected: number
     advances_deducted: number
   }

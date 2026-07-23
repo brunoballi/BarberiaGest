@@ -8,10 +8,12 @@ import type {
   Profile,
   CompensationType,
   ProfileUpdate,
+  ServiceCatalog,
 } from '@/lib/supabase/database.types'
 import {
   getCurrentProfile,
   getAllBarbersByBranch,
+  getServicesByBranch,
   supabase,
   updateBarberProfile,
 } from '@/lib/supabase/supabase.client'
@@ -46,12 +48,14 @@ interface InviteForm {
   commission_rate: string
   base_salary_rate: string
   presentismo_rate: string
-  objetivo_rate: string
-  objetivo_min_cuts: string
+  mantenimiento_rate: string
+  mantenimiento_min_cuts: string
   box_rental_amount: string
   receives_transfers: boolean
   advance_enabled: boolean
   advance_limit: string
+  is_new_barber: boolean
+  classic_service_id: string
 }
 
 const EMPTY_INVITE: InviteForm = {
@@ -64,12 +68,14 @@ const EMPTY_INVITE: InviteForm = {
   commission_rate: '50',
   base_salary_rate: '',
   presentismo_rate: '',
-  objetivo_rate: '',
-  objetivo_min_cuts: '',
+  mantenimiento_rate: '',
+  mantenimiento_min_cuts: '',
   box_rental_amount: '',
   receives_transfers: true,
   advance_enabled: false,
   advance_limit: '',
+  is_new_barber: false,
+  classic_service_id: '',
 }
 
 // ─── Edit form state ───────────────────────────────────────────────────────
@@ -81,12 +87,14 @@ interface EditForm {
   commission_rate: string
   base_salary_rate: string
   presentismo_rate: string
-  objetivo_rate: string
-  objetivo_min_cuts: string
+  mantenimiento_rate: string
+  mantenimiento_min_cuts: string
   box_rental_amount: string
   receives_transfers: boolean
   advance_enabled: boolean
   advance_limit: string
+  is_new_barber: boolean
+  classic_service_id: string
 }
 
 function profileToEditForm(p: Profile): EditForm {
@@ -98,12 +106,14 @@ function profileToEditForm(p: Profile): EditForm {
     commission_rate: p.commission_rate != null ? String(p.commission_rate * 100) : '',
     base_salary_rate: p.base_salary_rate != null ? String(p.base_salary_rate) : '',
     presentismo_rate: p.presentismo_rate != null ? String(p.presentismo_rate * 100) : '',
-    objetivo_rate: p.objetivo_rate != null ? String(p.objetivo_rate * 100) : '',
-    objetivo_min_cuts: p.objetivo_min_cuts != null ? String(p.objetivo_min_cuts) : '',
+    mantenimiento_rate: p.mantenimiento_rate != null ? String(p.mantenimiento_rate * 100) : '',
+    mantenimiento_min_cuts: p.mantenimiento_min_cuts != null ? String(p.mantenimiento_min_cuts) : '',
     box_rental_amount: p.box_rental_amount != null ? String(p.box_rental_amount) : '',
     receives_transfers: p.receives_transfers,
     advance_enabled: p.advance_enabled,
     advance_limit: p.advance_limit != null && p.advance_limit > 0 ? String(p.advance_limit) : '',
+    is_new_barber: p.is_new_barber,
+    classic_service_id: p.classic_service_id ?? '',
   }
 }
 
@@ -119,8 +129,8 @@ function CompensationFields({
     | 'commission_rate'
     | 'base_salary_rate'
     | 'presentismo_rate'
-    | 'objetivo_rate'
-    | 'objetivo_min_cuts'
+    | 'mantenimiento_rate'
+    | 'mantenimiento_min_cuts'
     | 'box_rental_amount'
   >
   onChange: (field: string, value: string) => void
@@ -157,8 +167,8 @@ function CompensationFields({
     <div className="grid grid-cols-2 gap-3">
       {moneyInput('Sueldo base ($)', 'base_salary_rate', form.base_salary_rate)}
       {input('Presentismo (% del total)', 'presentismo_rate', form.presentismo_rate, '5')}
-      {input('Objetivo (% del total)', 'objetivo_rate', form.objetivo_rate, '5')}
-      {input('Cortes p/objetivo', 'objetivo_min_cuts', form.objetivo_min_cuts)}
+      {input('Mantenimiento (% del total)', 'mantenimiento_rate', form.mantenimiento_rate, '5')}
+      {input('Cortes p/mantenimiento', 'mantenimiento_min_cuts', form.mantenimiento_min_cuts)}
     </div>
   )
 
@@ -194,6 +204,7 @@ export default function BarbersAbm() {
   const [adminProfile, setAdminProfile] = useState<Profile | null>(null)
   const [branches, setBranches] = useState<Branch[]>([])
   const [barbers, setBarbers] = useState<Profile[]>([])
+  const [services, setServices] = useState<ServiceCatalog[]>([])
   const [selectedBranch, setSelectedBranch] = usePersistedBranch()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -263,6 +274,14 @@ export default function BarbersAbm() {
 
   useEffect(() => { loadInitial() }, [loadInitial])
 
+  // Servicios de la sucursal (para elegir el "corte clásico" del barbero nuevo).
+  useEffect(() => {
+    if (!selectedBranch) return
+    getServicesByBranch(selectedBranch)
+      .then((svcs) => setServices(svcs.filter((s) => s.is_active)))
+      .catch(() => {})
+  }, [selectedBranch])
+
   // Realtime: cambios en barberos de la sucursal (otro admin edita) → recargar
   useEffect(() => {
     if (!selectedBranch) return
@@ -295,12 +314,18 @@ export default function BarbersAbm() {
           inviteForm.base_salary_rate ? parseFloat(inviteForm.base_salary_rate) : null,
         presentismo_rate:
           inviteForm.presentismo_rate ? parseFloat(inviteForm.presentismo_rate) / 100 : null,
-        objetivo_rate:
-          inviteForm.objetivo_rate ? parseFloat(inviteForm.objetivo_rate) / 100 : null,
-        objetivo_min_cuts:
-          inviteForm.objetivo_min_cuts ? parseInt(inviteForm.objetivo_min_cuts, 10) : null,
+        mantenimiento_rate:
+          inviteForm.mantenimiento_rate ? parseFloat(inviteForm.mantenimiento_rate) / 100 : null,
+        mantenimiento_min_cuts:
+          inviteForm.mantenimiento_min_cuts ? parseInt(inviteForm.mantenimiento_min_cuts, 10) : null,
         box_rental_amount:
           inviteForm.box_rental_amount ? parseFloat(inviteForm.box_rental_amount) : null,
+        is_new_barber:
+          inviteForm.compensation_type === 'percentage' ? inviteForm.is_new_barber : false,
+        classic_service_id:
+          inviteForm.compensation_type === 'percentage' && inviteForm.is_new_barber && inviteForm.classic_service_id
+            ? inviteForm.classic_service_id
+            : null,
         // Box_rental: transferencias y adelantos no aplican → valores neutros.
         receives_transfers: inviteForm.compensation_type === 'box_rental' ? true : inviteForm.receives_transfers,
         advance_enabled: inviteForm.compensation_type === 'box_rental' ? false : inviteForm.advance_enabled,
@@ -371,9 +396,14 @@ export default function BarbersAbm() {
             : null,
         base_salary_rate: editForm.base_salary_rate ? parseFloat(editForm.base_salary_rate) : null,
         presentismo_rate: editForm.presentismo_rate ? parseFloat(editForm.presentismo_rate) / 100 : null,
-        objetivo_rate: editForm.objetivo_rate ? parseFloat(editForm.objetivo_rate) / 100 : null,
-        objetivo_min_cuts: editForm.objetivo_min_cuts ? parseInt(editForm.objetivo_min_cuts, 10) : null,
+        mantenimiento_rate: editForm.mantenimiento_rate ? parseFloat(editForm.mantenimiento_rate) / 100 : null,
+        mantenimiento_min_cuts: editForm.mantenimiento_min_cuts ? parseInt(editForm.mantenimiento_min_cuts, 10) : null,
         box_rental_amount: editForm.box_rental_amount ? parseFloat(editForm.box_rental_amount) : null,
+        is_new_barber: editForm.compensation_type === 'percentage' ? editForm.is_new_barber : false,
+        classic_service_id:
+          editForm.compensation_type === 'percentage' && editForm.is_new_barber && editForm.classic_service_id
+            ? editForm.classic_service_id
+            : null,
         // Box_rental: transferencias y adelantos no aplican → valores neutros.
         receives_transfers: editForm.compensation_type === 'box_rental' ? true : editForm.receives_transfers,
         advance_enabled: editForm.compensation_type === 'box_rental' ? false : editForm.advance_enabled,
@@ -646,6 +676,46 @@ export default function BarbersAbm() {
               }
             />
 
+            {/* Barbero nuevo: reparto especial por corte (2 cortes clásicos) mientras dura el período de ingreso */}
+            {inviteForm.compensation_type === 'percentage' && (
+              <div className="bg-zinc-800/40 border border-zinc-700 rounded-lg px-4 py-3">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={inviteForm.is_new_barber}
+                    onChange={(e) => setInviteForm((f) => ({ ...f, is_new_barber: e.target.checked }))}
+                    className="mt-0.5 w-4 h-4 accent-amber-500"
+                  />
+                  <span>
+                    <span className="block text-sm font-semibold text-white">Barbero nuevo</span>
+                    <span className="block text-xs text-zinc-400 mt-0.5">
+                      Durante el período de ingreso, la liquidación usa el esquema de "2 cortes clásicos" sobre el total facturado, en vez del % convencional. Desmarcalo cuando termine el período.
+                    </span>
+                  </span>
+                </label>
+                {inviteForm.is_new_barber && (
+                  <div className="mt-3">
+                    <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
+                      Corte clásico de referencia
+                    </label>
+                    <select
+                      value={inviteForm.classic_service_id}
+                      onChange={(e) => setInviteForm((f) => ({ ...f, classic_service_id: e.target.value }))}
+                      className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+                    >
+                      <option value="">— elegir servicio —</option>
+                      {services.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name} · {formatARS(s.base_price)}</option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      El sistema toma este precio como 1 corte clásico (básico = 2 cortes).
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Transferencias y adelantos: NO aplican a alquiler de box (el barbero
                 maneja su plata y el alquiler se salda con los cortes del día). */}
             {inviteForm.compensation_type !== 'box_rental' && (
@@ -890,6 +960,45 @@ export default function BarbersAbm() {
                 form={editForm}
                 onChange={patchEditForm}
               />
+
+              {editForm.compensation_type === 'percentage' && (
+                <div className="bg-zinc-800/40 border border-zinc-700 rounded-lg px-4 py-3">
+                  <label className="flex items-start gap-3 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={editForm.is_new_barber}
+                      onChange={(e) => setEditForm((f) => f ? { ...f, is_new_barber: e.target.checked } : f)}
+                      className="mt-0.5 w-4 h-4 accent-amber-500"
+                    />
+                    <span>
+                      <span className="block text-sm font-semibold text-white">Barbero nuevo</span>
+                      <span className="block text-xs text-zinc-400 mt-0.5">
+                        Durante el período de ingreso, la liquidación usa el esquema de "2 cortes clásicos" sobre el total facturado, en vez del % convencional. Desmarcalo cuando termine el período.
+                      </span>
+                    </span>
+                  </label>
+                  {editForm.is_new_barber && (
+                    <div className="mt-3">
+                      <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
+                        Corte clásico de referencia
+                      </label>
+                      <select
+                        value={editForm.classic_service_id}
+                        onChange={(e) => patchEditForm('classic_service_id', e.target.value)}
+                        className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+                      >
+                        <option value="">— elegir servicio —</option>
+                        {services.map((s) => (
+                          <option key={s.id} value={s.id}>{s.name} · {formatARS(s.base_price)}</option>
+                        ))}
+                      </select>
+                      <p className="text-xs text-zinc-500 mt-1">
+                        El sistema toma este precio como 1 corte clásico (básico = 2 cortes).
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {editError && <p className="text-red-400 text-sm">{editError}</p>}
 
@@ -1150,7 +1259,14 @@ function BarberRow({
   return (
     <div className={`bg-zinc-900 border rounded-xl px-5 py-4 flex items-center justify-between gap-4 ${barber.is_active ? 'border-zinc-800' : 'border-zinc-800/50 opacity-60'}`}>
       <div className="flex-1 min-w-0">
-        <p className="text-white font-semibold text-sm truncate">{barber.full_name}</p>
+        <p className="text-white font-semibold text-sm truncate">
+          {barber.full_name}
+          {barber.is_new_barber && (
+            <span className="ml-2 text-[10px] font-bold uppercase tracking-wide text-amber-400 border border-amber-500/40 rounded px-1.5 py-0.5 align-middle">
+              Nuevo
+            </span>
+          )}
+        </p>
         <p className="text-zinc-500 text-xs mt-0.5">
           {COMP_LABELS[barber.compensation_type]} · {rateLabel(barber)}
           {!barber.receives_transfers && <span className="ml-2 text-indigo-400">· Transf → Valhalla</span>}

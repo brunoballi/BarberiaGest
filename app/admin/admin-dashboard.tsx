@@ -41,9 +41,11 @@ import {
   calculateAllSettlementsForWeek,
   setPresentismo,
   recalculateSettlementFull,
-  setObjetivo,
+  setMantenimiento,
+  setObjetivoMet,
+  setObjetivoPct,
   setBonusPresentismoOverride,
-  setBonusObjetivoOverride,
+  setBonusMantenimientoOverride,
   deleteTransaction,
   confirmSettlement,
   markSettlementPaid,
@@ -59,6 +61,7 @@ import {
   overrideTransactionSplit,
   fullEditTransaction,
   getBarberDayGross,
+  getBarberDayNeto,
   getServicesByBranch,
   getWeeksByBranch,
   getActiveBenefitsByBranch,
@@ -121,13 +124,26 @@ function settlFacturadoNeto(s: SettlementWithBarber): number {
   return s.gross_amount - s.vip_amount
 }
 
+// "Comisión base": solo lo ganado por comisión convencional. En barberos no
+// nuevos = todo el ganado por cortes; en barberos nuevos = solo los días que
+// superaron el doble (los días de "básico" van en su propia columna).
 function settlComisionBase(s: SettlementWithBarber): number {
+  return s.barber_comision - s.vip_amount
+}
+
+// "Básico" (barbero nuevo): lo que se llevó los días de 2 cortes clásicos.
+function settlBasico(s: SettlementWithBarber): number {
+  return s.barber_basico
+}
+
+// Todo lo ganado por cortes (comisión + básico), sin bonos.
+function settlGanadoCortes(s: SettlementWithBarber): number {
   return s.barber_gross - s.vip_amount
 }
 
 // % efectivo de comisión, derivado de los montos ya guardados (no de la tasa
 // actual del perfil): así el subtexto no miente si la comisión cambió después
-// o si algún corte se editó a mano.
+// o si algún corte se editó a mano. Solo aplica al esquema convencional (sin básico).
 function settlComisionPct(s: SettlementWithBarber): number | null {
   const neto = settlFacturadoNeto(s)
   if (neto <= 0) return null
@@ -298,7 +314,7 @@ export default function AdminDashboard() {
 
   // Filtros tab liquidaciones
   const [settlFilterBarber, setSettlFilterBarber] = useState('')
-  const [settlFilterObjetivo, setSettlFilterObjetivo] = useState('')
+  const [settlFilterMantenimiento, setSettlFilterMantenimiento] = useState('')
   const [settlFilterPresentismo, setSettlFilterPresentismo] = useState('')
   const [settlFilterAdelantos, setSettlFilterAdelantos] = useState('')
   const [settlFilterAPagar, setSettlFilterAPagar] = useState('')
@@ -602,7 +618,24 @@ export default function AdminDashboard() {
     }
   }
 
-  async function handleObjetivo(
+  async function handleMantenimiento(
+    settlementId: string,
+    weekId: string,
+    barberId: string,
+    current: boolean
+  ) {
+    try {
+      setActionLoading(`mantenimiento-${settlementId}`)
+      await setMantenimiento(settlementId, weekId, barberId, !current)
+      await loadTabData()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error actualizando mantenimiento')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleObjetivoMet(
     settlementId: string,
     weekId: string,
     barberId: string,
@@ -610,10 +643,22 @@ export default function AdminDashboard() {
   ) {
     try {
       setActionLoading(`objetivo-${settlementId}`)
-      await setObjetivo(settlementId, weekId, barberId, !current)
+      await setObjetivoMet(settlementId, weekId, barberId, !current)
       await loadTabData()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error actualizando objetivo')
+      setError(e instanceof Error ? e.message : 'Error actualizando el objetivo')
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleSetObjetivoPct(settlementId: string, pct: number | null) {
+    try {
+      setActionLoading(`objetivo-pct-${settlementId}`)
+      await setObjetivoPct(settlementId, pct)
+      await loadTabData()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error actualizando el objetivo')
     } finally {
       setActionLoading(null)
     }
@@ -649,18 +694,18 @@ export default function AdminDashboard() {
     }
   }
 
-  async function handleSetObjetivoOverride(
+  async function handleSetMantenimientoOverride(
     settlementId: string,
     weekId: string,
     barberId: string,
     amount: number | null
   ) {
     try {
-      setActionLoading(`objetivo-${settlementId}`)
-      await setBonusObjetivoOverride(settlementId, weekId, barberId, amount)
+      setActionLoading(`mantenimiento-${settlementId}`)
+      await setBonusMantenimientoOverride(settlementId, weekId, barberId, amount)
       await loadTabData()
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error ajustando objetivo')
+      setError(e instanceof Error ? e.message : 'Error ajustando mantenimiento')
     } finally {
       setActionLoading(null)
     }
@@ -782,7 +827,7 @@ export default function AdminDashboard() {
   // ─── KPIs de la semana ─────────────────────────────────────────────
   const kpis = {
     grossTotal: settlements.reduce((s, x) => s + x.gross_amount, 0),
-    branchTotal: settlements.reduce((s, x) => s + (x.gross_amount - x.barber_gross - x.bonus_presentismo - x.bonus_objetivo), 0),
+    branchTotal: settlements.reduce((s, x) => s + (x.gross_amount - x.barber_gross - x.bonus_presentismo - x.bonus_mantenimiento - x.bonus_objetivo_pct), 0),
     // Total que cobra el barbero (comisión + bonos + VIP = total_earned), todos los
     // barberos. Incluye el VIP a propósito: es plata que se lleva el barbero, así que
     // restarla del facturado es lo que da la ganancia real de la barbería (branchTotal).
@@ -1046,15 +1091,15 @@ export default function AdminDashboard() {
             for (const s of settlements) if (!m.has(s.barber_id)) m.set(s.barber_id, s.barber.full_name)
             return Array.from(m).sort((a, b) => a[1].localeCompare(b[1]))
           })()
-          const hasSettlFilters = !!(settlFilterBarber || settlFilterObjetivo || settlFilterPresentismo || settlFilterAdelantos || settlFilterAPagar || settlFilterEstado)
+          const hasSettlFilters = !!(settlFilterBarber || settlFilterMantenimiento || settlFilterPresentismo || settlFilterAdelantos || settlFilterAPagar || settlFilterEstado)
           const filteredSettlements = settlements.filter((s) => {
-            // Objetivo/presentismo aplican a salary y % comisión (no a alquiler de box)
+            // Mantenimiento/presentismo aplican a salary y % comisión (no a alquiler de box)
             const hasBonuses = s.barber.compensation_type !== 'box_rental'
             if (settlFilterBarber && s.barber_id !== settlFilterBarber) return false
             if (settlFilterEstado && s.status !== settlFilterEstado) return false
-            if (settlFilterObjetivo === 'na' && hasBonuses) return false
-            if (settlFilterObjetivo === 'met' && (!hasBonuses || !s.objetivo_met)) return false
-            if (settlFilterObjetivo === 'not_met' && (!hasBonuses || s.objetivo_met === true)) return false
+            if (settlFilterMantenimiento === 'na' && hasBonuses) return false
+            if (settlFilterMantenimiento === 'met' && (!hasBonuses || !s.mantenimiento_met)) return false
+            if (settlFilterMantenimiento === 'not_met' && (!hasBonuses || s.mantenimiento_met === true)) return false
             if (settlFilterPresentismo === 'na' && hasBonuses) return false
             if (settlFilterPresentismo === 'met' && (!hasBonuses || !s.presentismo_met)) return false
             if (settlFilterPresentismo === 'not_met' && (!hasBonuses || s.presentismo_met === true)) return false
@@ -1092,9 +1137,9 @@ export default function AdminDashboard() {
                 <option value="confirmed">Confirmado</option>
                 <option value="paid">Pagado</option>
               </select>
-              <select value={settlFilterObjetivo} onChange={(e) => setSettlFilterObjetivo(e.target.value)} className="filter-input">
-                <option value="">Objetivo (todos)</option>
-                <option value="met">Objetivo cumplido</option>
+              <select value={settlFilterMantenimiento} onChange={(e) => setSettlFilterMantenimiento(e.target.value)} className="filter-input">
+                <option value="">Mantenimiento (todos)</option>
+                <option value="met">Mantenimiento cumplido</option>
                 <option value="not_met">No cumplido</option>
                 <option value="na">No aplica</option>
               </select>
@@ -1116,7 +1161,7 @@ export default function AdminDashboard() {
               </select>
               {hasSettlFilters && (
                 <button
-                  onClick={() => { setSettlFilterBarber(''); setSettlFilterObjetivo(''); setSettlFilterPresentismo(''); setSettlFilterAdelantos(''); setSettlFilterAPagar(''); setSettlFilterEstado(''); setSettlPage(1) }}
+                  onClick={() => { setSettlFilterBarber(''); setSettlFilterMantenimiento(''); setSettlFilterPresentismo(''); setSettlFilterAdelantos(''); setSettlFilterAPagar(''); setSettlFilterEstado(''); setSettlPage(1) }}
                   className="filter-clear"
                 >
                   ✕ Limpiar
@@ -1139,9 +1184,11 @@ export default function AdminDashboard() {
                     <th title="Todo lo que pagaron los clientes en la semana, incluidos los cortes con beneficio VIP.">Facturado bruto</th>
                     <th title="El bruto menos los cortes con beneficio VIP: es la base sobre la que se calcula la comisión.">Facturado neto</th>
                     <th title="Cortes con beneficio VIP: el barbero se lleva el 100% y ya se lo llevó. Informativo: no se liquida.">Ingresos por benef. VIP</th>
-                    <th>Comisión base</th>
+                    <th title="Lo ganado por comisión convencional (para el barbero nuevo, solo los días que superaron el doble de 2 cortes clásicos).">Comisión base</th>
+                    <th title="Barbero nuevo: lo que se llevó los días que no superaron el doble (valor de 2 cortes clásicos por día).">Básico</th>
                     <th>Presentismo</th>
-                    <th>Objetivo</th>
+                    <th>Mantenimiento</th>
+                    <th title="% cargado a mano por el admin para esta liquidación, sobre el facturado neto.">Objetivo</th>
                     <th>Alquiler box</th>
                     <th>Total ganado</th>
                     <th>Total cobrado</th>
@@ -1204,9 +1251,25 @@ export default function AdminDashboard() {
                           {hasBonuses ? (
                             <>
                               {formatARS(settlComisionBase(s))}
-                              {settlComisionPct(s) != null && (
-                                <div className="td-subnote">{settlComisionPct(s)}% de {formatARS(settlFacturadoNeto(s))}</div>
+                              {s.barber_basico > 0 ? (
+                                s.barber_comision_facturado > 0 && (
+                                  <div className="td-subnote">
+                                    {Math.round((s.barber_comision / s.barber_comision_facturado) * 100)}% de {formatARS(s.barber_comision_facturado)}
+                                  </div>
+                                )
+                              ) : (
+                                settlComisionPct(s) != null && (
+                                  <div className="td-subnote">{settlComisionPct(s)}% de {formatARS(settlFacturadoNeto(s))}</div>
+                                )
                               )}
+                            </>
+                          ) : <span className="td-na">—</span>}
+                        </td>
+                        <td>
+                          {hasBonuses && s.barber_basico > 0 ? (
+                            <>
+                              {formatARS(settlBasico(s))}
+                              <div className="td-subnote">{s.barber_basico_dias} día{s.barber_basico_dias !== 1 ? 's' : ''}</div>
                             </>
                           ) : <span className="td-na">—</span>}
                         </td>
@@ -1262,32 +1325,32 @@ export default function AdminDashboard() {
                             s.status === 'draft' ? (
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                                 <button
-                                  onClick={() => handleObjetivo(s.id, s.week_id, s.barber_id, s.objetivo_met ?? false)}
-                                  disabled={loadingKey === `objetivo-${s.id}`}
-                                  className={`toggle-btn ${s.objetivo_met ? 'toggle-btn--on' : 'toggle-btn--off'}`}
+                                  onClick={() => handleMantenimiento(s.id, s.week_id, s.barber_id, s.mantenimiento_met ?? false)}
+                                  disabled={loadingKey === `mantenimiento-${s.id}`}
+                                  className={`toggle-btn ${s.mantenimiento_met ? 'toggle-btn--on' : 'toggle-btn--off'}`}
                                 >
-                                  {s.objetivo_met ? 'Sí' : 'No'}
+                                  {s.mantenimiento_met ? 'Sí' : 'No'}
                                 </button>
-                                {s.objetivo_met && (
+                                {s.mantenimiento_met && (
                                   <>
                                     <CurrencyInputInline
-                                      key={`obj-${s.id}-${s.bonus_objetivo}`}
-                                      defaultValue={s.bonus_objetivo || ''}
-                                      disabled={loadingKey === `objetivo-${s.id}`}
+                                      key={`mant-${s.id}-${s.bonus_mantenimiento}`}
+                                      defaultValue={s.bonus_mantenimiento || ''}
+                                      disabled={loadingKey === `mantenimiento-${s.id}`}
                                       onCommit={(next) => {
-                                        if (Math.abs(next - s.bonus_objetivo) > 0.001) {
-                                          handleSetObjetivoOverride(s.id, s.week_id, s.barber_id, next)
+                                        if (Math.abs(next - s.bonus_mantenimiento) > 0.001) {
+                                          handleSetMantenimientoOverride(s.id, s.week_id, s.barber_id, next)
                                         }
                                       }}
                                       className="filter-input"
                                       style={{ width: 96 }}
                                       title="Monto del bono (editable a mano)"
                                     />
-                                    {s.bonus_objetivo_override != null && (
+                                    {s.bonus_mantenimiento_override != null && (
                                       <button
                                         type="button"
                                         title="Volver al cálculo automático"
-                                        onClick={() => handleSetObjetivoOverride(s.id, s.week_id, s.barber_id, null)}
+                                        onClick={() => handleSetMantenimientoOverride(s.id, s.week_id, s.barber_id, null)}
                                         className="admin-btn admin-btn--ghost"
                                         style={{ padding: '0.25rem 0.5rem' }}
                                       >↺ auto</button>
@@ -1296,8 +1359,58 @@ export default function AdminDashboard() {
                                 )}
                               </div>
                             ) : (
-                              <span className={`badge ${s.objetivo_met ? 'badge--green' : 'badge--red'}`}>
-                                {s.objetivo_met ? `Sí · ${formatARS(s.bonus_objetivo)}` : 'No'}
+                              <span className={`badge ${s.mantenimiento_met ? 'badge--green' : 'badge--red'}`}>
+                                {s.mantenimiento_met ? `Sí · ${formatARS(s.bonus_mantenimiento)}` : 'No'}
+                              </span>
+                            )
+                          ) : (
+                            <span className="td-na">—</span>
+                          )}
+                        </td>
+                        <td>
+                          {hasBonuses ? (
+                            s.status === 'draft' ? (
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                                <button
+                                  onClick={() => handleObjetivoMet(s.id, s.week_id, s.barber_id, s.objetivo_met ?? false)}
+                                  disabled={loadingKey === `objetivo-${s.id}`}
+                                  className={`toggle-btn ${s.objetivo_met ? 'toggle-btn--on' : 'toggle-btn--off'}`}
+                                >
+                                  {s.objetivo_met ? 'Sí' : 'No'}
+                                </button>
+                                {s.objetivo_met && (
+                                  <>
+                                    <input
+                                      key={`obj-pct-${s.id}-${s.objetivo_pct}`}
+                                      type="number"
+                                      inputMode="decimal"
+                                      step="0.01"
+                                      defaultValue={s.objetivo_pct != null ? String(s.objetivo_pct * 100) : ''}
+                                      disabled={loadingKey === `objetivo-pct-${s.id}`}
+                                      onBlur={(e) => {
+                                        const raw = e.target.value.trim()
+                                        const next = raw === '' ? null : parseFloat(raw) / 100
+                                        const current = s.objetivo_pct
+                                        const changed = next === null ? current != null : (current == null || Math.abs(next - current) > 0.0001)
+                                        if (changed) handleSetObjetivoPct(s.id, next)
+                                      }}
+                                      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                                      className="filter-input"
+                                      style={{ width: 72 }}
+                                      placeholder="0"
+                                      autoFocus
+                                      title="% sobre el facturado neto para esta liquidación"
+                                    />
+                                    <span className="td-muted">%</span>
+                                    {s.bonus_objetivo_pct > 0 && (
+                                      <span className="td-subnote">{formatARS(s.bonus_objetivo_pct)}</span>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            ) : (
+                              <span className={`badge ${s.objetivo_met && s.bonus_objetivo_pct > 0 ? 'badge--green' : 'badge--red'}`}>
+                                {s.objetivo_met && s.bonus_objetivo_pct > 0 ? `Sí · ${formatARS(s.bonus_objetivo_pct)}` : 'No'}
                               </span>
                             )
                           ) : (
@@ -1315,9 +1428,9 @@ export default function AdminDashboard() {
                         </td>
                         <td className="td-bold">
                           {formatARS(settlTotalGanado(s))}
-                          {hasBonuses && (s.bonus_presentismo + s.bonus_objetivo) > 0 && (
+                          {hasBonuses && (s.bonus_presentismo + s.bonus_mantenimiento + s.bonus_objetivo_pct) > 0 && (
                             <div className="td-subnote">
-                              {formatARS(settlComisionBase(s))} + {formatARS(s.bonus_presentismo + s.bonus_objetivo)} bonos
+                              {formatARS(settlGanadoCortes(s))} + {formatARS(s.bonus_presentismo + s.bonus_mantenimiento + s.bonus_objetivo_pct)} bonos
                             </div>
                           )}
                         </td>
@@ -1465,7 +1578,8 @@ export default function AdminDashboard() {
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + settlFacturadoNeto(x), 0))}</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.vip_amount, 0))}</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + (x.barber.compensation_type !== 'box_rental' ? settlComisionBase(x) : 0), 0))}</strong></td>
-                    <td colSpan={3}></td>
+                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + (x.barber.compensation_type !== 'box_rental' ? settlBasico(x) : 0), 0))}</strong></td>
+                    <td colSpan={4}></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + settlTotalGanado(x), 0))}</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + settlTotalCobrado(x), 0))}</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.advances_deducted, 0))}</strong></td>
@@ -2379,6 +2493,10 @@ function EditTransactionModal({
   const [effectiveWeekLabel, setEffectiveWeekLabel] = useState<string | null>(null)
   // Box_rental: acumulado facturado del día (otros cortes de esa fecha, excluye este).
   const [dayOtherGross, setDayOtherGross] = useState(0)
+  // Barbero nuevo: facturado NETO del día (otros cortes, excluye este) + precio del
+  // corte clásico elegido para ese barbero (esquema "2 cortes clásicos" por día).
+  const [dayOtherNeto, setDayOtherNeto] = useState(0)
+  const [allServicesRaw, setAllServicesRaw] = useState<ServiceCatalog[]>([])
 
   const scrollDays = buildEditScrollDays(date)
   const dayRef  = useRef<HTMLButtonElement>(null)
@@ -2396,6 +2514,7 @@ function EditTransactionModal({
           getActiveBenefitsByBranch(tx.branch_id),
         ])
         setServices(svcs.filter((s) => s.is_active))
+        setAllServicesRaw(svcs)
         setAllWeeks(weeks)
         setBenefits(bnfs)
       } catch (e) {
@@ -2413,6 +2532,14 @@ function EditTransactionModal({
     if (tx.barber.compensation_type !== 'box_rental') return
     getBarberDayGross(tx.barber_id, date, tx.id).then(setDayOtherGross).catch(() => {})
   }, [date, tx.barber_id, tx.id, tx.barber.compensation_type])
+
+  // Barbero nuevo: cargar el facturado NETO del día (excluyendo este corte) para
+  // previsualizar el tramo real — se calcula por DÍA, no por transacción.
+  const isNewBarberPct = tx.barber.compensation_type === 'percentage' && !!tx.barber.is_new_barber
+  useEffect(() => {
+    if (!isNewBarberPct) return
+    getBarberDayNeto(tx.barber_id, date, tx.id).then(setDayOtherNeto).catch(() => {})
+  }, [date, tx.barber_id, tx.id, isNewBarberPct])
 
   useEffect(() => {
     if (allWeeks.length === 0) return
@@ -2439,7 +2566,15 @@ function EditTransactionModal({
 
   // Al elegir/cambiar servicio con un beneficio activo, recalcular el descuento
   // sobre el nuevo precio (mismo criterio que al registrar el corte).
+  // OJO: solo cuando el admin CAMBIA el beneficio o el precio en esta sesión del
+  // modal — no al montar ni al cargar el catálogo. Un descuento tipeado a mano
+  // (guardado en la transacción) debe respetarse al reabrir el modal.
+  const prevBenefitCalc = useRef<{ benefitId: string; amount: number } | null>(null)
   useEffect(() => {
+    const prev = prevBenefitCalc.current
+    prevBenefitCalc.current = { benefitId, amount: resolvedAmount }
+    if (!prev) return                                                        // montaje: respetar lo guardado
+    if (prev.benefitId === benefitId && prev.amount === resolvedAmount) return // solo cargó el catálogo
     if (!benefitId) return
     const b = benefits.find((x) => x.id === benefitId)
     if (!b) return
@@ -2454,11 +2589,30 @@ function EditTransactionModal({
   const transferNum     = parseFloat(transferPart) || 0
 
   // Comisión = % sobre el monto facturado (ya con el descuento aplicado).
+  // El barbero nuevo NO cambia el split por corte: su reparto por tramos se
+  // resuelve sobre el total facturado en la liquidación.
   const barberShareCalc = Math.max(0, Math.min(
     Number((effectiveAmount * commissionRate).toFixed(2)),
     effectiveAmount
   ))
   const branchShareCalc = Number((effectiveAmount - barberShareCalc).toFixed(2))
+
+  // Barbero nuevo: el esquema "2 cortes clásicos" se define por DÍA (sumando
+  // todos los cortes de esa fecha), no por transacción. Acá estimamos el tramo
+  // del día completo (incluyendo este corte) para no mostrar un % de comisión
+  // que en la práctica no se va a aplicar si el día no supera el doble.
+  const classicPrice = tx.barber.classic_service_id
+    ? allServicesRaw.find((s) => s.id === tx.barber.classic_service_id)?.base_price ?? null
+    : null
+  const dayTramoAplica = isNewBarberPct && classicPrice != null && !isVipFull
+  const dayNetoConEste = dayOtherNeto + (isVipFull ? 0 : effectiveAmount)
+  const basicoDia = dayTramoAplica ? 2 * (classicPrice as number) : 0
+  const dobleDia  = dayTramoAplica ? 2 * basicoDia : 0
+  const diaSupraDoble = dayTramoAplica && dayNetoConEste > dobleDia
+  const diaBarberShare = dayTramoAplica
+    ? (dayNetoConEste <= basicoDia ? dayNetoConEste : basicoDia)
+    : 0
+  const diaBranchShare = Number((dayNetoConEste - diaBarberShare).toFixed(2))
 
   // ── Box_rental: alquiler DIARIO. Los primeros $dailyRent de cortes del día van a
   // la barbería; lo que exceda es del barbero. Reparto de ESTE corte según el
@@ -2550,7 +2704,9 @@ function EditTransactionModal({
   const barberName = (tx.barber as { full_name: string } | null)?.full_name ?? '—'
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    // Sin onClick={onClose} en el overlay: un click accidental fuera del modal
+    // no debe descartar la edición en curso (se cierra con ✕ o Cancelar).
+    <div className="modal-overlay">
       <div className="modal-box" style={{ maxWidth: '540px' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>Editar corte · {barberName}</h3>
@@ -2764,17 +2920,42 @@ function EditTransactionModal({
                           : <>Alquiler diario ({formatARS(dailyRent)}): falta saldar <strong>{formatARS(dayRentRemaining)}</strong></>}
                       </div>
                     </>
+                  ) : dayTramoAplica && !diaSupraDoble ? (
+                    <>
+                      {/* Barbero nuevo, día <= doble: NO aplica % por corte — se liquida
+                          por tramos sobre el facturado del DÍA completo. */}
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.35rem' }}>
+                        <span style={{ color: '#a1a1aa' }}>
+                          Parte barbero ({dayNetoConEste <= basicoDia ? 'facturado del día' : 'básico · 2 clásicos'})
+                        </span>
+                        <span style={{ color: '#f59e0b', fontWeight: 600 }}>{formatARS(diaBarberShare)}</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                        <span style={{ color: '#a1a1aa' }}>Parte barbería</span>
+                        <span style={{ color: '#fff' }}>{formatARS(diaBranchShare)}</span>
+                      </div>
+                      <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: '#71717a' }}>
+                        Barbero nuevo: este valor es del <strong>día completo</strong> ({formatDate(date)}, facturado neto {formatARS(dayNetoConEste)} de {formatARS(dobleDia)} para pasar a comisión), no solo de este corte.
+                      </div>
+                    </>
                   ) : (
                     <>
                       {/* VIP: el barbero se lleva el 100% del monto descontado; la barbería absorbe el descuento */}
                       <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '0.35rem' }}>
-                        <span style={{ color: '#a1a1aa' }}>Parte barbero ({isVipFull ? '100% VIP' : `${Math.round(commissionRate * 100)}%`})</span>
+                        <span style={{ color: '#a1a1aa' }}>
+                          Parte barbero ({isVipFull ? '100% VIP' : `${Math.round(commissionRate * 100)}%`})
+                        </span>
                         <span style={{ color: '#f59e0b', fontWeight: 600 }}>{formatARS(isVipFull ? effectiveAmount : barberShareCalc)}</span>
                       </div>
                       <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                         <span style={{ color: '#a1a1aa' }}>Parte barbería</span>
                         <span style={{ color: '#fff' }}>{formatARS(isVipFull ? 0 : branchShareCalc)}</span>
                       </div>
+                      {dayTramoAplica && diaSupraDoble && (
+                        <div style={{ marginTop: '0.4rem', fontSize: '0.72rem', color: '#71717a' }}>
+                          Barbero nuevo: el día ({formatDate(date)}) superó el doble de 2 cortes clásicos ({formatARS(dobleDia)}) → aplica el % convencional.
+                        </div>
+                      )}
                     </>
                   )}
                 </div>

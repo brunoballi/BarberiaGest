@@ -14,12 +14,14 @@ interface InvitePayload {
   commission_rate: number | null
   base_salary_rate: number | null
   presentismo_rate: number | null
-  objetivo_rate: number | null
-  objetivo_min_cuts: number | null
+  mantenimiento_rate: number | null
+  mantenimiento_min_cuts: number | null
   box_rental_amount: number | null
   receives_transfers: boolean
   advance_enabled: boolean
   advance_limit: number
+  is_new_barber: boolean
+  classic_service_id: string | null
 }
 
 /** Genera una contraseña segura de 12 caracteres */

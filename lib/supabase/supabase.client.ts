@@ -880,6 +880,8 @@ export async function registerCut(
     barberShare = payload.amount
     branchShare = 0
   } else {
+    // Split convencional. El barbero nuevo NO altera el split por corte: su
+    // reparto por tramos se calcula sobre el total facturado EN LA LIQUIDACIÓN.
     barberShare = Math.max(0, Math.min(barberShareRaw, payload.amount))
     branchShare = Number((payload.amount - barberShare).toFixed(2))
   }
@@ -994,6 +996,7 @@ export async function updateCut(
     barberShare = payload.amount
     branchShare = 0
   } else {
+    // Split convencional (el barbero nuevo se resuelve en la liquidación).
     barberShare = Math.max(0, Math.min(barberShareRaw, payload.amount))
     branchShare = Number((payload.amount - barberShare).toFixed(2))
   }
@@ -1194,7 +1197,7 @@ export async function getWeekTransactions(
       commission_rate_snapshot, is_manual_override, override_notes,
       created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount,
       client_name, client_surname, discount_amount, discount_reason, benefit_id,
-      barber:profiles!barber_id ( id, full_name, compensation_type, receives_transfers, box_rental_amount ),
+      barber:profiles!barber_id ( id, full_name, compensation_type, receives_transfers, box_rental_amount, is_new_barber, classic_service_id ),
       service:service_catalog!service_id ( id, name ),
       benefit:benefits!benefit_id ( id, name, full_amount_to_barber )
     `)
@@ -1310,6 +1313,32 @@ export async function getBarberDayGross(
   const { data, error } = await q
   if (error) throw new Error(`[getBarberDayGross] ${error.message}`)
   return (data ?? []).reduce((s, t) => s + Number(t.amount), 0)
+}
+
+/**
+ * Facturado NETO de un barbero en un día (excluye los cortes con beneficio VIP
+ * full_amount_to_barber, igual criterio que calculate_settlement). Se usa para
+ * previsualizar el tramo del "barbero nuevo" (2 cortes clásicos) en el modal de
+ * edición: ese esquema se calcula por DÍA, no por transacción.
+ */
+export async function getBarberDayNeto(
+  barberId: string,
+  date: string,
+  excludeTxId?: string,
+): Promise<number> {
+  let q = supabase
+    .from('transactions')
+    .select('amount, benefit:benefits!benefit_id ( full_amount_to_barber )')
+    .eq('barber_id', barberId)
+    .eq('transaction_date', date)
+  if (excludeTxId) q = q.neq('id', excludeTxId)
+  const { data, error } = await q
+  if (error) throw new Error(`[getBarberDayNeto] ${error.message}`)
+  return (data ?? []).reduce((s, t) => {
+    const b = t.benefit as unknown as { full_amount_to_barber: boolean } | { full_amount_to_barber: boolean }[] | null
+    const isVip = Array.isArray(b) ? b[0]?.full_amount_to_barber : b?.full_amount_to_barber
+    return s + (isVip ? 0 : Number(t.amount))
+  }, 0)
 }
 
 /**
@@ -1508,11 +1537,32 @@ export async function setPresentismo(
 }
 
 /**
- * Mejora 4: marca/desmarca el objetivo cumplido (override manual del admin).
+ * Marca/desmarca el mantenimiento cumplido (override manual del admin).
  * Mismo patrón que setPresentismo: setea el flag y recalcula la liquidación,
- * que toma objetivo_rate del barbero sobre el total facturado para el bono.
+ * que toma mantenimiento_rate del barbero sobre el facturado neto para el bono.
  */
-export async function setObjetivo(
+export async function setMantenimiento(
+  settlementId: string,
+  weekId: string,
+  barberId: string,
+  met: boolean
+): Promise<void> {
+  const { error } = await supabase
+    .from('settlements')
+    .update({ mantenimiento_met: met } satisfies SettlementUpdate)
+    .eq('id', settlementId)
+
+  if (error) throw new Error(`[setMantenimiento] ${error.message}`)
+
+  await calculateSettlement(weekId, barberId)
+}
+
+/**
+ * Objetivo — Sí/No: marca/desmarca si aplica el bono de objetivo. Igual patrón
+ * que presentismo/mantenimiento (flag + recálculo). El % se carga aparte con
+ * setObjetivoPct y solo tiene efecto cuando objetivo_met = true.
+ */
+export async function setObjetivoMet(
   settlementId: string,
   weekId: string,
   barberId: string,
@@ -1523,9 +1573,26 @@ export async function setObjetivo(
     .update({ objetivo_met: met } satisfies SettlementUpdate)
     .eq('id', settlementId)
 
-  if (error) throw new Error(`[setObjetivo] ${error.message}`)
+  if (error) throw new Error(`[setObjetivoMet] ${error.message}`)
 
   await calculateSettlement(weekId, barberId)
+}
+
+/**
+ * Objetivo %: el admin carga un porcentaje manual por liquidación (no es una
+ * tasa fija del barbero). El monto se calcula como objetivo_pct * facturado_neto
+ * y se suma al total ganado (solo si objetivo_met). Solo editable en borrador.
+ */
+export async function setObjetivoPct(
+  settlementId: string,
+  pct: number | null
+): Promise<void> {
+  const { error } = await supabase.rpc('set_objetivo_pct', {
+    p_settlement_id: settlementId,
+    p_pct: pct,
+  })
+
+  if (error) throw new Error(`[setObjetivoPct] ${error.message}`)
 }
 
 /**
@@ -1569,10 +1636,10 @@ export async function setBonusPresentismoOverride(
 }
 
 /**
- * Override manual del monto de bono de objetivo. `amount = null` vuelve al
+ * Override manual del monto de bono de mantenimiento. `amount = null` vuelve al
  * cálculo automático por tasa. Recalcula la liquidación.
  */
-export async function setBonusObjetivoOverride(
+export async function setBonusMantenimientoOverride(
   settlementId: string,
   weekId: string,
   barberId: string,
@@ -1580,10 +1647,10 @@ export async function setBonusObjetivoOverride(
 ): Promise<void> {
   const { error } = await supabase
     .from('settlements')
-    .update({ bonus_objetivo_override: amount } satisfies SettlementUpdate)
+    .update({ bonus_mantenimiento_override: amount } satisfies SettlementUpdate)
     .eq('id', settlementId)
 
-  if (error) throw new Error(`[setBonusObjetivoOverride] ${error.message}`)
+  if (error) throw new Error(`[setBonusMantenimientoOverride] ${error.message}`)
 
   await calculateSettlement(weekId, barberId)
 }

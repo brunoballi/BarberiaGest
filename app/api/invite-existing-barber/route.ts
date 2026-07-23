@@ -89,10 +89,12 @@ export async function POST(request: NextRequest) {
     commission_rate: existingProfile.commission_rate,
     base_salary_rate: existingProfile.base_salary_rate,
     presentismo_rate: existingProfile.presentismo_rate,
-    objetivo_rate: existingProfile.objetivo_rate,
-    objetivo_min_cuts: existingProfile.objetivo_min_cuts,
+    mantenimiento_rate: existingProfile.mantenimiento_rate,
+    mantenimiento_min_cuts: existingProfile.mantenimiento_min_cuts,
     box_rental_amount: existingProfile.box_rental_amount,
     is_active: true,
+    is_new_barber: existingProfile.is_new_barber,
+    classic_service_id: existingProfile.classic_service_id,
   })
 
   if (profileError) {
