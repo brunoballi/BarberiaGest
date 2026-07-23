@@ -842,6 +842,21 @@ export async function reopenMonth(monthId: string): Promise<void> {
  * Registra un corte. Calcula automáticamente el split y barber_already_collected.
  * Lógica Escenario B: si el pago es transfer/card, el barbero ya tiene ese dinero.
  */
+/**
+ * Recalcula la liquidación de (semana, barbero) tras escribir una transacción.
+ * Sin esto, la liquidación queda vieja hasta que el admin abre esa semana en
+ * Liquidaciones (calculate_all_settlements) — p.ej. la vista mobile del barbero
+ * mostraba menos cortes/facturado que la realidad. Falla en silencio (warn):
+ * el corte ya quedó guardado y el próximo recálculo lo levanta igual.
+ */
+async function refreshSettlementQuietly(weekId: string, barberId: string): Promise<void> {
+  const { error } = await supabase.rpc('calculate_settlement', {
+    p_week_id: weekId,
+    p_barber_id: barberId,
+  })
+  if (error) console.warn(`[refreshSettlementQuietly] ${error.message}`)
+}
+
 export async function registerCut(
   payload: RegisterCutPayload,
   barber: Profile,
@@ -956,6 +971,7 @@ export async function registerCut(
     .single()
 
   if (error) throw new Error(`[registerCut] ${error.message}`)
+  await refreshSettlementQuietly(weekId, barber.id)
   return data
 }
 
@@ -1061,12 +1077,14 @@ export async function updateCut(
   // vs barbero) de TODOS los cortes de esa fecha se puede correr. Recalculamos el día
   // completo en orden cronológico; el resync devuelve los splits finales, así que
   // armamos el corte actualizado en memoria sin un refetch extra.
+  let result: Transaction = data
   if (isBoxRental) {
     const splits = await resyncBoxRentalDaySplits(barber.id, payload.transaction_date, barber.box_rental_amount ?? 0, true)
     const s = splits.get(txId)
-    return s ? { ...data, ...s } : data
+    result = s ? { ...data, ...s } : data
   }
-  return data
+  await refreshSettlementQuietly(data.week_id, barber.id)
+  return result
 }
 
 /**
@@ -1271,6 +1289,15 @@ export async function fullEditTransaction(
     benefit_id?: string | null
   }
 ): Promise<void> {
+  // Semana original ANTES de editar: si el corte se mueve de semana, la
+  // liquidación vieja también hay que recalcularla (pierde este corte).
+  const { data: prev } = await supabase
+    .from('transactions')
+    .select('week_id')
+    .eq('id', txId)
+    .single()
+  const oldWeekId: string | null = prev?.week_id ?? null
+
   const { error } = await supabase
     .from('transactions')
     .update({ ...updates, is_manual_override: true })
@@ -1285,13 +1312,22 @@ export async function fullEditTransaction(
     .eq('id', txId)
     .single()
   const b = (row as { barber?: { compensation_type?: string; box_rental_amount?: number | null } } | null)?.barber
-  if (b?.compensation_type === 'box_rental') {
+  const barberId = (row as { barber_id: string } | null)?.barber_id
+  if (b?.compensation_type === 'box_rental' && barberId) {
     await resyncBoxRentalDaySplits(
-      (row as { barber_id: string }).barber_id,
+      barberId,
       (row as { transaction_date: string }).transaction_date,
       Number(b.box_rental_amount ?? 0),
       false, // admin: preserva el flag is_manual_override que ya fijó fullEditTransaction
     )
+  }
+
+  // Recalcular la liquidación de la semana destino y, si cambió, la de origen.
+  if (barberId) {
+    await refreshSettlementQuietly(updates.week_id, barberId)
+    if (oldWeekId && oldWeekId !== updates.week_id) {
+      await refreshSettlementQuietly(oldWeekId, barberId)
+    }
   }
 }
 

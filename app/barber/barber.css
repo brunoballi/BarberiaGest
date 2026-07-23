@@ -93,12 +93,14 @@
   align-items: center;
   justify-content: space-between;
 }
-/* Detalle por medio de pago del total del día */
+/* Detalle por medio de pago del total del día.
+   Siempre en columna (un medio por línea): con flex-wrap quedaba en fila o
+   apilado según el ancho de los montos, y se veía desparejo entre días. */
 .tx-day-group__breakdown {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.35rem 1rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
   padding-top: 0.5rem;
   border-top: 1px solid #27272a;
 }
@@ -408,13 +410,13 @@
   font-weight: 700;
   color: #e4e4e7;
 }
-/* Detalle del total por medio de pago (efectivo / transferencia / tarjeta) */
+/* Detalle del total por medio de pago (efectivo / transferencia / tarjeta).
+   En columna, igual que el detalle por día (consistencia visual). */
 .filter-summary > .filter-summary__breakdown {
   grid-column: 1 / -1;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.4rem 1rem;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.3rem;
   margin-top: 0.55rem;
   padding-top: 0.55rem;
   border-top: 1px solid #27272a;

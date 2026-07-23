@@ -49,6 +49,23 @@ interface WeekAgg {
   billed: number
   commission: number  // lo que se lleva el barbero (total_earned)
   branch: number      // lo que se lleva la barbería (branch share)
+  // Desglose del total barbero (mismo criterio que la grilla de liquidaciones):
+  comisionBase: number  // comisión convencional (sin VIP)
+  basico: number        // días de "básico" del barbero nuevo
+  vip: number           // beneficio VIP (100% al barbero)
+  bonos: number         // presentismo + mantenimiento + objetivo
+}
+
+/** Desglose "Comisión $X + Básico $Y + VIP $Z + Bonos $W" (solo partes ≠ 0).
+ *  Devuelve null si el total es solo comisión (no hay nada que aclarar). */
+function desgloseLabel(a: { comisionBase: number; basico: number; vip: number; bonos: number }): string | null {
+  if (a.basico === 0 && a.vip === 0 && a.bonos === 0) return null
+  const parts: string[] = []
+  if (a.comisionBase > 0) parts.push(`Comisión ${formatARS(a.comisionBase)}`)
+  if (a.basico > 0) parts.push(`Básico ${formatARS(a.basico)}`)
+  if (a.vip > 0) parts.push(`VIP ${formatARS(a.vip)}`)
+  if (a.bonos > 0) parts.push(`Bonos ${formatARS(a.bonos)}`)
+  return parts.join(' + ')
 }
 
 interface MonthDetailModalProps {
@@ -109,8 +126,14 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
             billed: acc.billed + s.gross_amount,
             commission: acc.commission + s.total_earned,
             branch: acc.branch + branchShareOf(s),
+            // El VIP viaja dentro de barber_comision (igual que en la grilla):
+            // acá se resta para mostrar la comisión convencional real.
+            comisionBase: acc.comisionBase + (s.barber_comision - s.vip_amount),
+            basico: acc.basico + s.barber_basico,
+            vip: acc.vip + s.vip_amount,
+            bonos: acc.bonos + s.bonus_presentismo + s.bonus_mantenimiento + s.bonus_objetivo_pct,
           }),
-          { cuts: 0, billed: 0, commission: 0, branch: 0 }
+          { cuts: 0, billed: 0, commission: 0, branch: 0, comisionBase: 0, basico: 0, vip: 0, bonos: 0 }
         )
       return {
         weekId: w.id,
@@ -141,8 +164,12 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
       commission: acc.commission + s.total_earned,
       toCollect: acc.toCollect + s.net_payable,
       branch: acc.branch + branchShareOf(s),
+      comisionBase: acc.comisionBase + (s.barber_comision - s.vip_amount),
+      basico: acc.basico + s.barber_basico,
+      vip: acc.vip + s.vip_amount,
+      bonos: acc.bonos + s.bonus_presentismo + s.bonus_mantenimiento + s.bonus_objetivo_pct,
     }),
-    { cuts: 0, billed: 0, commission: 0, toCollect: 0, branch: 0 }
+    { cuts: 0, billed: 0, commission: 0, toCollect: 0, branch: 0, comisionBase: 0, basico: 0, vip: 0, bonos: 0 }
   ), [filteredSettlements])
 
   const totalCuts = filteredTransactions.length
@@ -165,7 +192,10 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
 
   return (
     <div className="modal-overlay">
-      <div className="modal-box" style={{ maxWidth: '820px', width: '100%' }} onClick={(e) => e.stopPropagation()}>
+      {/* Más ancho que el modal estándar: la tabla por semana ahora lleva el
+          desglose del total barbero como subtexto y necesita aire para no
+          colapsar las columnas. En pantallas chicas sigue achicándose (width 100%). */}
+      <div className="modal-box" style={{ maxWidth: '1040px', width: '100%' }} onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h3>
             Detalle · {monthLabel}
@@ -282,7 +312,7 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
                           <th>Semana</th>
                           <th>Cortes</th>
                           <th>Facturado</th>
-                          <th>Comisión barbero</th>
+                          <th title="Todo lo que se lleva el barbero: comisión + básico (barbero nuevo) + beneficio VIP + bonos. El desglose aparece debajo del monto.">Total barbero</th>
                           <th>Barbería</th>
                         </tr>
                       </thead>
@@ -295,7 +325,14 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
                             </td>
                             <td className="td-center">{row.cuts}</td>
                             <td>{formatARS(row.billed)}</td>
-                            <td style={{ color: '#f59e0b', fontWeight: 600 }}>{formatARS(row.commission)}</td>
+                            <td style={{ color: '#f59e0b', fontWeight: 600 }}>
+                              {formatARS(row.commission)}
+                              {desgloseLabel(row) && (
+                                <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: 400, color: '#71717a' }}>
+                                  {desgloseLabel(row)}
+                                </span>
+                              )}
+                            </td>
                             <td style={{ color: '#34d399', fontWeight: 600 }}>{formatARS(row.branch)}</td>
                           </tr>
                         ))}
@@ -305,7 +342,14 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
                           <td>TOTAL</td>
                           <td className="td-center">{totals.cuts}</td>
                           <td>{formatARS(totals.billed)}</td>
-                          <td style={{ color: '#f59e0b' }}>{formatARS(totals.commission)}</td>
+                          <td style={{ color: '#f59e0b' }}>
+                            {formatARS(totals.commission)}
+                            {desgloseLabel(totals) && (
+                              <span style={{ display: 'block', fontSize: '0.7rem', fontWeight: 400, color: '#71717a' }}>
+                                {desgloseLabel(totals)}
+                              </span>
+                            )}
+                          </td>
                           <td style={{ color: '#34d399' }}>{formatARS(totals.branch)}</td>
                         </tr>
                       </tfoot>

@@ -1342,14 +1342,16 @@ export default function BarberMobileView() {
                       </>
                     ) : (
                       <>
+                        {/* El VIP viaja dentro de barber_comision/barber_gross (igual que en
+                            la grilla admin): acá se resta de la comisión y se muestra aparte. */}
                         {s.barber_basico > 0 ? (
                           // Barbero nuevo con días mixtos: discriminar comisión (días que
                           // superaron el doble de 2 cortes clásicos) de básico (días que no).
                           <>
-                            {s.barber_comision > 0 && (
+                            {s.barber_comision - s.vip_amount > 0 && (
                               <SettlRow
                                 label={`Comisión (${s.barber_comision_dias} día${s.barber_comision_dias !== 1 ? 's' : ''})`}
-                                value={formatARS(s.barber_comision)}
+                                value={formatARS(s.barber_comision - s.vip_amount)}
                               />
                             )}
                             <SettlRow
@@ -1358,7 +1360,12 @@ export default function BarberMobileView() {
                             />
                           </>
                         ) : (
-                          <SettlRow label={profile?.compensation_type === 'salary' ? 'Sueldo base' : 'Comisión'} value={formatARS(s.barber_gross)} />
+                          (s.vip_amount === 0 || s.barber_gross - s.vip_amount > 0) && (
+                            <SettlRow label={profile?.compensation_type === 'salary' ? 'Sueldo base' : 'Comisión'} value={formatARS(s.barber_gross - s.vip_amount)} />
+                          )
+                        )}
+                        {s.vip_amount > 0 && (
+                          <SettlRow label="Beneficio VIP" value={formatARS(s.vip_amount)} valueClass="text-violet-400" />
                         )}
                         {s.bonus_presentismo > 0 && <SettlRow label="+ Presentismo" value={formatARS(s.bonus_presentismo)} valueClass="text-emerald-400" />}
                         {s.bonus_mantenimiento > 0 && <SettlRow label="+ Mantenimiento" value={formatARS(s.bonus_mantenimiento)} valueClass="text-emerald-400" />}
