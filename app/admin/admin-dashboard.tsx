@@ -1254,7 +1254,9 @@ export default function AdminDashboard() {
                               {s.barber_basico > 0 ? (
                                 s.barber_comision_facturado > 0 && (
                                   <div className="td-subnote">
-                                    {Math.round((s.barber_comision / s.barber_comision_facturado) * 100)}% de {formatARS(s.barber_comision_facturado)}
+                                    {/* Comisión SIN VIP sobre el facturado de los días que comisionaron.
+                                        barber_comision incluye el VIP (mig. 038): usar settlComisionBase. */}
+                                    {Math.round((settlComisionBase(s) / s.barber_comision_facturado) * 100)}% de {formatARS(s.barber_comision_facturado)}
                                   </div>
                                 )
                               ) : (
