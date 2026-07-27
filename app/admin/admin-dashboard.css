@@ -819,7 +819,10 @@
 .barber-cell {
   display: flex;
   align-items: center;
-  justify-content: center;
+  /* Alineado a la izquierda: con justify-content: center cada fila centraba el
+     grupo avatar+nombre según el largo del nombre y quedaban desalineados. */
+  justify-content: flex-start;
+  text-align: left;
   gap: 0.625rem;
 }
 

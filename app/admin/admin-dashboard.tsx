@@ -1109,6 +1109,8 @@ export default function AdminDashboard() {
             if (settlFilterAPagar === 'negative' && s.net_payable >= 0) return false
             return true
           })
+          // Filas fijas: orden alfabético por nombre del barbero (columna Barbero).
+          .sort((a, b) => a.barber.full_name.localeCompare(b.barber.full_name, 'es', { sensitivity: 'base' }))
           // Paginación: recorta la grilla a la página actual (los TOTALES siguen sobre todo el filtro)
           const settlTotalPages = Math.max(1, Math.ceil(filteredSettlements.length / settlPageSize))
           const settlCurrentPage = Math.min(settlPage, settlTotalPages)
