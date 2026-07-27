@@ -924,9 +924,11 @@ export async function registerCut(
   // box_rental: se queda su parte del corte (lo que excede el alquiler diario),
   // ya sea efectivo o transferencia; la parte de alquiler (branchShare) va a la barbería.
   // VIP (comisión %): el barbero se queda EN EL MOMENTO con todo lo que pagó el
-  // cliente — el efectivo nunca entra a la caja de la barbería. La transferencia
-  // solo cuenta como cobrada si le llega a su propia cuenta (receives_transfers);
-  // si va a la cuenta de Valhalla, se le debe en la liquidación como siempre.
+  // cliente, SIN IMPORTAR el medio ni si tiene receives_transfers — en un corte
+  // VIP el cliente le paga directo al barbero (efectivo o transferencia a su
+  // cuenta). Por eso el VIP siempre cuenta como ya cobrado (no se le debe en la
+  // liquidación). Con el resto de los cortes, la transferencia solo cuenta como
+  // cobrada si le llega a su cuenta; si va a Valhalla, se le debe como siempre.
   const isVipFullToBarber =
     !!payload.benefit_full_amount_to_barber && barber.compensation_type === 'percentage'
   const barberAlreadyCollected: number =
@@ -935,7 +937,7 @@ export async function registerCut(
       : isBoxRental
       ? barberShare
       : isVipFullToBarber
-      ? cashAmount + (barber.receives_transfers ? transferAmount : 0)
+      ? cashAmount + transferAmount
       : barber.receives_transfers
       ? transferAmount
       : 0
@@ -1027,7 +1029,8 @@ export async function updateCut(
   }
 
   // VIP (comisión %): ver comentario equivalente en registerCut — el barbero se
-  // queda en el momento con todo lo que pagó el cliente (efectivo incluido).
+  // queda en el momento con TODO lo que pagó el cliente (efectivo y transferencia),
+  // sin importar receives_transfers. Siempre cuenta como ya cobrado.
   const isVipFullToBarber =
     !!payload.benefit_full_amount_to_barber && barber.compensation_type === 'percentage'
   const barberAlreadyCollected: number =
@@ -1036,7 +1039,7 @@ export async function updateCut(
       : isBoxRental
       ? barberShare
       : isVipFullToBarber
-      ? cashAmount + (barber.receives_transfers ? transferAmount : 0)
+      ? cashAmount + transferAmount
       : barber.receives_transfers
       ? transferAmount
       : 0

@@ -2666,12 +2666,13 @@ function EditTransactionModal({
     // VIP (comisión %): 100% al barbero, la barbería absorbe el descuento.
     const barberShareFinal = isBoxRental ? boxToBarber : (isVipFull ? effectiveAmount : barberShareCalc)
     const branchShareFinal = isBoxRental ? boxToShop : (isVipFull ? 0 : branchShareCalc)
-    // VIP (comisión %): el barbero se queda en el momento con todo lo que pagó el
-    // cliente (efectivo incluido); la transferencia solo si le llega a su cuenta.
+    // VIP (comisión %): el barbero se queda en el momento con TODO lo que pagó el
+    // cliente (efectivo y transferencia), sin importar receives_transfers — en un
+    // corte VIP el cliente le paga directo. Siempre cuenta como ya cobrado.
     const barberAlreadyCollected = isBoxRental
       ? boxToBarber
       : isVipFull
-      ? cashAmt + (tx.barber.receives_transfers ? transferAmt : 0)
+      ? cashAmt + transferAmt
       : (tx.barber.receives_transfers ? transferAmt : 0)
 
     try {
