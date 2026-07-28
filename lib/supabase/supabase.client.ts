@@ -865,9 +865,10 @@ export async function registerCut(
 ): Promise<Transaction> {
   const commissionRate = barber.commission_rate ?? 0.5
   const isBoxRental = barber.compensation_type === 'box_rental'
-  // La comisión del barbero es el % sobre el monto facturado (ya con el
-  // descuento aplicado). El descuento lo absorben barbero y barbería en
-  // proporción a su split: cada uno su % sobre el monto efectivamente cobrado.
+  // Convencional: el % del barbero se aplica sobre el monto YA con el descuento
+  // aplicado (payload.amount es el neto). Nadie "absorbe" el descuento aparte:
+  // simplemente el monto a repartir es más chico, y cada uno se lleva su %
+  // de siempre sobre ese monto menor.
   const barberShareRaw = Number((payload.amount * commissionRate).toFixed(2))
 
   // Constraints DB: barber_share >= 0, branch_share >= 0, branch_share + barber_share = amount.

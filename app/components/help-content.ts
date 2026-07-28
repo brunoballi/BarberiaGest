@@ -36,7 +36,7 @@ export const BARBER_HELP: HelpSection[] = [
       },
       {
         q: '¿Puedo cargar un descuento?',
-        a: 'Sí. Cuando registrás el corte, abrís el campo "descuento" e ingresás el monto. La barbería absorbe el descuento — tu comisión sigue calculándose sobre el precio original.',
+        a: 'Sí. Cuando registrás el corte, abrís el campo "descuento" e ingresás el monto. El precio baja por ese descuento, y tu comisión se calcula sobre el monto ya descontado (el neto que efectivamente se cobró) — el resto es para la barbería, igual que en cualquier corte.',
       },
     ],
   },

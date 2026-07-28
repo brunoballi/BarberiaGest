@@ -392,7 +392,9 @@ export default function BarberMobileView() {
   const boxToShop = isBoxRental ? Math.min(effectiveAmount, rentRemaining) : 0
   const boxToBarber = Math.max(0, effectiveAmount - boxToShop)
 
-  // Mejora 1: al elegir un beneficio, pre-rellenar descuento y motivo (50/50 sin cambios)
+  // Mejora 1: al elegir un beneficio, pre-rellenar descuento y motivo.
+  // El descuento solo baja el monto neto; la comisión sigue siendo el %
+  // convencional sobre ese neto (nadie "absorbe" una parte aparte).
   useEffect(() => {
     if (!benefitId) return
     const b = benefits.find((x) => x.id === benefitId)

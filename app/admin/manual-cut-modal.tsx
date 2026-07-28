@@ -247,7 +247,8 @@ export default function ManualCutModal({
     !!selectedBenefit?.full_amount_to_barber && selectedBarber?.compensation_type === 'percentage'
 
   // Mejora 1: al elegir un beneficio, pre-rellenar descuento y motivo.
-  // Para % se recalcula si cambia el monto. La matemática del descuento NO cambia (50/50).
+  // Para % se recalcula si cambia el monto: el descuento solo baja el monto
+  // neto, la comisión sigue siendo el % convencional sobre ese neto.
   useEffect(() => {
     if (!benefitId) return
     const b = benefits.find((x) => x.id === benefitId)

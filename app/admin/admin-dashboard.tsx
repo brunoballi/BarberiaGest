@@ -2910,7 +2910,9 @@ function EditTransactionModal({
                   )}
                   {discountNum > 0 && (
                     <div style={{ display: 'flex', justifyContent: 'space-between', color: '#f59e0b', fontSize: '0.75rem' }}>
-                      <span>Descuento{isBoxRental || isVipFull ? '' : ' (50/50)'}</span><span>−{formatARS(discountNum)}</span>
+                      {/* Etiqueta sin "(50/50)": el descuento no se reparte a medias.
+                          El % del barbero se calcula sobre el monto ya descontado. */}
+                      <span>Descuento</span><span>−{formatARS(discountNum)}</span>
                     </div>
                   )}
                   {isBoxRental ? (
