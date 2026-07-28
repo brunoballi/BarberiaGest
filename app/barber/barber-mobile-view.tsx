@@ -1367,8 +1367,10 @@ export default function BarberMobileView() {
                         {s.vip_amount > 0 && (
                           <SettlRow label="Beneficio VIP" value={formatARS(s.vip_amount)} valueClass="text-violet-400" />
                         )}
-                        {s.bonus_presentismo > 0 && <SettlRow label="+ Presentismo" value={formatARS(s.bonus_presentismo)} valueClass="text-emerald-400" />}
-                        {s.bonus_mantenimiento > 0 && <SettlRow label="+ Mantenimiento" value={formatARS(s.bonus_mantenimiento)} valueClass="text-emerald-400" />}
+                        {/* Presentismo/Mantenimiento pueden ser negativos (ajuste del barbero nuevo):
+                            mostrar el signo y en rojo si descuenta. */}
+                        {s.bonus_presentismo !== 0 && <SettlRow label={`${s.bonus_presentismo < 0 ? '−' : '+'} Presentismo`} value={formatARS(Math.abs(s.bonus_presentismo))} valueClass={s.bonus_presentismo < 0 ? 'text-red-400' : 'text-emerald-400'} />}
+                        {s.bonus_mantenimiento !== 0 && <SettlRow label={`${s.bonus_mantenimiento < 0 ? '−' : '+'} Mantenimiento`} value={formatARS(Math.abs(s.bonus_mantenimiento))} valueClass={s.bonus_mantenimiento < 0 ? 'text-red-400' : 'text-emerald-400'} />}
                         {s.bonus_objetivo_pct > 0 && <SettlRow label="+ Objetivo" value={formatARS(s.bonus_objetivo_pct)} valueClass="text-emerald-400" />}
                         <div className="h-px bg-zinc-800 my-0.5" />
                         <SettlRow label="Ganado" value={formatARS(s.total_earned)} />

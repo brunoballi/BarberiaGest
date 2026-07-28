@@ -396,7 +396,7 @@ export interface TransactionWithRelations extends Transaction {
 
 /** Settlement con datos del barbero (para panel de liquidación) */
 export interface SettlementWithBarber extends Settlement {
-  barber: Pick<Profile, 'id' | 'full_name' | 'compensation_type'>
+  barber: Pick<Profile, 'id' | 'full_name' | 'compensation_type' | 'is_new_barber'>
   week: Pick<Week, 'id' | 'week_number' | 'start_date' | 'end_date' | 'status'>
 }
 

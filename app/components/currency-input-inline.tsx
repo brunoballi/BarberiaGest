@@ -25,12 +25,15 @@ export interface CurrencyInputInlineProps
   onCommit: (value: number) => void
   /** Decimales permitidos (default 2). */
   decimals?: number
+  /** Permite valores negativos (default false → borra el signo −). */
+  allowNegative?: boolean
 }
 
 export function CurrencyInputInline({
   defaultValue,
   onCommit,
   decimals = 2,
+  allowNegative = false,
   className,
   onBlur,
   ...rest
@@ -43,9 +46,9 @@ export function CurrencyInputInline({
 
   const handleChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
-      setRaw(parseFromInput(e.target.value, decimals))
+      setRaw(parseFromInput(e.target.value, decimals, allowNegative))
     },
-    [decimals]
+    [decimals, allowNegative]
   )
 
   const handleBlur = useCallback(

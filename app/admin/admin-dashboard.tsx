@@ -1294,6 +1294,8 @@ export default function AdminDashboard() {
                                       key={`pres-${s.id}-${s.bonus_presentismo}`}
                                       defaultValue={s.bonus_presentismo || ''}
                                       disabled={loadingKey === `presentismo-${s.id}`}
+                                      // Solo el barbero nuevo puede tipear un ajuste negativo (descuento).
+                                      allowNegative={s.barber.is_new_barber === true}
                                       onCommit={(next) => {
                                         if (Math.abs(next - s.bonus_presentismo) > 0.001) {
                                           handleSetPresentismoOverride(s.id, s.week_id, s.barber_id, next)
@@ -1301,7 +1303,7 @@ export default function AdminDashboard() {
                                       }}
                                       className="filter-input"
                                       style={{ width: 96 }}
-                                      title="Monto del bono (editable a mano)"
+                                      title={s.barber.is_new_barber ? 'Monto del bono (editable a mano; admite negativo)' : 'Monto del bono (editable a mano)'}
                                     />
                                     {s.bonus_presentismo_override != null && (
                                       <button
@@ -1341,6 +1343,8 @@ export default function AdminDashboard() {
                                       key={`mant-${s.id}-${s.bonus_mantenimiento}`}
                                       defaultValue={s.bonus_mantenimiento || ''}
                                       disabled={loadingKey === `mantenimiento-${s.id}`}
+                                      // Solo el barbero nuevo puede tipear un ajuste negativo (descuento).
+                                      allowNegative={s.barber.is_new_barber === true}
                                       onCommit={(next) => {
                                         if (Math.abs(next - s.bonus_mantenimiento) > 0.001) {
                                           handleSetMantenimientoOverride(s.id, s.week_id, s.barber_id, next)
@@ -1348,7 +1352,7 @@ export default function AdminDashboard() {
                                       }}
                                       className="filter-input"
                                       style={{ width: 96 }}
-                                      title="Monto del bono (editable a mano)"
+                                      title={s.barber.is_new_barber ? 'Monto del bono (editable a mano; admite negativo)' : 'Monto del bono (editable a mano)'}
                                     />
                                     {s.bonus_mantenimiento_override != null && (
                                       <button
@@ -1432,11 +1436,17 @@ export default function AdminDashboard() {
                         </td>
                         <td className="td-bold">
                           {formatARS(settlTotalGanado(s))}
-                          {hasBonuses && (s.bonus_presentismo + s.bonus_mantenimiento + s.bonus_objetivo_pct) > 0 && (
-                            <div className="td-subnote">
-                              {formatARS(settlGanadoCortes(s))} + {formatARS(s.bonus_presentismo + s.bonus_mantenimiento + s.bonus_objetivo_pct)} bonos
-                            </div>
-                          )}
+                          {(() => {
+                            // Los bonos pueden ser negativos (ajuste/descuento del barbero nuevo):
+                            // mostrar "+ $Y" o "− $Y" según el signo.
+                            const bonos = s.bonus_presentismo + s.bonus_mantenimiento + s.bonus_objetivo_pct
+                            if (!hasBonuses || bonos === 0) return null
+                            return (
+                              <div className="td-subnote">
+                                {formatARS(settlGanadoCortes(s))} {bonos < 0 ? '−' : '+'} {formatARS(Math.abs(bonos))} bonos
+                              </div>
+                            )
+                          })()}
                         </td>
                         <td className="td-muted">
                           {(() => {

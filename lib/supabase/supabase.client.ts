@@ -1664,6 +1664,9 @@ export async function setBonusPresentismoOverride(
   barberId: string,
   amount: number | null
 ): Promise<void> {
+  // Guarda: el ajuste negativo (descuento) solo se permite para barberos nuevos.
+  await assertNegativeOverrideAllowed(barberId, amount, 'presentismo')
+
   const { error } = await supabase
     .from('settlements')
     .update({ bonus_presentismo_override: amount } satisfies SettlementUpdate)
@@ -1672,6 +1675,27 @@ export async function setBonusPresentismoOverride(
   if (error) throw new Error(`[setBonusPresentismoOverride] ${error.message}`)
 
   await calculateSettlement(weekId, barberId)
+}
+
+/**
+ * Rechaza un override negativo si el barbero NO está marcado como nuevo. El
+ * ajuste negativo (restar del bono) es una regla exclusiva del barbero nuevo.
+ */
+async function assertNegativeOverrideAllowed(
+  barberId: string,
+  amount: number | null,
+  bono: string,
+): Promise<void> {
+  if (amount == null || amount >= 0) return
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('is_new_barber')
+    .eq('id', barberId)
+    .single()
+  if (error) throw new Error(`[assertNegativeOverrideAllowed] ${error.message}`)
+  if (!data?.is_new_barber) {
+    throw new Error(`El ajuste negativo de ${bono} solo se permite para barberos marcados como nuevos.`)
+  }
 }
 
 /**
@@ -1684,6 +1708,9 @@ export async function setBonusMantenimientoOverride(
   barberId: string,
   amount: number | null
 ): Promise<void> {
+  // Guarda: el ajuste negativo (descuento) solo se permite para barberos nuevos.
+  await assertNegativeOverrideAllowed(barberId, amount, 'mantenimiento')
+
   const { error } = await supabase
     .from('settlements')
     .update({ bonus_mantenimiento_override: amount } satisfies SettlementUpdate)
