@@ -1511,7 +1511,7 @@ export async function getSettlementsForWeek(
     .from('settlements')
     .select(`
       *,
-      barber:profiles!barber_id ( id, full_name, compensation_type ),
+      barber:profiles!barber_id ( id, full_name, compensation_type, is_new_barber ),
       week:weeks!week_id ( id, week_number, start_date, end_date, status )
     `)
     .eq('week_id', weekId)
