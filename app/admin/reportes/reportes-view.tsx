@@ -163,6 +163,9 @@ export default function ReportesView() {
       cutCount:       acc.cutCount + r.cutCount,
       totalIncome:    acc.totalIncome + r.totalIncome,
       branchShare:    acc.branchShare + r.branchShare,
+      branchFromCuts: acc.branchFromCuts + r.branchFromCuts,
+      branchFromRent: acc.branchFromRent + r.branchFromRent,
+      branchBonuses:  acc.branchBonuses + r.branchBonuses,
       barberShare:    acc.barberShare + r.barberShare,
       barbers:        acc.barbers,
       totalExpenses:  acc.totalExpenses + r.totalExpenses,
@@ -171,7 +174,7 @@ export default function ReportesView() {
       netProfit:      acc.netProfit + r.netProfit,
       profitMargin:   0,
     }),
-    { branchId: 'total', branchName: 'Total', cutCount: 0, totalIncome: 0, branchShare: 0, barberShare: 0, barbers: [], totalExpenses: 0, expensesByCategory: {}, partnerWithdrawals: 0, netProfit: 0, profitMargin: 0 }
+    { branchId: 'total', branchName: 'Total', cutCount: 0, totalIncome: 0, branchShare: 0, branchFromCuts: 0, branchFromRent: 0, branchBonuses: 0, barberShare: 0, barbers: [], totalExpenses: 0, expensesByCategory: {}, partnerWithdrawals: 0, netProfit: 0, profitMargin: 0 }
   )
   total.profitMargin = total.totalIncome > 0 ? (total.netProfit / total.totalIncome) * 100 : 0
   const avg = {
@@ -301,7 +304,12 @@ export default function ReportesView() {
                 <div className="report-card__metrics">
                   <MetricRow label="Cortes" value={String(r.cutCount)} small />
                   <MetricRow label="Ingresos totales"  value={formatARS(r.totalIncome)} color="blue" />
-                  <MetricRow label="Total barbería"    value={formatARS(r.branchShare)} color="emerald" />
+                  <BranchBreakdownRow
+                    total={r.branchShare}
+                    fromCuts={r.branchFromCuts}
+                    fromRent={r.branchFromRent}
+                    bonuses={r.branchBonuses}
+                  />
                   <BarberBreakdownRow barbers={r.barbers} total={r.barberShare} />
                   <MetricRow label="Gastos"            value={formatARS(r.totalExpenses)} color="red" />
                   <div className="report-card__divider" />
@@ -333,7 +341,12 @@ export default function ReportesView() {
               <div className="report-card__metrics">
                 <MetricRow label="Cortes total"       value={String(total.cutCount)} small />
                 <MetricRow label="Ingresos totales"   value={formatARS(total.totalIncome)} color="blue" />
-                <MetricRow label="Total barbería"     value={formatARS(total.branchShare)} color="emerald" />
+                <BranchBreakdownRow
+                  total={total.branchShare}
+                  fromCuts={total.branchFromCuts}
+                  fromRent={total.branchFromRent}
+                  bonuses={total.branchBonuses}
+                />
                 <MetricRow label="Total barberos"     value={formatARS(total.barberShare)} color="amber" />
                 <MetricRow label="Gastos"             value={formatARS(total.totalExpenses)} color="red" />
                 <div className="report-card__divider" />
@@ -508,6 +521,56 @@ function MetricRow({ label, value, color, bold, small }: {
 }
 
 // ── Total barberos con desplegable por barbero ────────────────────
+/** "Total barbería" desplegable: cortes + alquiler de box − bonos = total. */
+function BranchBreakdownRow({ total, fromCuts, fromRent, bonuses }: {
+  total: number
+  fromCuts: number
+  fromRent: number
+  bonuses: number
+}) {
+  const [open, setOpen] = useState(false)
+  // Sin desglose que aportar (todo viene de cortes, sin alquiler ni bonos) no
+  // tiene sentido desplegar: el único ítem repetiría el total.
+  const hasBreakdown = fromRent !== 0 || bonuses !== 0
+  return (
+    <>
+      <div
+        className="metric-row"
+        style={{ cursor: hasBreakdown ? 'pointer' : 'default' }}
+        onClick={() => hasBreakdown && setOpen((o) => !o)}
+      >
+        <span className="metric-row__label" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem' }}>
+          {hasBreakdown && <span style={{ fontSize: '0.6rem', color: '#71717a' }}>{open ? '▼' : '▶'}</span>}
+          Total barbería
+        </span>
+        <span className="metric-row__value" style={{ color: '#34d399', fontWeight: 500 }}>
+          {formatARS(total)}
+        </span>
+      </div>
+      {open && hasBreakdown && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', margin: '0.1rem 0 0.3rem', paddingLeft: '0.9rem', borderLeft: '2px solid #27272a' }}>
+          <div className="metric-row">
+            <span className="metric-row__label" style={{ fontSize: '0.72rem', color: '#a1a1aa' }}>De cortes</span>
+            <span className="metric-row__value" style={{ fontSize: '0.78rem', color: '#d4d4d8' }}>{formatARS(fromCuts)}</span>
+          </div>
+          {fromRent !== 0 && (
+            <div className="metric-row">
+              <span className="metric-row__label" style={{ fontSize: '0.72rem', color: '#a1a1aa' }}>Alquiler de box</span>
+              <span className="metric-row__value" style={{ fontSize: '0.78rem', color: '#d4d4d8' }}>{formatARS(fromRent)}</span>
+            </div>
+          )}
+          {bonuses !== 0 && (
+            <div className="metric-row">
+              <span className="metric-row__label" style={{ fontSize: '0.72rem', color: '#a1a1aa' }}>− Bonos a barberos</span>
+              <span className="metric-row__value" style={{ fontSize: '0.78rem', color: '#f87171' }}>−{formatARS(bonuses)}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  )
+}
+
 function BarberBreakdownRow({ barbers, total }: {
   barbers: { barberId: string; fullName: string; total: number }[]
   total: number
