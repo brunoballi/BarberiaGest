@@ -165,7 +165,8 @@ export default function ReportesView() {
       branchShare:    acc.branchShare + r.branchShare,
       branchFromCuts: acc.branchFromCuts + r.branchFromCuts,
       branchFromRent: acc.branchFromRent + r.branchFromRent,
-      branchBonuses:  acc.branchBonuses + r.branchBonuses,
+      branchCutsBarbers: [...acc.branchCutsBarbers, ...r.branchCutsBarbers],
+      branchRentBarbers: [...acc.branchRentBarbers, ...r.branchRentBarbers],
       barberShare:    acc.barberShare + r.barberShare,
       barbers:        acc.barbers,
       totalExpenses:  acc.totalExpenses + r.totalExpenses,
@@ -174,9 +175,12 @@ export default function ReportesView() {
       netProfit:      acc.netProfit + r.netProfit,
       profitMargin:   0,
     }),
-    { branchId: 'total', branchName: 'Total', cutCount: 0, totalIncome: 0, branchShare: 0, branchFromCuts: 0, branchFromRent: 0, branchBonuses: 0, barberShare: 0, barbers: [], totalExpenses: 0, expensesByCategory: {}, partnerWithdrawals: 0, netProfit: 0, profitMargin: 0 }
+    { branchId: 'total', branchName: 'Total', cutCount: 0, totalIncome: 0, branchShare: 0, branchFromCuts: 0, branchFromRent: 0, branchCutsBarbers: [], branchRentBarbers: [], barberShare: 0, barbers: [], totalExpenses: 0, expensesByCategory: {}, partnerWithdrawals: 0, netProfit: 0, profitMargin: 0 }
   )
   total.profitMargin = total.totalIncome > 0 ? (total.netProfit / total.totalIncome) * 100 : 0
+  // Consolidado: los barberos vienen concatenados por sucursal, se reordenan por aporte.
+  total.branchCutsBarbers.sort((a, b) => b.total - a.total)
+  total.branchRentBarbers.sort((a, b) => b.total - a.total)
   const avg = {
     totalIncome:   reports.length ? total.totalIncome   / reports.length : 0,
     branchShare:   reports.length ? total.branchShare   / reports.length : 0,
@@ -308,7 +312,8 @@ export default function ReportesView() {
                     total={r.branchShare}
                     fromCuts={r.branchFromCuts}
                     fromRent={r.branchFromRent}
-                    bonuses={r.branchBonuses}
+                    cutsBarbers={r.branchCutsBarbers}
+                    rentBarbers={r.branchRentBarbers}
                   />
                   <BarberBreakdownRow barbers={r.barbers} total={r.barberShare} />
                   <MetricRow label="Gastos"            value={formatARS(r.totalExpenses)} color="red" />
@@ -345,7 +350,8 @@ export default function ReportesView() {
                   total={total.branchShare}
                   fromCuts={total.branchFromCuts}
                   fromRent={total.branchFromRent}
-                  bonuses={total.branchBonuses}
+                  cutsBarbers={total.branchCutsBarbers}
+                  rentBarbers={total.branchRentBarbers}
                 />
                 <MetricRow label="Total barberos"     value={formatARS(total.barberShare)} color="amber" />
                 <MetricRow label="Gastos"             value={formatARS(total.totalExpenses)} color="red" />
@@ -521,17 +527,24 @@ function MetricRow({ label, value, color, bold, small }: {
 }
 
 // ── Total barberos con desplegable por barbero ────────────────────
-/** "Total barbería" desplegable: cortes + alquiler de box − bonos = total. */
-function BranchBreakdownRow({ total, fromCuts, fromRent, bonuses }: {
+/**
+ * "Total barbería" desplegable: De cortes + Alquiler de box = total, con el
+ * detalle de qué barbero generó cada ingreso. El aporte de cada barbero ya es
+ * neto de sus bonos (facturado − lo que se llevó), por eso no hay línea de bonos.
+ */
+function BranchBreakdownRow({ total, fromCuts, fromRent, cutsBarbers, rentBarbers }: {
   total: number
   fromCuts: number
   fromRent: number
-  bonuses: number
+  cutsBarbers: { barberId: string; fullName: string; total: number }[]
+  rentBarbers: { barberId: string; fullName: string; total: number }[]
 }) {
   const [open, setOpen] = useState(false)
-  // Sin desglose que aportar (todo viene de cortes, sin alquiler ni bonos) no
-  // tiene sentido desplegar: el único ítem repetiría el total.
-  const hasBreakdown = fromRent !== 0 || bonuses !== 0
+  const hasBreakdown = cutsBarbers.length > 0 || rentBarbers.length > 0
+  const subLabel = { fontSize: '0.72rem', color: '#a1a1aa' } as const
+  const subValue = { fontSize: '0.78rem', color: '#d4d4d8' } as const
+  const barberLabel = { fontSize: '0.7rem', color: '#71717a', paddingLeft: '0.7rem' } as const
+  const barberValue = { fontSize: '0.72rem', color: '#a1a1aa' } as const
   return (
     <>
       <div
@@ -549,21 +562,33 @@ function BranchBreakdownRow({ total, fromCuts, fromRent, bonuses }: {
       </div>
       {open && hasBreakdown && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', margin: '0.1rem 0 0.3rem', paddingLeft: '0.9rem', borderLeft: '2px solid #27272a' }}>
-          <div className="metric-row">
-            <span className="metric-row__label" style={{ fontSize: '0.72rem', color: '#a1a1aa' }}>De cortes</span>
-            <span className="metric-row__value" style={{ fontSize: '0.78rem', color: '#d4d4d8' }}>{formatARS(fromCuts)}</span>
-          </div>
-          {fromRent !== 0 && (
-            <div className="metric-row">
-              <span className="metric-row__label" style={{ fontSize: '0.72rem', color: '#a1a1aa' }}>Alquiler de box</span>
-              <span className="metric-row__value" style={{ fontSize: '0.78rem', color: '#d4d4d8' }}>{formatARS(fromRent)}</span>
-            </div>
+          {cutsBarbers.length > 0 && (
+            <>
+              <div className="metric-row">
+                <span className="metric-row__label" style={subLabel}>De cortes</span>
+                <span className="metric-row__value" style={subValue}>{formatARS(fromCuts)}</span>
+              </div>
+              {cutsBarbers.map((b) => (
+                <div key={b.barberId} className="metric-row">
+                  <span className="metric-row__label" style={barberLabel}>{b.fullName}</span>
+                  <span className="metric-row__value" style={barberValue}>{formatARS(b.total)}</span>
+                </div>
+              ))}
+            </>
           )}
-          {bonuses !== 0 && (
-            <div className="metric-row">
-              <span className="metric-row__label" style={{ fontSize: '0.72rem', color: '#a1a1aa' }}>− Bonos a barberos</span>
-              <span className="metric-row__value" style={{ fontSize: '0.78rem', color: '#f87171' }}>−{formatARS(bonuses)}</span>
-            </div>
+          {rentBarbers.length > 0 && (
+            <>
+              <div className="metric-row" style={{ marginTop: cutsBarbers.length > 0 ? '0.25rem' : 0 }}>
+                <span className="metric-row__label" style={subLabel}>Alquiler de box</span>
+                <span className="metric-row__value" style={subValue}>{formatARS(fromRent)}</span>
+              </div>
+              {rentBarbers.map((b) => (
+                <div key={b.barberId} className="metric-row">
+                  <span className="metric-row__label" style={barberLabel}>{b.fullName}</span>
+                  <span className="metric-row__value" style={barberValue}>{formatARS(b.total)}</span>
+                </div>
+              ))}
+            </>
           )}
         </div>
       )}

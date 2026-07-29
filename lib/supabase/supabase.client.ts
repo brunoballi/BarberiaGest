@@ -2155,7 +2155,8 @@ export async function getReportByPeriod(
     barbers: { barber_id: string; full_name: string; total: number }[] | null
     branch_from_cuts: number
     branch_from_rent: number
-    branch_bonuses: number
+    branch_cuts_barbers: { barber_id: string; full_name: string; total: number }[] | null
+    branch_rent_barbers: { barber_id: string; full_name: string; total: number }[] | null
   }
   const byId = new Map((data as ReportRow[] ?? []).map((r) => [r.branch_id, r]))
 
@@ -2183,10 +2184,15 @@ export async function getReportByPeriod(
       cutCount: Number(r?.cut_count ?? 0),
       totalIncome,
       branchShare,
-      // Desglose del Total Barbería: cortes + alquiler − bonos = branchShare
+      // Desglose del Total Barbería: cortes + alquiler = branchShare (por barbero)
       branchFromCuts: Number(r?.branch_from_cuts ?? 0),
       branchFromRent: Number(r?.branch_from_rent ?? 0),
-      branchBonuses: Number(r?.branch_bonuses ?? 0),
+      branchCutsBarbers: (r?.branch_cuts_barbers ?? []).map((b) => ({
+        barberId: b.barber_id, fullName: b.full_name, total: Number(b.total),
+      })),
+      branchRentBarbers: (r?.branch_rent_barbers ?? []).map((b) => ({
+        barberId: b.barber_id, fullName: b.full_name, total: Number(b.total),
+      })),
       barberShare,
       barbers,
       totalExpenses,

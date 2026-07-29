@@ -423,10 +423,13 @@ export interface BranchReport {
   cutCount: number
   totalIncome: number        // suma de transactions.amount
   branchShare: number        // Total Barbería = totalIncome - barberShare (descuenta bonos)
-  // Desglose del Total Barbería (desplegable): cortes + alquiler − bonos = branchShare
-  branchFromCuts: number     // parte de la barbería en los cortes, antes de bonos
+  // Desglose del Total Barbería (desplegable): cortes + alquiler = branchShare.
+  // El aporte de cada barbero ya es NETO de sus bonos (facturado − lo que se llevó),
+  // por eso no hace falta una línea de bonos aparte.
+  branchFromCuts: number     // lo que dejan a la barbería los barberos que no son de box
   branchFromRent: number     // alquiler de box devengado (barberos box_rental)
-  branchBonuses: number      // bonos que la barbería resigna (presentismo + mantenimiento + objetivo)
+  branchCutsBarbers: { barberId: string; fullName: string; total: number }[]
+  branchRentBarbers: { barberId: string; fullName: string; total: number }[]
   barberShare: number        // Total Barberos = comisión por corte + bonos (presentismo + objetivo)
   barbers: { barberId: string; fullName: string; total: number }[]  // desglose por barbero (desplegable)
   totalExpenses: number      // suma de expenses.amount (excluye retiros de socios)
