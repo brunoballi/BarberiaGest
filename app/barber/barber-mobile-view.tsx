@@ -1200,22 +1200,12 @@ export default function BarberMobileView() {
     )
 
     // ── Totalizador del mes (acumula TODAS las semanas del filtro, no solo la página) ──
-    // "A recibir" acumula SOLO las semanas que todavía no se pagaron: una semana
-    // ya saldada no suma ni resta a lo que falta cobrar (si se incluye, arrastra
-    // su saldo y el pendiente real queda deformado).
-    const totalNet     = filtered
-      .filter((s) => s.status !== 'paid')
-      .reduce((sum, s) => sum + s.net_payable, 0)
     const totalGross   = filtered.reduce((sum, s) => sum + s.gross_amount, 0)
     const totalCuts    = filtered.reduce((sum, s) => sum + s.total_cuts, 0)
     // Box_rental: el barbero cobra durante la semana; su "resultado" es lo que se
     // llevó tras el alquiler (total_earned), no el neto a recibir (que tiende a 0).
     const isBoxRentalBarber = profile?.compensation_type === 'box_rental'
     const totalEarnedMonth  = filtered.reduce((sum, s) => sum + s.total_earned, 0)
-    // Si todas las semanas del filtro ya se pagaron, el neto acumulado no es plata
-    // pendiente: mezcla semanas saldadas en más y en menos, y da un número que se
-    // lee como deuda cuando en realidad ya está todo cerrado. En ese caso se oculta.
-    const allPaid = filtered.every((s) => s.status === 'paid')
 
     // ── Paginación ──
     const pageCount = Math.max(1, Math.ceil(filtered.length / SETTL_PAGE_SIZE))
@@ -1435,16 +1425,9 @@ export default function BarberMobileView() {
                 {formatARS(totalEarnedMonth)}
               </span>
             </div>
-            {/* "A recibir" solo cuando queda algo pendiente. Con todo pagado el neto
-                acumulado no representa plata por cobrar (ver allPaid). */}
-            {!isBoxRentalBarber && !allPaid && (
-              <div className="settl-total__row">
-                <span className="settl-total__label">Total a recibir</span>
-                <span className={`settl-total__net ${totalNet < 0 ? 'settl-total__net--neg' : ''}`}>
-                  {formatARS(totalNet)}
-                </span>
-              </div>
-            )}
+            {/* Sin "Total a recibir" en el totalizador: el saldo a cobrar es por
+                semana (cada una tiene su fila "A recibir" y su estado), y acumularlo
+                mezcla semanas cerradas con pendientes y se lee como una deuda. */}
           </div>
         )}
 
