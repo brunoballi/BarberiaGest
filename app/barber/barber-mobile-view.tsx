@@ -1207,6 +1207,10 @@ export default function BarberMobileView() {
     // llevó tras el alquiler (total_earned), no el neto a recibir (que tiende a 0).
     const isBoxRentalBarber = profile?.compensation_type === 'box_rental'
     const totalEarnedMonth  = filtered.reduce((sum, s) => sum + s.total_earned, 0)
+    // Si todas las semanas del filtro ya se pagaron, el neto acumulado no es plata
+    // pendiente: mezcla semanas saldadas en más y en menos, y da un número que se
+    // lee como deuda cuando en realidad ya está todo cerrado. En ese caso se oculta.
+    const allPaid = filtered.every((s) => s.status === 'paid')
 
     // ── Paginación ──
     const pageCount = Math.max(1, Math.ceil(filtered.length / SETTL_PAGE_SIZE))
@@ -1418,12 +1422,24 @@ export default function BarberMobileView() {
               <span className="settl-total__label">Facturado</span>
               <span className="settl-total__val">{formatARS(totalGross)}</span>
             </div>
+            {/* Lo que se llevó el barbero: comisión + básico + VIP + bonos
+                (total_earned), mismo criterio que el detalle del mes del admin. */}
             <div className="settl-total__row">
-              <span className="settl-total__label">{isBoxRentalBarber ? 'Total llevado' : 'Total a recibir'}</span>
-              <span className={`settl-total__net ${(isBoxRentalBarber ? totalEarnedMonth : totalNet) < 0 ? 'settl-total__net--neg' : ''}`}>
-                {formatARS(isBoxRentalBarber ? totalEarnedMonth : totalNet)}
+              <span className="settl-total__label">{isBoxRentalBarber ? 'Total llevado' : 'Total ganado'}</span>
+              <span className={`settl-total__net ${totalEarnedMonth < 0 ? 'settl-total__net--neg' : ''}`}>
+                {formatARS(totalEarnedMonth)}
               </span>
             </div>
+            {/* "A recibir" solo cuando queda algo pendiente. Con todo pagado el neto
+                acumulado no representa plata por cobrar (ver allPaid). */}
+            {!isBoxRentalBarber && !allPaid && (
+              <div className="settl-total__row">
+                <span className="settl-total__label">Total a recibir</span>
+                <span className={`settl-total__net ${totalNet < 0 ? 'settl-total__net--neg' : ''}`}>
+                  {formatARS(totalNet)}
+                </span>
+              </div>
+            )}
           </div>
         )}
 
