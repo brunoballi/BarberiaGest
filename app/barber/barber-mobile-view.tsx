@@ -1200,7 +1200,12 @@ export default function BarberMobileView() {
     )
 
     // ── Totalizador del mes (acumula TODAS las semanas del filtro, no solo la página) ──
-    const totalNet     = filtered.reduce((sum, s) => sum + s.net_payable, 0)
+    // "A recibir" acumula SOLO las semanas que todavía no se pagaron: una semana
+    // ya saldada no suma ni resta a lo que falta cobrar (si se incluye, arrastra
+    // su saldo y el pendiente real queda deformado).
+    const totalNet     = filtered
+      .filter((s) => s.status !== 'paid')
+      .reduce((sum, s) => sum + s.net_payable, 0)
     const totalGross   = filtered.reduce((sum, s) => sum + s.gross_amount, 0)
     const totalCuts    = filtered.reduce((sum, s) => sum + s.total_cuts, 0)
     // Box_rental: el barbero cobra durante la semana; su "resultado" es lo que se
