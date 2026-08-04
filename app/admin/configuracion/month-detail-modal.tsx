@@ -31,9 +31,20 @@ function formatDate(d: string): string {
   return new Date(d + 'T12:00:00').toLocaleDateString('es-AR', { day: 'numeric', month: 'short' })
 }
 
-/** Parte de la barbería para una liquidación: facturado − (comisión barbero + bonos). */
+/**
+ * Parte de la barbería para una liquidación: facturado − todo lo que se llevó el
+ * barbero (total_earned ya incluye comisión/básico/sueldo + bonos).
+ *
+ * Antes restaba `barber_gross + bonos`, que daba $0 en alquiler de box: en ese
+ * modelo barber_gross = gross_amount (todo el facturado se le asigna al barbero)
+ * y lo que gana la barbería es el alquiler. Con total_earned el resultado es
+ * correcto en los tres modelos:
+ *   comisión %  → facturado − (comisión + bonos)   (igual que antes)
+ *   sueldo fijo → facturado − (sueldo + bonos)     (igual que antes)
+ *   box_rental  → facturado − (facturado − alquiler) = alquiler devengado
+ */
 function branchShareOf(s: SettlementWithBarber): number {
-  return s.gross_amount - s.barber_gross - s.bonus_presentismo - s.bonus_mantenimiento - s.bonus_objetivo_pct
+  return s.gross_amount - s.total_earned
 }
 
 export interface MonthDetailData {
