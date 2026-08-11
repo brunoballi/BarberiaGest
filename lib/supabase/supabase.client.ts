@@ -2760,6 +2760,38 @@ export async function getMaintenanceStatusByBarber(
   return { sheetExists: true, byBarber }
 }
 
+/** Estado del checklist de un barbero en una semana. */
+export type MaintenanceBarberStatus = { total: number; done: number; allDone: boolean; pending: string[] }
+export type MaintenanceStatus = { sheetExists: boolean; byBarber: Record<string, MaintenanceBarberStatus> }
+
+/**
+ * Regla ÚNICA del bono de mantenimiento, compartida por Liquidaciones y Semanas:
+ * se bloquea solo si el barbero tiene al menos una tarea sin cumplir en ESA semana.
+ *
+ * Sin planilla o sin tareas asignadas no hay nada que exigir, así que no bloquea
+ * (antes "no hay planilla" bloqueaba, y como la planilla se borra cuando se
+ * vacían las tareas, el bono quedaba trabado sin forma de destrabarlo).
+ *
+ * min_approval_pct NO interviene: es un indicador visual de la planilla.
+ *
+ * `status` en null = todavía no se cargó; no bloquea, el llamador deshabilita
+ * el botón mientras carga (si un error dejara el estado en null para siempre,
+ * bloquear acá dejaría el bono trabado).
+ */
+export function maintenanceGate(
+  status: MaintenanceStatus | null,
+  barberId: string,
+): { blocked: boolean; reason: string } {
+  if (!status) return { blocked: false, reason: '' }
+  const st = status.byBarber[barberId]
+  if (!st || st.total === 0) return { blocked: false, reason: '' }
+  if (st.done >= st.total) return { blocked: false, reason: '' }
+  return {
+    blocked: true,
+    reason: `Bloqueado: faltan ${st.total - st.done} de ${st.total} tarea(s) de mantenimiento — ${st.pending.join(', ')}. Se completan en Mantenimiento.`,
+  }
+}
+
 /** Cambia el % mínimo de aprobación de una planilla ya creada. */
 export async function setMaintenanceSheetMinPct(sheetId: string, pct: number): Promise<void> {
   const { error } = await supabase

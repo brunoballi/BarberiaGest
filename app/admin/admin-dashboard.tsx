@@ -36,6 +36,9 @@ import {
   setPresentismo,
   recalculateSettlementFull,
   setMantenimiento,
+  getMaintenanceStatusByBarber,
+  maintenanceGate,
+  type MaintenanceStatus,
   setObjetivoMet,
   setObjetivoPct,
   setBonusPresentismoOverride,
@@ -198,6 +201,11 @@ export default function AdminDashboard() {
   const selectedMonthId: string | undefined = months[selectedMonthIdx]?.id
 
   const [settlements, setSettlements] = useState<SettlementWithBarber[]>([])
+  // Checklist de mantenimiento de la semana mostrada: decide, por fila, si el
+  // toggle Sí/No de Mantenimiento se puede tocar. Se pide para la semana
+  // seleccionada, esté abierta o cerrada.
+  const [maintStatus, setMaintStatus] = useState<MaintenanceStatus | null>(null)
+  const [loadingMaint, setLoadingMaint] = useState(false)
   const [transactions, setTransactions] = useState<TransactionWithRelations[]>([])
   const [weekAdvances, setWeekAdvances] = useState<AdvanceWithBarber[]>([])
   const [expenses, setExpenses] = useState<ExpenseWithUser[]>([])
@@ -377,12 +385,19 @@ export default function AdminDashboard() {
         const data = await getWeekTransactions(selectedWeek.id)
         setLiveTransactions(data)
       } else if (tab === 'liquidaciones') {
-        const [settlData, expData] = await Promise.all([
-          getSettlementsForWeek(selectedWeek.id),
-          getExpensesByWeek(selectedWeek.id),
-        ])
-        setSettlements(settlData)
-        setExpenses(expData)
+        setLoadingMaint(true)
+        try {
+          const [settlData, expData, maintData] = await Promise.all([
+            getSettlementsForWeek(selectedWeek.id),
+            getExpensesByWeek(selectedWeek.id),
+            getMaintenanceStatusByBarber(selectedBranch, selectedWeek.id),
+          ])
+          setSettlements(settlData)
+          setExpenses(expData)
+          setMaintStatus(maintData)
+        } finally {
+          setLoadingMaint(false)
+        }
       } else if (tab === 'transacciones') {
         const [txData, advData] = await Promise.all([
           getWeekTransactions(selectedWeek.id),
@@ -1089,6 +1104,9 @@ export default function AdminDashboard() {
                 <tbody>
                   {pagedSettlements.map((s) => {
                     const hasBonuses = s.barber.compensation_type !== 'box_rental'
+                    // Bono de mantenimiento: bloqueado si al barbero le falta al
+                    // menos una tarea de la planilla de esta semana.
+                    const maint = maintenanceGate(maintStatus, s.barber_id)
                     const isBoxRentalRow = s.barber.compensation_type === 'box_rental'
                     const isPositive = s.net_payable >= 0
                     // Deuda saldada: liquidación negativa ya marcada como pagada.
@@ -1218,10 +1236,13 @@ export default function AdminDashboard() {
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                                 <button
                                   onClick={() => handleMantenimiento(s.id, s.week_id, s.barber_id, s.mantenimiento_met ?? false)}
-                                  disabled={loadingKey === `mantenimiento-${s.id}`}
-                                  className={`toggle-btn ${s.mantenimiento_met ? 'toggle-btn--on' : 'toggle-btn--off'}`}
+                                  disabled={loadingKey === `mantenimiento-${s.id}` || loadingMaint || maint.blocked}
+                                  title={maint.blocked ? maint.reason : undefined}
+                                  className={`toggle-btn ${
+                                    maint.blocked ? 'toggle-btn--off' : s.mantenimiento_met ? 'toggle-btn--on' : 'toggle-btn--off'
+                                  }`}
                                 >
-                                  {s.mantenimiento_met ? 'Sí' : 'No'}
+                                  {maint.blocked ? '🔒 No' : s.mantenimiento_met ? 'Sí' : 'No'}
                                 </button>
                                 {s.mantenimiento_met && (
                                   <>

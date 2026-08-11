@@ -21,6 +21,8 @@ import {
   setPresentismo,
   setMantenimiento,
   getMaintenanceStatusByBarber,
+  maintenanceGate,
+  type MaintenanceStatus,
   confirmSettlement,
   deleteSettlement,
   updateBarberExtraDays,
@@ -89,7 +91,7 @@ export default function WeeksView() {
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [actionError, setActionError]   = useState<string | null>(null)
   // Checklist de mantenimiento de la semana: habilita o bloquea el bono por barbero.
-  const [maintenance, setMaintenance] = useState<{ sheetExists: boolean; byBarber: Record<string, { total: number; done: number; allDone: boolean; pending: string[] }> } | null>(null)
+  const [maintenance, setMaintenance] = useState<MaintenanceStatus | null>(null)
 
   // Action in progress
   const [closing, setClosing]           = useState(false)
@@ -646,7 +648,7 @@ function SettlementRow({
   settlement: SettlementWithBarber
   weekStatus: Week['status']
   /** Checklist de mantenimiento de la semana; null mientras carga o si no hay planilla. */
-  maintenance: { sheetExists: boolean; byBarber: Record<string, { total: number; done: number; allDone: boolean; pending: string[] }> } | null
+  maintenance: MaintenanceStatus | null
   onPresentismo: (s: SettlementWithBarber, met: boolean) => void
   onMantenimiento: (s: SettlementWithBarber, met: boolean) => void
   onConfirm: (id: string) => void
@@ -657,24 +659,9 @@ function SettlementRow({
   const isSalary = s.barber.compensation_type === 'salary'
   const canEdit  = weekStatus === 'closed' && s.status === 'draft'
 
-  // El bono de mantenimiento solo se habilita si el admin ya cargó la planilla
-  // de la semana y este barbero tiene el 100% de sus tareas cumplidas.
-  const maint = (() => {
-    if (!maintenance) return { allDone: false, reason: 'Cargando el estado de mantenimiento...' }
-    if (!maintenance.sheetExists) {
-      return { allDone: false, reason: 'Todavía no se creó la planilla de mantenimiento de esta semana. Cargala desde Mantenimiento para habilitar el bono.' }
-    }
-    const st = maintenance.byBarber[s.barber_id]
-    if (!st || st.total === 0) {
-      // Sin tareas asignadas no hay nada que exigir.
-      return { allDone: true, reason: '' }
-    }
-    if (st.allDone) return { allDone: true, reason: '' }
-    return {
-      allDone: false,
-      reason: `Faltan ${st.total - st.done} de ${st.total} tarea(s) de mantenimiento: ${st.pending.join(', ')}`,
-    }
-  })()
+  // Misma regla que en la grilla de Liquidaciones: bloquea solo si al barbero le
+  // falta al menos una tarea. Sin planilla o sin tareas no bloquea.
+  const maint = maintenanceGate(maintenance, s.barber_id)
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-3">
@@ -762,7 +749,7 @@ function SettlementRow({
           </div>
           <div className="flex items-center gap-3">
             <span className="text-zinc-500 text-xs">Mantenimiento</span>
-            {canEdit && maint.allDone ? (
+            {canEdit && !maint.blocked ? (
               <button
                 onClick={() => onMantenimiento(s, !s.mantenimiento_met)}
                 className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${

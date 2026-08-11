@@ -95,9 +95,19 @@ export default function MantenimientoView() {
   const [selectedBranch, setSelectedBranch] = usePersistedBranch()
   const [barbers, setBarbers] = useState<Profile[]>([])
 
-  /** Semana en curso: se resuelve sola, el admin no la elige. */
+  /** Semana en curso: se resuelve sola y es la que se sincroniza al guardar. */
   const [currentWeek, setCurrentWeek] = useState<Week | null>(null)
+  /**
+   * Semana cuyo cumplimiento se está marcando. Arranca en la actual, pero el
+   * admin puede volver a la anterior: las liquidaciones de una semana se cierran
+   * recién cuando esa semana ya terminó, así que al liquidar necesita poder
+   * completar el checklist de la semana pasada (si no, el bono de mantenimiento
+   * queda bloqueado sin forma de destrabarlo).
+   */
+  const [previousWeek, setPreviousWeek] = useState<Week | null>(null)
+  const [sheetWeek, setSheetWeek] = useState<Week | null>(null)
   const [sheet, setSheet] = useState<MaintenanceSheetWithItems | null>(null)
+  const [loadingSheet, setLoadingSheet] = useState(false)
 
   const [draftBlocks, setDraftBlocks] = useState<MaintenanceTemplateDraftBlock[]>([])
   const [branchMinPct, setBranchMinPct] = useState(100)
@@ -138,9 +148,15 @@ export default function MantenimientoView() {
       setBranchMinPct(settingsData.min_approval_pct)
       setDraftBlocks(buildTemplateDraft(barbersData, tpl))
 
+      // weeksData viene ordenado por start_date DESC: la anterior a la actual es
+      // la que le sigue en el array.
       const today = todayLocal()
-      const week = weeksData.find((w) => w.start_date <= today && today <= w.end_date) ?? weeksData[0] ?? null
+      const idx = weeksData.findIndex((w) => w.start_date <= today && today <= w.end_date)
+      const week = (idx >= 0 ? weeksData[idx] : weeksData[0]) ?? null
+      const prev = (idx >= 0 ? weeksData[idx + 1] : weeksData[1]) ?? null
       setCurrentWeek(week)
+      setPreviousWeek(prev)
+      setSheetWeek(week)
       if (week) setSheet(await getMaintenanceSheetByWeek(branch, week.id))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error inesperado')
@@ -150,6 +166,22 @@ export default function MantenimientoView() {
   }, [router, setSelectedBranch])
 
   useEffect(() => { loadInitial() }, [loadInitial])
+
+  /** Cambia la semana del checklist (actual ↔ anterior) y trae su planilla. */
+  async function selectSheetWeek(week: Week) {
+    if (sheetWeek?.id === week.id) return
+    setSheetWeek(week)
+    setActionError(null)
+    setLoadingSheet(true)
+    try {
+      setSheet(await getMaintenanceSheetByWeek(selectedBranch, week.id))
+    } catch (e) {
+      setSheet(null)
+      setActionError(e instanceof Error ? e.message : 'Error al cargar el cumplimiento de la semana')
+    } finally {
+      setLoadingSheet(false)
+    }
+  }
 
   // ── Edición de la planilla ─────────────────────────────────────────────
   /**
@@ -211,10 +243,14 @@ export default function MantenimientoView() {
     if (currentWeek && profile) {
       // Idempotente: crea la planilla de la semana si no existe y la sincroniza
       // si ya está, preservando los SÍ/NO ya marcados.
+      //
+      // Solo se sincroniza la semana EN CURSO: cambiar la plantilla no debe
+      // reescribir el checklist de una semana ya terminada, que puede estar
+      // liquidándose contra las tareas que regían entonces.
       const synced = await syncMaintenanceSheetFromTemplate(
         selectedBranch, currentWeek.id, branchMinPct, profile.id
       )
-      setSheet(synced)
+      if (sheetWeek?.id === currentWeek.id) setSheet(synced)
     }
 
     const tpl = await getMaintenanceTemplate(selectedBranch)
@@ -286,7 +322,7 @@ export default function MantenimientoView() {
     }))
     generateMaintenanceSheet({
       branchName,
-      weekLabel: currentWeek ? weekRangeLabel(currentWeek) : '',
+      weekLabel: sheetWeek ? weekRangeLabel(sheetWeek) : '',
       minApprovalPct: sheet.min_approval_pct,
       blocks,
     })
@@ -297,6 +333,12 @@ export default function MantenimientoView() {
 
   const groups = sheet ? groupByBarber(sheet.items) : []
   const hayTareas = draftBlocks.some((b) => b.tasks.some((t) => t.description.trim()))
+
+  /** Semanas que el admin puede marcar: la que corre y la inmediata anterior. */
+  const weekOptions = [
+    currentWeek  ? { week: currentWeek,  label: 'Semana actual' }   : null,
+    previousWeek ? { week: previousWeek, label: 'Semana anterior' } : null,
+  ].filter((o): o is { week: Week; label: string } => o !== null)
 
   return (
     <div className="w-full px-4 py-8 space-y-6">
@@ -384,28 +426,69 @@ export default function MantenimientoView() {
         </div>
       ))}
 
-      {/* Cumplimiento de la semana en curso: aparece una vez guardada la planilla */}
-      {sheet && groups.length > 0 && (
+      {/* Cumplimiento por semana. La definición de tareas es fija; lo que se marca
+          es semanal, porque el bono de mantenimiento se liquida por semana. */}
+      {(sheet || hayTareas) && (
         <>
           <div className="border-t border-zinc-800 mt-4 pt-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <h2 className="text-xl font-bold text-white">Cumplimiento de la semana</h2>
               <p className="text-zinc-400 text-sm mt-1">
-                {currentWeek ? weekRangeLabel(currentWeek) : ''} · marcá qué tareas se cumplieron.
+                Marcá qué tareas se cumplieron. El bono de mantenimiento se habilita
+                en Liquidaciones solo si el barbero no tiene tareas pendientes.
               </p>
             </div>
-            <button onClick={exportPDF}
-              className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold px-4 py-2.5 rounded-lg text-sm transition-colors">
-              📄 Exportar PDF
-            </button>
+            {sheet && groups.length > 0 && (
+              <button onClick={exportPDF}
+                className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold px-4 py-2.5 rounded-lg text-sm transition-colors">
+                📄 Exportar PDF
+              </button>
+            )}
           </div>
 
+          {/* Las liquidaciones de una semana se cierran cuando esa semana ya
+              terminó, así que el admin tiene que poder volver a la anterior. */}
+          {weekOptions.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2">
+              {weekOptions.map(({ week, label }) => (
+                <button
+                  key={week.id}
+                  onClick={() => selectSheetWeek(week)}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                    sheetWeek?.id === week.id
+                      ? 'bg-amber-500 border-amber-500 text-zinc-950'
+                      : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-zinc-500'
+                  }`}
+                >
+                  {label} <span className="font-normal opacity-70">· {weekRangeLabel(week)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {loadingSheet ? (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-10 text-center">
+              <p className="text-zinc-500 text-sm">Cargando cumplimiento...</p>
+            </div>
+          ) : !sheet || groups.length === 0 ? (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-10 text-center">
+              <p className="text-zinc-500 text-sm">
+                Esta semana no tiene planilla de mantenimiento.
+              </p>
+              <p className="text-zinc-600 text-xs mt-2">
+                Sin tareas cargadas no hay nada que exigir: el bono de mantenimiento
+                queda habilitado en Liquidaciones.
+              </p>
+            </div>
+          ) : (
+          <>
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex items-center gap-3">
             <label className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Aprobación mínima</label>
             <input type="number" min={0} max={100} value={sheet.min_approval_pct}
               onChange={(e) => handleSheetMinPct(parseInt(e.target.value) || 0)}
               className="w-20 bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500" />
             <span className="text-zinc-400 text-sm">% de tareas cumplidas</span>
+            <span className="text-zinc-600 text-xs">· indicador visual, no afecta el bono</span>
           </div>
 
           {groups.map((g) => {
@@ -446,6 +529,8 @@ export default function MantenimientoView() {
               </div>
             )
           })}
+          </>
+          )}
         </>
       )}
     </div>
