@@ -99,12 +99,12 @@ export default function MantenimientoView() {
   const [currentWeek, setCurrentWeek] = useState<Week | null>(null)
   /**
    * Semana cuyo cumplimiento se está marcando. Arranca en la actual, pero el
-   * admin puede volver a la anterior: las liquidaciones de una semana se cierran
+   * admin puede elegir otra del mes: las liquidaciones de una semana se cierran
    * recién cuando esa semana ya terminó, así que al liquidar necesita poder
-   * completar el checklist de la semana pasada (si no, el bono de mantenimiento
+   * completar el checklist de una semana pasada (si no, el bono de mantenimiento
    * queda bloqueado sin forma de destrabarlo).
    */
-  const [previousWeek, setPreviousWeek] = useState<Week | null>(null)
+  const [weeks, setWeeks] = useState<Week[]>([])
   const [sheetWeek, setSheetWeek] = useState<Week | null>(null)
   const [sheet, setSheet] = useState<MaintenanceSheetWithItems | null>(null)
   const [loadingSheet, setLoadingSheet] = useState(false)
@@ -148,14 +148,10 @@ export default function MantenimientoView() {
       setBranchMinPct(settingsData.min_approval_pct)
       setDraftBlocks(buildTemplateDraft(barbersData, tpl))
 
-      // weeksData viene ordenado por start_date DESC: la anterior a la actual es
-      // la que le sigue en el array.
       const today = todayLocal()
-      const idx = weeksData.findIndex((w) => w.start_date <= today && today <= w.end_date)
-      const week = (idx >= 0 ? weeksData[idx] : weeksData[0]) ?? null
-      const prev = (idx >= 0 ? weeksData[idx + 1] : weeksData[1]) ?? null
+      const week = weeksData.find((w) => w.start_date <= today && today <= w.end_date) ?? weeksData[0] ?? null
+      setWeeks(weeksData)
       setCurrentWeek(week)
-      setPreviousWeek(prev)
       setSheetWeek(week)
       if (week) setSheet(await getMaintenanceSheetByWeek(branch, week.id))
     } catch (e) {
@@ -334,11 +330,21 @@ export default function MantenimientoView() {
   const groups = sheet ? groupByBarber(sheet.items) : []
   const hayTareas = draftBlocks.some((b) => b.tasks.some((t) => t.description.trim()))
 
-  /** Semanas que el admin puede marcar: la que corre y la inmediata anterior. */
-  const weekOptions = [
-    currentWeek  ? { week: currentWeek,  label: 'Semana actual' }   : null,
-    previousWeek ? { week: previousWeek, label: 'Semana anterior' } : null,
-  ].filter((o): o is { week: Week; label: string } => o !== null)
+  /**
+   * Semanas elegibles: las del mes corriente. Se agrega la última del mes
+   * anterior SOLO cuando la semana en curso es la primera del mes, porque en ese
+   * caso la que se está liquidando cae fuera del mes y quedaría inalcanzable
+   * (que es justo el bloqueo que este selector viene a evitar).
+   */
+  const weekOptions = (() => {
+    if (!currentWeek) return []
+    const delMes = weeks
+      .filter((w) => w.month_id === currentWeek.month_id)
+      .sort((a, b) => a.start_date.localeCompare(b.start_date))
+    // weeks viene DESC por start_date: la primera anterior a la actual es la inmediata.
+    const previa = weeks.find((w) => w.start_date < currentWeek.start_date) ?? null
+    return previa && previa.month_id !== currentWeek.month_id ? [previa, ...delMes] : delMes
+  })()
 
   return (
     <div className="w-full px-4 py-8 space-y-6">
@@ -447,22 +453,26 @@ export default function MantenimientoView() {
           </div>
 
           {/* Las liquidaciones de una semana se cierran cuando esa semana ya
-              terminó, así que el admin tiene que poder volver a la anterior. */}
+              terminó, así que el admin tiene que poder volver atrás dentro del mes. */}
           {weekOptions.length > 0 && (
-            <div className="flex flex-wrap items-center gap-2">
-              {weekOptions.map(({ week, label }) => (
-                <button
-                  key={week.id}
-                  onClick={() => selectSheetWeek(week)}
-                  className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-colors ${
-                    sheetWeek?.id === week.id
-                      ? 'bg-amber-500 border-amber-500 text-zinc-950'
-                      : 'bg-zinc-900 border-zinc-700 text-zinc-400 hover:border-zinc-500'
-                  }`}
-                >
-                  {label} <span className="font-normal opacity-70">· {weekRangeLabel(week)}</span>
-                </button>
-              ))}
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 flex flex-wrap items-center gap-3">
+              <label className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Semana</label>
+              <select
+                value={sheetWeek?.id ?? ''}
+                onChange={(e) => {
+                  const w = weekOptions.find((x) => x.id === e.target.value)
+                  if (w) selectSheetWeek(w)
+                }}
+                className="bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
+              >
+                {weekOptions.map((w) => (
+                  <option key={w.id} value={w.id}>
+                    Semana {w.week_number} · {weekRangeLabel(w)}
+                    {w.id === currentWeek?.id ? ' (en curso)' : ''}
+                    {w.month_id !== currentWeek?.month_id ? ' (mes anterior)' : ''}
+                  </option>
+                ))}
+              </select>
             </div>
           )}
 

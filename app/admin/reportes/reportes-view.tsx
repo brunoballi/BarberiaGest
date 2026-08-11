@@ -347,12 +347,9 @@ export default function ReportesView() {
                     color={r.profitMargin >= 0 ? 'emerald' : 'red'}
                     bold
                   />
-                  {r.partnerWithdrawals > 0 && (
-                    <>
-                      <div className="report-card__divider" />
-                      <PartnerBreakdownRow partners={r.partnerWithdrawalsPartners} total={r.partnerWithdrawals} />
-                    </>
-                  )}
+                  {/* Los retiros de socios NO se muestran acá: no son un gasto sino
+                      distribución de utilidad, así que no afectan la ganancia neta.
+                      Van en "Saldo del mes", donde sí restan de la caja. */}
                 </div>
               </div>
             ))}
@@ -375,9 +372,6 @@ export default function ReportesView() {
                 <div className="report-card__divider" />
                 <MetricRow label="Ganancia neta"      value={formatARS(total.netProfit)} color={total.netProfit >= 0 ? 'violet' : 'red'} bold />
                 <MetricRow label="Margen promedio"    value={formatPct(avg.profitMargin)} color={avg.profitMargin >= 0 ? 'emerald' : 'red'} bold />
-                {total.partnerWithdrawals > 0 && (
-                  <PartnerBreakdownRow partners={total.partnerWithdrawalsPartners} total={total.partnerWithdrawals} />
-                )}
                 <div className="report-card__divider" />
                 <p className="report-card__avg-title">Promedio por sucursal</p>
                 <MetricRow label="Ing. promedio"   value={formatARS(avg.totalIncome)} small />
@@ -396,8 +390,15 @@ export default function ReportesView() {
                   // de arriba (Ganancia Neta por Sucursal) para que ambos reportes
                   // muestren idéntico número: ingresos de semanas liquidadas menos el
                   // total de los barberos (con bonos).
-                  const totalBarberia = reports.find((r) => r.branchId === branchId)?.branchShare ?? 0
-                  const saldoActual = fin.initialBalance + totalBarberia + fin.capitalInjections - fin.totalExpenses
+                  const rep = reports.find((r) => r.branchId === branchId)
+                  const totalBarberia = rep?.branchShare ?? 0
+                  // Los retiros de socios restan del SALDO (plata que salió de la
+                  // caja) pero no de la ganancia neta, que es utilidad devengada.
+                  // month_financials excluye la categoría retiro_socio de
+                  // fin.totalExpenses, así que restarlos acá no los duplica.
+                  const retiros = rep?.partnerWithdrawals ?? 0
+                  const retirosPorSocio = rep?.partnerWithdrawalsPartners ?? []
+                  const saldoActual = fin.initialBalance + totalBarberia + fin.capitalInjections - fin.totalExpenses - retiros
                   return (
                   <div key={branchId} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
                     <p className="font-bold text-zinc-100 mb-3">{branchName}</p>
@@ -420,6 +421,9 @@ export default function ReportesView() {
                         <span className="text-zinc-400">− Gastos totales</span>
                         <span className="text-red-400">{formatARS(fin.totalExpenses)}</span>
                       </div>
+                      {retiros > 0 && (
+                        <PartnerWithdrawalsRow partners={retirosPorSocio} total={retiros} />
+                      )}
                       <div className="flex justify-between pt-2 border-t border-zinc-800 font-bold">
                         <span className="text-zinc-200">= Saldo actual</span>
                         <span className={saldoActual < 0 ? 'text-red-400' : 'text-emerald-400'}>{formatARS(saldoActual)}</span>
@@ -614,11 +618,12 @@ function BranchBreakdownRow({ total, fromCuts, fromRent, cutsBarbers, rentBarber
 }
 
 /**
- * Retiros de socios, con el detalle de cuánto retiró cada uno.
- * Mismo comportamiento que el desglose por barbero: la fila total es clickeable
- * y despliega las líneas por socio.
+ * Retiros de socios dentro de "Saldo del mes", con el detalle por socio.
+ * La fila total es clickeable y despliega las líneas, igual que el desglose por
+ * barbero. Resta del saldo porque es plata que salió de la caja; no aparece en
+ * Ganancia Neta porque un retiro es distribución de utilidad, no un gasto.
  */
-function PartnerBreakdownRow({ partners, total }: {
+function PartnerWithdrawalsRow({ partners, total }: {
   partners: { partnerId: string | null; fullName: string; total: number }[]
   total: number
 }) {
@@ -627,24 +632,22 @@ function PartnerBreakdownRow({ partners, total }: {
   return (
     <>
       <div
-        className="metric-row"
+        className="flex justify-between"
         style={{ cursor: hasBreakdown ? 'pointer' : 'default' }}
         onClick={() => hasBreakdown && setOpen((o) => !o)}
       >
-        <span className="metric-row__label" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem' }}>
-          {hasBreakdown && <span style={{ fontSize: '0.6rem', color: '#71717a' }}>{open ? '▼' : '▶'}</span>}
-          Retiros de socios
+        <span className="text-zinc-400 flex items-center gap-1.5">
+          {hasBreakdown && <span className="text-[0.6rem] text-zinc-500">{open ? '▼' : '▶'}</span>}
+          − Retiros de socios
         </span>
-        <span className="metric-row__value" style={{ color: '#f59e0b', fontSize: '0.8rem' }}>
-          {formatARS(total)}
-        </span>
+        <span className="text-amber-400">{formatARS(total)}</span>
       </div>
       {open && hasBreakdown && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', margin: '0.1rem 0 0.3rem', paddingLeft: '0.9rem', borderLeft: '2px solid #27272a' }}>
+        <div className="flex flex-col gap-1 ml-1 pl-3 border-l-2 border-zinc-800">
           {partners.map((p) => (
-            <div key={p.partnerId ?? 'sin-socio'} className="metric-row">
-              <span className="metric-row__label" style={{ fontSize: '0.72rem', color: '#a1a1aa' }}>{p.fullName}</span>
-              <span className="metric-row__value" style={{ fontSize: '0.78rem', color: '#d4d4d8' }}>{formatARS(p.total)}</span>
+            <div key={p.partnerId ?? 'sin-socio'} className="flex justify-between">
+              <span className="text-xs text-zinc-500">{p.fullName}</span>
+              <span className="text-xs text-zinc-300">{formatARS(p.total)}</span>
             </div>
           ))}
         </div>
