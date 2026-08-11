@@ -749,16 +749,21 @@ function SettlementRow({
           </div>
           <div className="flex items-center gap-3">
             <span className="text-zinc-500 text-xs">Mantenimiento</span>
-            {canEdit && !maint.blocked ? (
+            {/* El bloqueo impide ACTIVAR el bono, nunca desactivarlo: si quedó en Sí
+                y después apareció una tarea pendiente, hay que poder corregirlo. */}
+            {canEdit && (!maint.blocked || s.mantenimiento_met) ? (
               <button
                 onClick={() => onMantenimiento(s, !s.mantenimiento_met)}
+                title={maint.blocked ? maint.reason : undefined}
                 className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
                   s.mantenimiento_met
                     ? 'bg-emerald-900/50 text-emerald-400 border-emerald-800/50'
                     : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:border-zinc-500'
                 }`}
               >
-                {s.mantenimiento_met ? `Sí ✓ (+${formatARS(s.bonus_mantenimiento)})` : 'No'}
+                {s.mantenimiento_met
+                  ? `${maint.blocked ? '⚠ ' : ''}Sí ✓ (+${formatARS(s.bonus_mantenimiento)})`
+                  : 'No'}
               </button>
             ) : canEdit ? (
               // Grisado: primero hay que completar el checklist desde Mantenimiento.

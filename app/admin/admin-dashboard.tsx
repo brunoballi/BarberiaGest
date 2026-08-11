@@ -1236,20 +1236,27 @@ export default function AdminDashboard() {
                               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
                                 <button
                                   onClick={() => handleMantenimiento(s.id, s.week_id, s.barber_id, s.mantenimiento_met ?? false)}
-                                  disabled={loadingKey === `mantenimiento-${s.id}` || loadingMaint || maint.blocked}
+                                  // El bloqueo impide ACTIVAR el bono, nunca desactivarlo: si
+                                  // quedó en Sí y después apareció una tarea pendiente, el admin
+                                  // tiene que poder corregirlo.
+                                  disabled={loadingKey === `mantenimiento-${s.id}` || loadingMaint || (maint.blocked && !s.mantenimiento_met)}
                                   title={maint.blocked ? maint.reason : undefined}
-                                  className={`toggle-btn ${
-                                    maint.blocked ? 'toggle-btn--off' : s.mantenimiento_met ? 'toggle-btn--on' : 'toggle-btn--off'
-                                  }`}
+                                  className={`toggle-btn ${s.mantenimiento_met ? 'toggle-btn--on' : 'toggle-btn--off'}`}
                                 >
-                                  {maint.blocked ? '🔒 No' : s.mantenimiento_met ? 'Sí' : 'No'}
+                                  {/* El label refleja el dato real: nunca "No" con el bono en Sí. */}
+                                  {s.mantenimiento_met ? 'Sí' : maint.blocked ? '🔒 No' : 'No'}
                                 </button>
+                                {maint.blocked && s.mantenimiento_met && (
+                                  <span title={maint.reason} style={{ color: '#f59e0b', fontSize: '0.85rem' }}>⚠</span>
+                                )}
                                 {s.mantenimiento_met && (
                                   <>
                                     <CurrencyInputInline
                                       key={`mant-${s.id}-${s.bonus_mantenimiento}`}
                                       defaultValue={s.bonus_mantenimiento || ''}
-                                      disabled={loadingKey === `mantenimiento-${s.id}`}
+                                      // El monto a mano es la otra puerta al bono: si el toggle
+                                      // está bloqueado, escribir el importe lo saltearía.
+                                      disabled={loadingKey === `mantenimiento-${s.id}` || loadingMaint || maint.blocked}
                                       // Solo el barbero nuevo puede tipear un ajuste negativo (descuento).
                                       allowNegative={s.barber.is_new_barber === true}
                                       onCommit={(next) => {
@@ -1259,12 +1266,13 @@ export default function AdminDashboard() {
                                       }}
                                       className="filter-input"
                                       style={{ width: 96 }}
-                                      title={s.barber.is_new_barber ? 'Monto del bono (editable a mano; admite negativo)' : 'Monto del bono (editable a mano)'}
+                                      title={maint.blocked ? maint.reason : s.barber.is_new_barber ? 'Monto del bono (editable a mano; admite negativo)' : 'Monto del bono (editable a mano)'}
                                     />
                                     {s.bonus_mantenimiento_override != null && (
                                       <button
                                         type="button"
-                                        title="Volver al cálculo automático"
+                                        disabled={loadingKey === `mantenimiento-${s.id}` || loadingMaint || maint.blocked}
+                                        title={maint.blocked ? maint.reason : 'Volver al cálculo automático'}
                                         onClick={() => handleSetMantenimientoOverride(s.id, s.week_id, s.barber_id, null)}
                                         className="admin-btn admin-btn--ghost"
                                         style={{ padding: '0.25rem 0.5rem' }}
