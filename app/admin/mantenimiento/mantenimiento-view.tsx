@@ -236,17 +236,23 @@ export default function MantenimientoView() {
     await saveMaintenanceTemplate(selectedBranch, clean)
     await upsertMaintenanceSettings(selectedBranch, branchMinPct)
 
-    if (currentWeek && profile) {
-      // Idempotente: crea la planilla de la semana si no existe y la sincroniza
-      // si ya está, preservando los SÍ/NO ya marcados.
+    if (profile) {
+      // Se sincronizan la semana EN CURSO y la que se está viendo (si es otra):
+      // guardar con una semana futura seleccionada tiene que crearle la planilla
+      // a ESA semana, si no el botón no hace nada visible.
       //
-      // Solo se sincroniza la semana EN CURSO: cambiar la plantilla no debe
-      // reescribir el checklist de una semana ya terminada, que puede estar
-      // liquidándose contra las tareas que regían entonces.
-      const synced = await syncMaintenanceSheetFromTemplate(
-        selectedBranch, currentWeek.id, branchMinPct, profile.id
+      // syncMaintenanceSheetFromTemplate es idempotente y preserva los SÍ/NO ya
+      // marcados (los reconoce por barbero + descripción), así que resincronizar
+      // no borra avance.
+      const objetivo = [currentWeek, sheetWeek].filter(
+        (w, i, arr): w is Week => w != null && arr.findIndex((x) => x?.id === w.id) === i
       )
-      if (sheetWeek?.id === currentWeek.id) setSheet(synced)
+      for (const w of objetivo) {
+        const synced = await syncMaintenanceSheetFromTemplate(
+          selectedBranch, w.id, branchMinPct, profile.id
+        )
+        if (sheetWeek?.id === w.id) setSheet(synced)
+      }
     }
 
     const tpl = await getMaintenanceTemplate(selectedBranch)
@@ -485,10 +491,18 @@ export default function MantenimientoView() {
               <p className="text-zinc-500 text-sm">
                 Esta semana no tiene planilla de mantenimiento.
               </p>
-              <p className="text-zinc-600 text-xs mt-2">
-                Sin tareas cargadas no hay nada que exigir: el bono de mantenimiento
-                queda habilitado en Liquidaciones.
-              </p>
+              {hayTareas ? (
+                <p className="text-zinc-600 text-xs mt-2">
+                  Apretá <span className="text-amber-500 font-semibold">Guardar plantilla</span> para
+                  crearla en esta semana con las tareas de arriba. Hasta entonces el bono
+                  de mantenimiento queda habilitado en Liquidaciones.
+                </p>
+              ) : (
+                <p className="text-zinc-600 text-xs mt-2">
+                  Sin tareas cargadas no hay nada que exigir: el bono de mantenimiento
+                  queda habilitado en Liquidaciones.
+                </p>
+              )}
             </div>
           ) : (
           <>
