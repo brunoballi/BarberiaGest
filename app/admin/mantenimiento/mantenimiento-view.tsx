@@ -23,6 +23,7 @@ import {
   saveMaintenanceTemplate,
   getMaintenanceSheetByWeek,
   syncMaintenanceSheetFromTemplate,
+  addMissingTemplateItemsToSheet,
   setMaintenanceItemDone,
   setMaintenanceSheetMinPct,
   todayLocal,
@@ -72,8 +73,10 @@ function buildTemplateDraft(
  * semana que el admin abra, sin depender de que se acuerde de apretar Guardar
  * (antes la planilla nacía solo como efecto secundario de guardar).
  *
- * Si YA existe no se resincroniza: cambiar la plantilla no debe reescribir el
- * checklist de una semana que se está liquidando.
+ * Si YA existe se le agregan los ítems de la plantilla que le falten, sin borrar
+ * ninguno: una planilla vieja puede ser el snapshot de cuando la plantilla era
+ * más chica y dejaba barberos sin tareas (y por lo tanto sin bloqueo). Reemplazarla
+ * entera borraría tareas de una semana ya liquidada, que es historia.
  *
  * Devuelve null si la plantilla no tiene ninguna tarea (nada que exigir).
  */
@@ -84,7 +87,7 @@ async function fetchOrCreateSheet(
   profileId: string,
 ): Promise<MaintenanceSheetWithItems | null> {
   const existing = await getMaintenanceSheetByWeek(branchId, weekId)
-  if (existing) return existing
+  if (existing) return addMissingTemplateItemsToSheet(branchId, weekId)
   return syncMaintenanceSheetFromTemplate(branchId, weekId, minPct, profileId)
 }
 

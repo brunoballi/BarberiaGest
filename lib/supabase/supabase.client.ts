@@ -2775,8 +2775,67 @@ export async function getMaintenanceStatusByBarber(
     if (it.done) s.done++
     else s.pending.push(it.description)
   }
+  // Un barbero puede tener tareas en la PLANTILLA y ninguna en la planilla de la
+  // semana: pasa cuando la planilla se creó con una plantilla más chica y después
+  // se le agregaron barberos (la planilla no se resincroniza para no reescribir
+  // una semana que se está liquidando). Sin esto esos barberos no se bloqueaban
+  // aunque la sucursal tuviera sus tareas definidas.
+  const template = await getMaintenanceTemplate(branchId)
+  for (const b of template) {
+    if (b.tasks.length === 0 || byBarber[b.barber_id]) continue
+    byBarber[b.barber_id] = {
+      total: b.tasks.length,
+      done: 0,
+      allDone: false,
+      pending: b.tasks.map((t) => t.description),
+    }
+  }
+
   for (const s of Object.values(byBarber)) s.allDone = s.done === s.total
   return { sheetExists: true, byBarber }
+}
+
+/**
+ * Agrega a la planilla de una semana los ítems de la plantilla que le falten,
+ * SIN borrar los que ya tiene.
+ *
+ * Es aditivo a propósito: una planilla vieja puede ser el snapshot de cuando la
+ * plantilla era más chica, y esos barberos quedaban fuera del bloqueo. Pero
+ * reemplazarla entera (como hace syncMaintenanceSheetFromTemplate) borraría
+ * tareas de una semana ya liquidada, que es historia.
+ */
+export async function addMissingTemplateItemsToSheet(
+  branchId: string,
+  weekId: string,
+): Promise<MaintenanceSheetWithItems | null> {
+  const sheet = await getMaintenanceSheetByWeek(branchId, weekId)
+  if (!sheet) return null
+
+  const template = await getMaintenanceTemplate(branchId)
+  const yaEstan = new Set(sheet.items.map((i) => `${i.barber_id}|${i.description}`))
+  let order = sheet.items.reduce((max, i) => Math.max(max, i.sort_order), -1) + 1
+
+  const faltantes: Array<Omit<MaintenanceSheetItem, 'id' | 'created_at'>> = []
+  for (const b of template) {
+    for (const t of b.tasks) {
+      if (yaEstan.has(`${b.barber_id}|${t.description}`)) continue
+      faltantes.push({
+        branch_id: branchId,
+        sheet_id: sheet.id,
+        barber_id: b.barber_id,
+        zone_label: b.zone_label,
+        item_number: t.item_number,
+        description: t.description,
+        done: false,
+        sort_order: order++,
+      })
+    }
+  }
+  if (faltantes.length === 0) return sheet
+
+  const { error } = await supabase.from('maintenance_sheet_items').insert(faltantes)
+  if (error) throw new Error(`[addMissingTemplateItemsToSheet] ${error.message}`)
+  return getMaintenanceSheetByWeek(branchId, weekId)
 }
 
 /** Estado del checklist de un barbero en una semana. */

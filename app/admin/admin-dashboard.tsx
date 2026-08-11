@@ -1282,8 +1282,16 @@ export default function AdminDashboard() {
                                 )}
                               </div>
                             ) : (
-                              <span className={`badge ${s.mantenimiento_met ? 'badge--green' : 'badge--red'}`}>
-                                {s.mantenimiento_met ? `Sí · ${formatARS(s.bonus_mantenimiento)}` : 'No'}
+                              // Confirmada o pagada: el toggle no se dibuja, pero si el bono
+                              // quedó en Sí con tareas pendientes se marca, para que el
+                              // incumplimiento no quede escondido. No cambia el dato.
+                              <span
+                                className={`badge ${s.mantenimiento_met ? 'badge--green' : 'badge--red'}`}
+                                title={maint.blocked && s.mantenimiento_met ? maint.reason : undefined}
+                              >
+                                {s.mantenimiento_met
+                                  ? `${maint.blocked ? '⚠ ' : ''}Sí · ${formatARS(s.bonus_mantenimiento)}`
+                                  : 'No'}
                               </span>
                             )
                           ) : (
