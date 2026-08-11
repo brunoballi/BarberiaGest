@@ -2740,7 +2740,26 @@ export async function getMaintenanceStatusByBarber(
     .eq('week_id', weekId)
     .maybeSingle()
   if (error) throw new Error(`[getMaintenanceStatusByBarber] ${error.message}`)
-  if (!sheet) return { sheetExists: false, byBarber: {} }
+
+  // Sin planilla de la semana se cae a la PLANTILLA de la sucursal, con todo
+  // pendiente. La planilla semanal se materializa solo cuando alguien abre esa
+  // semana en Mantenimiento; si el estado dependiera de que exista, el bono
+  // quedaría libre en toda semana que nadie haya abierto (4 de 182 en San Juan).
+  // Lo que define si hay algo que exigir son las tareas definidas, no la fila.
+  if (!sheet) {
+    const template = await getMaintenanceTemplate(branchId)
+    const byBarber: Record<string, MaintenanceBarberStatus> = {}
+    for (const b of template) {
+      if (b.tasks.length === 0) continue
+      byBarber[b.barber_id] = {
+        total: b.tasks.length,
+        done: 0,
+        allDone: false,
+        pending: b.tasks.map((t) => t.description),
+      }
+    }
+    return { sheetExists: false, byBarber }
+  }
 
   const { data: items, error: iErr } = await supabase
     .from('maintenance_sheet_items')

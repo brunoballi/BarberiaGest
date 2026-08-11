@@ -66,6 +66,28 @@ function buildTemplateDraft(
   })
 }
 
+/**
+ * Trae la planilla de una semana y, si todavía no existe, la materializa desde la
+ * plantilla de la sucursal. Es lo que hace que el checklist exista en cualquier
+ * semana que el admin abra, sin depender de que se acuerde de apretar Guardar
+ * (antes la planilla nacía solo como efecto secundario de guardar).
+ *
+ * Si YA existe no se resincroniza: cambiar la plantilla no debe reescribir el
+ * checklist de una semana que se está liquidando.
+ *
+ * Devuelve null si la plantilla no tiene ninguna tarea (nada que exigir).
+ */
+async function fetchOrCreateSheet(
+  branchId: string,
+  weekId: string,
+  minPct: number,
+  profileId: string,
+): Promise<MaintenanceSheetWithItems | null> {
+  const existing = await getMaintenanceSheetByWeek(branchId, weekId)
+  if (existing) return existing
+  return syncMaintenanceSheetFromTemplate(branchId, weekId, minPct, profileId)
+}
+
 /** Agrupa los ítems de la planilla por barbero, preservando el orden de la plantilla. */
 function groupByBarber(items: MaintenanceSheetItem[]): { barberId: string; zoneLabel: string; items: MaintenanceSheetItem[] }[] {
   const groups: { barberId: string; zoneLabel: string; items: MaintenanceSheetItem[] }[] = []
@@ -153,7 +175,9 @@ export default function MantenimientoView() {
       setWeeks(weeksData)
       setCurrentWeek(week)
       setSheetWeek(week)
-      if (week) setSheet(await getMaintenanceSheetByWeek(branch, week.id))
+      if (week) {
+        setSheet(await fetchOrCreateSheet(branch, week.id, settingsData.min_approval_pct, p.id))
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error inesperado')
     } finally {
@@ -170,7 +194,11 @@ export default function MantenimientoView() {
     setActionError(null)
     setLoadingSheet(true)
     try {
-      setSheet(await getMaintenanceSheetByWeek(selectedBranch, week.id))
+      setSheet(
+        profile
+          ? await fetchOrCreateSheet(selectedBranch, week.id, branchMinPct, profile.id)
+          : await getMaintenanceSheetByWeek(selectedBranch, week.id)
+      )
     } catch (e) {
       setSheet(null)
       setActionError(e instanceof Error ? e.message : 'Error al cargar el cumplimiento de la semana')
