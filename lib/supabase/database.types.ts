@@ -73,6 +73,18 @@ export interface Benefit {
    *  barbero (branch_share=0) en vez de partirse por la comisión. Sin efecto
    *  en sueldo fijo ni alquiler de box (se comportan como beneficio normal). */
   full_amount_to_barber: boolean
+  /** Si es true, al elegir este beneficio hay que ingresar el DNI y validarlo
+   *  contra la lista de socios vitalicios. Si el DNI no está, no se guarda el corte. */
+  requires_member_document: boolean
+}
+
+/** Socio vitalicio habilitado para el beneficio. Lista global (no por sucursal). */
+export interface LifetimeMember {
+  id: string
+  full_name: string
+  document_number: string
+  is_active: boolean
+  created_at: string
 }
 
 export interface ServiceCatalog {
@@ -143,6 +155,8 @@ export interface Transaction {
   discount_reason: string | null
   // Mejora 1: beneficio aplicado (opcional, para reporting)
   benefit_id: string | null
+  /** Socio vitalicio al que se le aplicó el beneficio (null si no aplica). */
+  lifetime_member_id: string | null
 }
 
 export interface Advance {
@@ -225,6 +239,8 @@ export interface Expense {
   paid_by: string | null
   notes: string | null
   registered_by: string
+  /** Socio que retiró. Solo se completa cuando category = 'retiro_socio'. */
+  partner_id: string | null
   created_at: string
 }
 
@@ -300,8 +316,9 @@ export type WeekInsert = Omit<Week, 'id' | 'created_at' | 'closed_at' | 'closed_
 
 export type TransactionInsert = Omit<
   Transaction,
-  'id' | 'created_at' | 'updated_at' | 'is_manual_override' | 'override_notes' | 'benefit_id'
+  'id' | 'created_at' | 'updated_at' | 'is_manual_override' | 'override_notes' | 'benefit_id' | 'lifetime_member_id'
 > & {
+  lifetime_member_id?: string | null
   is_manual_override?: boolean
   override_notes?: string
   benefit_id?: string | null
@@ -376,7 +393,7 @@ export type ProfileUpdate = Partial<
 >
 
 export type ExpenseUpdate = Partial<
-  Pick<Expense, 'concept' | 'category' | 'amount' | 'expense_date' | 'notes'>
+  Pick<Expense, 'concept' | 'category' | 'amount' | 'expense_date' | 'notes' | 'partner_id'>
 >
 
 export type ExpenseForm = Omit<Expense, 'id' | 'created_at' | 'registered_by' | 'paid_by'> & {
@@ -435,6 +452,8 @@ export interface BranchReport {
   totalExpenses: number      // suma de expenses.amount (excluye retiros de socios)
   expensesByCategory: Record<string, number>
   partnerWithdrawals: number // Mejora 4: retiros de socios (no restan de netProfit)
+  /** Desglose de los retiros por socio (desplegable). partnerId null = filas viejas sin socio cargado. */
+  partnerWithdrawalsPartners: { partnerId: string | null; fullName: string; total: number }[]
   netProfit: number          // branchShare - totalExpenses
   profitMargin: number       // netProfit / totalIncome * 100
 }
@@ -456,6 +475,8 @@ export interface RegisterCutPayload {
   client_name?: string | null
   // Apellido del cliente (Mejora 1): requerido si la transferencia va a Valhalla
   client_surname?: string | null
+  /** Socio vitalicio ya validado contra la lista (solo si el beneficio lo exige). */
+  lifetime_member_id?: string | null
   discount_amount?: number
   discount_reason?: string | null
   // Mejora 1: beneficio seleccionado (pre-rellena descuento)

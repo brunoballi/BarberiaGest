@@ -13,18 +13,12 @@ import {
   type Profile,
   type AdvanceWithBarber,
   type Advance,
-  type ExpenseInsert,
-  type ExpenseUpdate,
-  type ExpenseCategory,
-  type RevenueBalance,
   type ServiceCatalog,
   type PaymentMethod,
   type Benefit,
   PAYMENT_METHOD_LABELS,
   WEEK_STATUS_LABELS,
   SETTLEMENT_STATUS_LABELS,
-  EXPENSE_CATEGORIES,
-  EXPENSE_CATEGORY_LABELS,
 } from '@/lib/supabase/database.types'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import {
@@ -51,13 +45,6 @@ import {
   markSettlementPaid,
   deleteSettlement,
   cancelSettlement,
-  createExpense,
-  updateExpense,
-  deleteExpense,
-  getInitialBalance,
-  setInitialBalance,
-  getMonthFinancials,
-  type MonthFinancials,
   overrideTransactionSplit,
   fullEditTransaction,
   getBarberDayGross,
@@ -173,13 +160,13 @@ function settlAPagar(s: SettlementWithBarber): number {
 }
 
 // ─── Tipos de tab ──────────────────────────────────────────────────────────
-type Tab = 'live' | 'liquidaciones' | 'transacciones' | 'gastos' | 'saldo' | 'adelantos'
+// Gastos y Saldo inicial salieron del dashboard: son módulos propios
+// (/admin/gastos, /admin/saldo-inicial). Ambos se manejan por mes, no por semana.
+type Tab = 'live' | 'liquidaciones' | 'transacciones' | 'adelantos'
 const TAB_LABELS: Record<Tab, string> = {
   live: '🔴 En vivo',
   liquidaciones: 'Liquidaciones',
   transacciones: 'Transacciones',
-  gastos: 'Gastos',
-  saldo: '💵 Saldo inicial',
   adelantos: '💰 Adelantos',
 }
 
@@ -197,8 +184,6 @@ export default function AdminDashboard() {
   // Paginación grillas dashboard (default 20)
   const [txPage, setTxPage] = useState(1)
   const [txPageSize, setTxPageSize] = useState(20)
-  const [gastosPage, setGastosPage] = useState(1)
-  const [gastosPageSize, setGastosPageSize] = useState(20)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string>('')
@@ -210,14 +195,7 @@ export default function AdminDashboard() {
 
   // Semanas del mes seleccionado (derivado)
   const weeks: Week[] = months[selectedMonthIdx]?.weeks ?? []
-  // Saldo inicial del mes seleccionado (capital con el que arranca el mes)
   const selectedMonthId: string | undefined = months[selectedMonthIdx]?.id
-  const [initialBalance, setInitialBalanceState] = useState<RevenueBalance | null>(null)
-  const [editingBalance, setEditingBalance] = useState(false)
-  const [balanceInput, setBalanceInput] = useState('')
-  const [savingBalance, setSavingBalance] = useState(false)
-  // Resumen financiero del mes (Ganancia neta)
-  const [monthFin, setMonthFin] = useState<MonthFinancials | null>(null)
 
   const [settlements, setSettlements] = useState<SettlementWithBarber[]>([])
   const [transactions, setTransactions] = useState<TransactionWithRelations[]>([])
@@ -225,9 +203,6 @@ export default function AdminDashboard() {
   const [expenses, setExpenses] = useState<ExpenseWithUser[]>([])
 
   const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [showExpenseForm, setShowExpenseForm] = useState(false)
-  const [editExpense, setEditExpense] = useState<ExpenseWithUser | null>(null)
-  const [confirmDeleteExpId, setConfirmDeleteExpId] = useState<string | null>(null)
   const [overrideTx, setOverrideTx] = useState<TransactionWithRelations | null>(null)
   const [editTx, setEditTx] = useState<TransactionWithRelations | null>(null)
   const [confirmDeleteTxId, setConfirmDeleteTxId] = useState<string | null>(null)
@@ -325,11 +300,6 @@ export default function AdminDashboard() {
   const [settlPage, setSettlPage] = useState(1)
   const [settlPageSize, setSettlPageSize] = useState(20)
 
-  // Filtros tab gastos
-  const [expFilterDateFrom, setExpFilterDateFrom] = useState('')
-  const [expFilterDateTo, setExpFilterDateTo] = useState('')
-  const [expFilterCategory, setExpFilterCategory] = useState('')
-
   // ─── Carga inicial ─────────────────────────────────────────────────
   useEffect(() => {
     async function init() {
@@ -420,9 +390,6 @@ export default function AdminDashboard() {
         ])
         setTransactions(txData)
         setWeekAdvances(advData)
-      } else if (tab === 'gastos') {
-        const data = await getExpensesByWeek(selectedWeek.id)
-        setExpenses(data)
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error cargando datos')
@@ -454,27 +421,6 @@ export default function AdminDashboard() {
       .catch(() => { if (!cancel) setBranchBarbers([]) })
     return () => { cancel = true }
   }, [selectedBranch])
-
-  // ─── Saldo inicial del mes (se recarga al cambiar sucursal/mes) ─────
-  useEffect(() => {
-    if (!selectedBranch || !selectedMonthId) { setInitialBalanceState(null); return }
-    let cancel = false
-    getInitialBalance(selectedBranch, selectedMonthId)
-      .then((rb) => { if (!cancel) setInitialBalanceState(rb) })
-      .catch(() => { if (!cancel) setInitialBalanceState(null) })
-    return () => { cancel = true }
-  }, [selectedBranch, selectedMonthId])
-
-  // ─── Resumen financiero del mes (Ganancia neta). Se recalcula al cambiar
-  // sucursal/mes, saldo inicial, gastos o liquidaciones (box_rent). ─────
-  useEffect(() => {
-    if (!selectedBranch || !selectedMonthId) { setMonthFin(null); return }
-    let cancel = false
-    getMonthFinancials(selectedBranch, selectedMonthId)
-      .then((f) => { if (!cancel) setMonthFin(f) })
-      .catch(() => { if (!cancel) setMonthFin(null) })
-    return () => { cancel = true }
-  }, [selectedBranch, selectedMonthId, initialBalance, expenses, settlements])
 
   // ─── Realtime: suscripción live cuando la semana está abierta ─────
   useEffect(() => {
@@ -530,19 +476,6 @@ export default function AdminDashboard() {
       .channel(`liq-week-${selectedWeek.id}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'settlements', filter: `week_id=eq.${selectedWeek.id}` }, reload)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter: `week_id=eq.${selectedWeek.id}` }, reload)
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [tab, selectedWeek])
-
-  // ─── Realtime: pestaña gastos (expenses de la semana) ──────────────
-  useEffect(() => {
-    if (tab !== 'gastos' || !selectedWeek) return
-    const channel = supabase
-      .channel(`exp-week-${selectedWeek.id}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses', filter: `week_id=eq.${selectedWeek.id}` }, async () => {
-        const data = await getExpensesByWeek(selectedWeek.id)
-        setExpenses(data)
-      })
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [tab, selectedWeek])
@@ -711,21 +644,6 @@ export default function AdminDashboard() {
     }
   }
 
-  async function handleSaveInitialBalance() {
-    if (!selectedBranch || !selectedMonthId) return
-    const amount = parseFloat(balanceInput)
-    if (Number.isNaN(amount)) { setError('Ingresá un monto válido (puede ser negativo)'); return }
-    try {
-      setSavingBalance(true)
-      const rb = await setInitialBalance(selectedBranch, selectedMonthId, amount)
-      setInitialBalanceState(rb)
-      setEditingBalance(false)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error guardando el saldo inicial')
-    } finally {
-      setSavingBalance(false)
-    }
-  }
 
   async function handleConfirmSettlement(settlementId: string) {
     try {
@@ -806,19 +724,6 @@ export default function AdminDashboard() {
     }
   }
 
-  async function handleDeleteExpense(expenseId: string) {
-    setConfirmDeleteExpId(null)
-    try {
-      setActionLoading(`exp-del-${expenseId}`)
-      await deleteExpense(expenseId)
-      await loadTabData()
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al eliminar gasto')
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
   async function handleLogout() {
     await supabase.auth.signOut()
     window.location.href = '/login'
@@ -836,17 +741,9 @@ export default function AdminDashboard() {
     totalPayable: settlements.reduce((s, x) => s + Math.max(x.net_payable, 0), 0),
     totalCuts: settlements.reduce((s, x) => s + x.total_cuts, 0),
     cashTotal: settlements.reduce((s, x) => s + x.cash_amount, 0),
-    // Efectivo que los barberos devolvieron al saldar deudas (liquidaciones
-    // negativas ya pagadas). Es informativo: NO suma a la ganancia neta porque
-    // ese dinero ya está contado por devengado (comisión / alquiler de box).
-    cashReturnedByBarbers: settlements.reduce((s, x) => s + (x.status === 'paid' && x.net_payable < 0 ? -x.net_payable : 0), 0),
     transferTotal: settlements.reduce((s, x) => s + x.transfer_amount, 0),
     cardTotal: settlements.reduce((s, x) => s + x.card_amount, 0),
-    expensesTotal: expenses.reduce((s, x) => s + x.amount, 0),
     barberCount: new Set(settlements.map((s) => s.barber_id)).size,
-    // Gastos operativos (sin retiros de socios) y retiros de socios por separado
-    operationalExpenses: expenses.filter((e) => e.category !== 'retiro_socio').reduce((s, e) => s + e.amount, 0),
-    partnerWithdrawals: expenses.filter((e) => e.category === 'retiro_socio').reduce((s, e) => s + e.amount, 0),
   }
 
   // ─── RENDER ────────────────────────────────────────────────────────
@@ -987,7 +884,7 @@ export default function AdminDashboard() {
 
         {/* ── TABS (dentro del sticky para que no se oculten al scrollear) ── */}
         <div className="admin-tabs">
-          {((['live', 'liquidaciones', 'transacciones', 'gastos', 'saldo', 'adelantos'] as Tab[])
+          {((['live', 'liquidaciones', 'transacciones', 'adelantos'] as Tab[])
             .filter((t) => t !== 'live' || selectedWeek?.status === 'open')
           ).map((t) => (
             <button
@@ -1037,17 +934,6 @@ export default function AdminDashboard() {
               label="Transferencias"
               value={formatARS(kpis.transferTotal)}
               tooltip="Total cobrado por transferencia."
-            />
-            <KpiCard
-              label="Devuelto x barberos"
-              value={formatARS(kpis.cashReturnedByBarbers)}
-              sub="entró a caja"
-              tooltip="Efectivo que los barberos devolvieron al saldar deudas (liquidaciones negativas ya marcadas como pagadas). Es informativo: NO suma a la ganancia neta, porque ese dinero ya está contado por devengado (comisión de cortes o alquiler de box)."
-            />
-            <KpiCard
-              label="Retiros socios"
-              value={formatARS(kpis.partnerWithdrawals)}
-              tooltip="Retiros de los socios (ganancia x socios)."
             />
           </div>
         )}
@@ -1901,227 +1787,9 @@ export default function AdminDashboard() {
         )}
 
         {/* ─── TAB: SALDO INICIAL ─── */}
-        {tab === 'saldo' && (
-          <div>
-            <div className="balance-panel">
-              <span className="balance-panel__label">
-                Saldo inicial de {MONTH_NAMES[(months[selectedMonthIdx]?.month ?? 1) - 1]} {months[selectedMonthIdx]?.year}
-              </span>
-              {editingBalance ? (
-                <span className="balance-panel__edit">
-                  <CurrencyInput
-                    value={balanceInput}
-                    onChange={setBalanceInput}
-                    allowNegative
-                    className="filter-input"
-                    placeholder="0 (puede ser negativo)"
-                    autoFocus
-                    style={{ width: 180 }}
-                  />
-                  <button onClick={handleSaveInitialBalance} disabled={savingBalance} className="admin-btn admin-btn--primary">
-                    {savingBalance ? 'Guardando…' : 'Guardar'}
-                  </button>
-                  <button onClick={() => setEditingBalance(false)} className="admin-btn admin-btn--ghost">Cancelar</button>
-                </span>
-              ) : (
-                <span className="balance-panel__value">
-                  <strong className={(initialBalance?.initial_balance ?? 0) < 0 ? 'net-payable--neg' : ''}>
-                    {formatARS(initialBalance?.initial_balance ?? 0)}
-                  </strong>
-                  <button
-                    onClick={() => { setBalanceInput(String(initialBalance?.initial_balance ?? '')); setEditingBalance(true) }}
-                    className="admin-btn admin-btn--ghost"
-                  >
-                    {initialBalance ? 'Editar' : 'Cargar'}
-                  </button>
-                </span>
-              )}
-            </div>
-            <p className="text-sm text-zinc-500 mt-3">
-              Capital con el que arranca el mes. El detalle de ganancia neta (saldo + ingresos − gastos)
-              se ve en el módulo <strong>Reportes</strong>.
-            </p>
-          </div>
-        )}
-
-        {tab === 'gastos' && (() => {
-          const hasExpFilters = !!(expFilterDateFrom || expFilterDateTo || expFilterCategory)
-          const filteredExpenses = expenses.filter((e) => {
-            if (expFilterDateFrom && e.expense_date < expFilterDateFrom) return false
-            if (expFilterDateTo && e.expense_date > expFilterDateTo) return false
-            if (expFilterCategory && e.category !== expFilterCategory) return false
-            return true
-          })
-          const filteredTotal = filteredExpenses.reduce((s, e) => s + e.amount, 0)
-          const gTotalPages = Math.max(1, Math.ceil(filteredExpenses.length / gastosPageSize))
-          const gCurrent = Math.min(gastosPage, gTotalPages)
-          const gPaged = filteredExpenses.slice((gCurrent - 1) * gastosPageSize, gCurrent * gastosPageSize)
-          return (
-          <div>
-            <div className="filter-bar">
-              <input
-                type="date"
-                value={expFilterDateFrom}
-                onChange={(e) => setExpFilterDateFrom(e.target.value)}
-                className="filter-input"
-                title="Desde"
-              />
-              <input
-                type="date"
-                value={expFilterDateTo}
-                onChange={(e) => setExpFilterDateTo(e.target.value)}
-                className="filter-input"
-                title="Hasta"
-              />
-              <select value={expFilterCategory} onChange={(e) => setExpFilterCategory(e.target.value)} className="filter-input">
-                <option value="">Todas las categorías</option>
-                {EXPENSE_CATEGORIES.map((c) => (
-                  <option key={c} value={c}>{EXPENSE_CATEGORY_LABELS[c]}</option>
-                ))}
-              </select>
-              {hasExpFilters && (
-                <button
-                  onClick={() => { setExpFilterDateFrom(''); setExpFilterDateTo(''); setExpFilterCategory('') }}
-                  className="filter-clear"
-                >
-                  ✕ Limpiar
-                </button>
-              )}
-              {hasExpFilters && (
-                <span className="filter-count">{filteredExpenses.length} resultado{filteredExpenses.length !== 1 ? 's' : ''}</span>
-              )}
-              <button
-                onClick={() => setShowExpenseForm(true)}
-                className="admin-btn admin-btn--primary"
-                style={{ marginLeft: 'auto' }}
-              >
-                + Registrar gasto
-              </button>
-            </div>
-            <div className="admin-table-wrap">
-              {expenses.length === 0 ? (
-                <EmptyState message="No hay gastos registrados en este período." />
-              ) : filteredExpenses.length === 0 ? (
-                <EmptyState message="Sin resultados para los filtros aplicados." />
-              ) : (
-                <table className="admin-table">
-                  <thead>
-                    <tr>
-                      <th>Fecha</th>
-                      <th>Concepto</th>
-                      <th>Categoría</th>
-                      <th>Monto</th>
-                      <th>Notas</th>
-                      <th>Registrado por</th>
-                      <th>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {gPaged.map((e) => (
-                      <tr key={e.id}>
-                        <td className="td-date">{formatDate(e.expense_date)}</td>
-                        <td>{e.concept}</td>
-                        <td>
-                          <span className={`badge ${e.category === 'retiro_socio' ? 'badge--violet' : 'badge--gray'}`}>
-                            {e.category
-                              ? (EXPENSE_CATEGORY_LABELS[e.category as ExpenseCategory] ?? e.category)
-                              : '—'}
-                          </span>
-                        </td>
-                        <td className="td-danger">{formatARS(e.amount)}</td>
-                        <td className="td-muted">{e.notes ?? '—'}</td>
-                        <td className="td-muted">{e.registered_by_name ?? '—'}</td>
-                        <td>
-                          <div className="action-group">
-                            <button
-                              onClick={() => setEditExpense(e)}
-                              disabled={!!actionLoading}
-                              className="action-btn"
-                            >
-                              Editar
-                            </button>
-                            {confirmDeleteExpId === e.id ? (
-                              <span className="flex items-center gap-1 text-xs">
-                                <span className="td-muted">¿Eliminar?</span>
-                                <button
-                                  onClick={() => handleDeleteExpense(e.id)}
-                                  disabled={actionLoading === `exp-del-${e.id}`}
-                                  className="action-btn action-btn--danger"
-                                >
-                                  Sí
-                                </button>
-                                <button
-                                  onClick={() => setConfirmDeleteExpId(null)}
-                                  className="action-btn"
-                                >
-                                  No
-                                </button>
-                              </span>
-                            ) : (
-                              <button
-                                onClick={() => setConfirmDeleteExpId(e.id)}
-                                disabled={!!actionLoading}
-                                className="action-btn action-btn--danger"
-                              >
-                                Eliminar
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                  <tfoot>
-                    <tr className="tfoot-row">
-                      <td colSpan={3}>
-                        <strong>{filteredExpenses.length} gasto{filteredExpenses.length !== 1 ? 's' : ''}</strong>
-                        {hasExpFilters && expenses.length !== filteredExpenses.length && (
-                          <span style={{ color: '#a1a1aa', fontSize: '0.75rem', marginLeft: '0.5rem' }}>
-                            (de {expenses.length})
-                          </span>
-                        )}
-                      </td>
-                      <td><strong className="td-danger">{formatARS(hasExpFilters ? filteredTotal : kpis.expensesTotal)}</strong></td>
-                      <td colSpan={3}></td>
-                    </tr>
-                  </tfoot>
-                </table>
-              )}
-            </div>
-            <PaginationControls
-              currentPage={gCurrent}
-              totalPages={gTotalPages}
-              pageSize={gastosPageSize}
-              totalItems={filteredExpenses.length}
-              startIdx={filteredExpenses.length === 0 ? 0 : (gCurrent - 1) * gastosPageSize + 1}
-              endIdx={Math.min(gCurrent * gastosPageSize, filteredExpenses.length)}
-              canGoPrevious={gCurrent > 1}
-              canGoNext={gCurrent < gTotalPages}
-              onPageChange={setGastosPage}
-              onPageSizeChange={(s) => { setGastosPageSize(s); setGastosPage(1) }}
-              itemLabel="gastos"
-            />
-          </div>
-          )
-        })()}
-
       </main>
 
       {/* ── MODALES ── */}
-      {(showExpenseForm || editExpense) && selectedWeek && (
-        <ExpenseFormModal
-          expense={editExpense}
-          branchId={selectedBranch}
-          weekId={selectedWeek.id}
-          registeredBy={currentUserId}
-          onClose={() => { setShowExpenseForm(false); setEditExpense(null) }}
-          onSaved={async () => {
-            setShowExpenseForm(false)
-            setEditExpense(null)
-            await loadTabData()
-          }}
-        />
-      )}
       {editTx && (
         <EditTransactionModal
           tx={editTx}
@@ -2302,138 +1970,6 @@ function AdminErrorScreen({ message, onRetry }: { message: string; onRetry: () =
       <div className="error-box">
         <p className="error-msg">{message}</p>
         <button onClick={onRetry} className="admin-btn admin-btn--primary">Reintentar</button>
-      </div>
-    </div>
-  )
-}
-
-// ─── Modal: Nuevo / Editar gasto ───────────────────────────────────────────
-function ExpenseFormModal({
-  expense,
-  branchId,
-  weekId,
-  registeredBy,
-  onClose,
-  onSaved,
-}: {
-  expense?: ExpenseWithUser | null
-  branchId: string
-  weekId: string
-  registeredBy: string
-  onClose: () => void
-  onSaved: () => void
-}) {
-  const isEdit = !!expense
-  const [form, setForm] = useState({
-    concept: expense?.concept ?? '',
-    expense_date: expense?.expense_date ?? todayLocal(),
-    amount: expense ? String(expense.amount) : '',
-    category: expense?.category ?? '',
-    notes: expense?.notes ?? '',
-  })
-  const [saving, setSaving] = useState(false)
-  const [err, setErr] = useState<string | null>(null)
-
-  async function handleSave() {
-    if (!form.concept || !form.amount || parseFloat(form.amount) <= 0) {
-      setErr('Concepto y monto son obligatorios.')
-      return
-    }
-    try {
-      setSaving(true)
-      if (isEdit && expense) {
-        const patch: ExpenseUpdate = {
-          concept: form.concept,
-          expense_date: form.expense_date,
-          amount: parseFloat(form.amount),
-          category: form.category || null,
-          notes: form.notes || null,
-        }
-        await updateExpense(expense.id, patch)
-      } else {
-        const payload: ExpenseInsert = {
-          branch_id: branchId,
-          week_id: weekId,
-          concept: form.concept,
-          expense_date: form.expense_date,
-          amount: parseFloat(form.amount),
-          category: form.category || null,
-          notes: form.notes || null,
-          registered_by: registeredBy,
-          paid_by: null,
-        }
-        await createExpense(payload)
-      }
-      onSaved()
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Error guardando')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  return (
-    <div className="modal-overlay">
-      <div className="modal-box" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h3>{isEdit ? 'Editar gasto' : 'Registrar gasto'}</h3>
-          <button onClick={onClose} className="modal-close">✕</button>
-        </div>
-        <div className="modal-body">
-          {err && <p className="form-error">{err}</p>}
-          <label className="form-label">Concepto *</label>
-          <input
-            className="form-input"
-            value={form.concept}
-            onChange={(e) => setForm({ ...form, concept: e.target.value })}
-            placeholder="Ej: Alquiler local"
-          />
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">Fecha *</label>
-              <input
-                type="date"
-                className="form-input"
-                value={form.expense_date}
-                onChange={(e) => setForm({ ...form, expense_date: e.target.value })}
-              />
-            </div>
-            <div className="form-group">
-              <label className="form-label">Monto *</label>
-              <CurrencyInput
-                className="form-input"
-                value={form.amount}
-                onChange={(v) => setForm({ ...form, amount: v })}
-                placeholder="0"
-              />
-            </div>
-          </div>
-          <label className="form-label">Categoría</label>
-          <select
-            className="form-input"
-            value={form.category}
-            onChange={(e) => setForm({ ...form, category: e.target.value })}
-          >
-            <option value="">Sin categoría</option>
-            {EXPENSE_CATEGORIES.map((c) => (
-              <option key={c} value={c}>{EXPENSE_CATEGORY_LABELS[c]}</option>
-            ))}
-          </select>
-          <label className="form-label">Notas</label>
-          <textarea
-            className="form-input"
-            rows={2}
-            value={form.notes}
-            onChange={(e) => setForm({ ...form, notes: e.target.value })}
-            placeholder="Opcional"
-          />
-        </div>
-        <div className="modal-footer">
-          <button onClick={onClose} className="admin-btn admin-btn--ghost">Cancelar</button>
-          <button onClick={handleSave} disabled={saving} className="admin-btn admin-btn--primary">
-            {saving ? 'Guardando...' : isEdit ? 'Guardar cambios' : 'Guardar gasto'}
-          </button>
-        </div>
       </div>
     </div>
   )

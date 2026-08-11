@@ -8,6 +8,7 @@ interface BarberSideDrawerProps {
   onLogout: () => void
   onRegisterCut: () => void
   onViewLiquidations: () => void
+  onViewMaintenance: () => void
   onRequestAdvance: () => void
   /** Igual que el botón principal: solo muestra "Pedir adelanto" si está habilitado. */
   advanceEnabled?: boolean
@@ -23,6 +24,7 @@ export function BarberSideDrawer({
   onLogout,
   onRegisterCut,
   onViewLiquidations,
+  onViewMaintenance,
   onRequestAdvance,
   advanceEnabled = false,
   barberName = 'Barbero',
@@ -83,6 +85,17 @@ export function BarberSideDrawer({
           >
             <span className="text-xl">💰</span>
             <span className="font-medium">Mis liquidaciones</span>
+          </button>
+
+          <button
+            onClick={() => {
+              onViewMaintenance()
+              onClose()
+            }}
+            className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
+          >
+            <span className="text-xl">🧹</span>
+            <span className="font-medium">Mantenimiento</span>
           </button>
 
           {advanceEnabled && (

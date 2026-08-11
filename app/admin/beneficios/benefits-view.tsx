@@ -3,12 +3,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { usePersistedBranch, getStoredBranch } from '@/lib/hooks/usePersistedBranch'
-import type { Branch, Profile, Benefit, BenefitInsert } from '@/lib/supabase/database.types'
+import type { Branch, Profile, Benefit, BenefitInsert, LifetimeMember } from '@/lib/supabase/database.types'
 import {
   getCurrentProfile,
   getBenefitsByBranch,
   createBenefit,
   updateBenefit,
+  getLifetimeMembers,
+  createLifetimeMember,
+  setLifetimeMemberActive,
 } from '@/lib/supabase/supabase.client'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import { CurrencyInput } from '@/app/components/currency-input'
@@ -40,6 +43,8 @@ export default function BenefitsView() {
   const [formDesc, setFormDesc]   = useState('')
   const [formType, setFormType]   = useState<'fixed' | 'percentage'>('percentage')
   const [formValue, setFormValue] = useState('')
+  // Beneficio de socio vitalicio: exige DNI y lo valida contra la lista.
+  const [formRequiresDoc, setFormRequiresDoc] = useState(false)
   const [creating, setCreating]   = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -109,11 +114,12 @@ export default function BenefitsView() {
         discount_type:  formType,
         discount_value: value,
         is_active:      true,
+        requires_member_document: formRequiresDoc,
       }
       const created = await createBenefit(payload)
       setBenefits((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
       setShowForm(false)
-      setFormName(''); setFormDesc(''); setFormValue(''); setFormType('percentage')
+      setFormName(''); setFormDesc(''); setFormValue(''); setFormType('percentage'); setFormRequiresDoc(false)
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Error al crear')
     } finally {
@@ -253,6 +259,21 @@ export default function BenefitsView() {
                 />
               </div>
             </div>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formRequiresDoc}
+                onChange={(e) => setFormRequiresDoc(e.target.checked)}
+                className="mt-0.5 accent-amber-500"
+              />
+              <span className="text-sm text-zinc-300">
+                Requiere documento de socio vitalicio
+                <span className="block text-xs text-zinc-500 mt-0.5">
+                  Al elegir este beneficio se pide el DNI y se valida contra la lista de socios vitalicios.
+                  Si el DNI no está en la lista, el corte no se guarda.
+                </span>
+              </span>
+            </label>
             {formError && <p className="text-red-400 text-sm">{formError}</p>}
             <div className="flex gap-3">
               <button type="submit" disabled={creating}
@@ -313,7 +334,110 @@ export default function BenefitsView() {
           </div>
         </section>
       )}
+
+      <LifetimeMembersSection />
     </div>
+  )
+}
+
+// ─── Socios vitalicios ─────────────────────────────────────────────────────
+// Lista GLOBAL (no por sucursal): un socio vitalicio vale en cualquier local.
+// Los beneficios marcados con requires_member_document validan el DNI contra esta lista.
+function LifetimeMembersSection() {
+  const [members, setMembers] = useState<LifetimeMember[]>([])
+  const [loading, setLoading] = useState(true)
+  const [name, setName] = useState('')
+  const [doc, setDoc] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  const load = useCallback(async () => {
+    try {
+      setMembers(await getLifetimeMembers())
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Error cargando socios')
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+
+  async function handleAdd(e: React.FormEvent) {
+    e.preventDefault()
+    if (!name.trim() || !doc.trim()) { setErr('Completá nombre y documento.'); return }
+    setSaving(true)
+    setErr(null)
+    try {
+      await createLifetimeMember(name, doc)
+      setName(''); setDoc('')
+      await load()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Error al agregar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <section className="mt-10">
+      <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-3">
+        Socios vitalicios · {members.length}
+      </h2>
+      <p className="text-zinc-500 text-sm mb-4">
+        Lista única para todas las sucursales. Se usa para validar el DNI en los beneficios
+        marcados como “requiere documento de socio vitalicio”.
+      </p>
+
+      <form onSubmit={handleAdd} className="flex flex-col sm:flex-row gap-2 mb-4">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Nombre y apellido"
+          className="flex-1 bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-600 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+        />
+        <input
+          value={doc}
+          onChange={(e) => setDoc(e.target.value)}
+          placeholder="DNI sin puntos"
+          inputMode="numeric"
+          className="sm:w-48 bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-600 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+        />
+        <button
+          type="submit"
+          disabled={saving}
+          className="bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-zinc-950 font-bold px-5 py-2.5 rounded-lg text-sm transition-colors"
+        >
+          {saving ? 'Agregando...' : 'Agregar'}
+        </button>
+      </form>
+      {err && <p className="text-red-400 text-sm mb-3">{err}</p>}
+
+      {loading ? (
+        <p className="text-zinc-500 text-sm">Cargando...</p>
+      ) : members.length === 0 ? (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-8 text-center">
+          <p className="text-zinc-500 text-sm">Todavía no hay socios vitalicios cargados.</p>
+        </div>
+      ) : (
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl divide-y divide-zinc-800">
+          {members.map((m) => (
+            <div key={m.id} className="px-4 py-3 flex items-center gap-3">
+              <span className={`flex-1 text-sm ${m.is_active ? 'text-zinc-200' : 'text-zinc-600 line-through'}`}>
+                {m.full_name}
+              </span>
+              <span className="text-zinc-500 text-xs font-mono">{m.document_number}</span>
+              <button
+                onClick={async () => { await setLifetimeMemberActive(m.id, !m.is_active); load() }}
+                className={`text-xs transition-colors ${m.is_active ? 'text-zinc-500 hover:text-red-400' : 'text-zinc-500 hover:text-emerald-400'}`}
+              >
+                {m.is_active ? 'Desactivar' : 'Activar'}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   )
 }
 

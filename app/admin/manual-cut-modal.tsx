@@ -7,6 +7,7 @@ import {
   getWeeksByBranch,
   getActiveBenefitsByBranch,
   computeBenefitDiscount,
+  findLifetimeMemberByDocument,
   registerCut,
 } from '@/lib/supabase/supabase.client'
 import type {
@@ -191,6 +192,8 @@ export default function ManualCutModal({
   const [discount,      setDiscount]      = useState('')
   const [discountReason, setDiscountReason] = useState('')
   const [benefitId,     setBenefitId]     = useState('')
+  // Beneficio socio vitalicio: DNI a validar contra la lista antes de guardar.
+  const [memberDocument, setMemberDocument] = useState('')
   const [observations,  setObservations]  = useState('')
   const [method,        setMethod]        = useState<PaymentMethod | ''>('')
   const [splitPayment,  setSplitPayment]  = useState(false)
@@ -313,6 +316,19 @@ export default function ManualCutModal({
 
     setSubmitting(true)
     try {
+      // Beneficio de socio vitalicio: el DNI tiene que estar en la lista.
+      // Si no está, NO se guarda el corte.
+      let lifetimeMemberId: string | null = null
+      if (selectedBenefit?.requires_member_document) {
+        const member = await findLifetimeMemberByDocument(memberDocument)
+        if (!member) {
+          setError('El DNI no está en la lista de socios vitalicios. Por favor, comunicate con el administrador.')
+          setSubmitting(false)
+          return
+        }
+        lifetimeMemberId = member.id
+      }
+
       const payload: RegisterCutPayload = {
         service_id:       serviceId,
         amount:           effectiveAmount,
@@ -326,6 +342,7 @@ export default function ManualCutModal({
         discount_reason:  discountReasonFinal,
         benefit_id:       benefitId || null,
         benefit_full_amount_to_barber: isVipFullToBarberPreview,
+        lifetime_member_id: lifetimeMemberId,
       }
       await registerCut(payload, barber, effectiveWeekId, adminId)
       onSuccess()
@@ -442,6 +459,23 @@ export default function ManualCutModal({
                       </option>
                     ))}
                   </select>
+                  {/* Socio vitalicio: DNI obligatorio, se valida contra la lista al guardar */}
+                  {selectedBenefit?.requires_member_document && (
+                    <div style={{ marginTop: '0.6rem' }}>
+                      <label className="form-label">Número de documento del socio *</label>
+                      <TextInput
+                        className="form-input"
+                        value={memberDocument}
+                        onChange={setMemberDocument}
+                        placeholder="DNI sin puntos"
+                        inputMode="numeric"
+                        allowNumbers
+                      />
+                      <p style={{ color: '#71717a', fontSize: '0.7rem', marginTop: '0.25rem' }}>
+                        Se valida contra la lista de socios vitalicios al guardar.
+                      </p>
+                    </div>
+                  )}
                   {selectedBenefit && discountNum > 0 && (
                     <p style={{ color: '#34d399', fontSize: '0.75rem', marginTop: '0.3rem' }}>
                       Ahorra {formatARS(discountNum)} con &quot;{selectedBenefit.name}&quot;

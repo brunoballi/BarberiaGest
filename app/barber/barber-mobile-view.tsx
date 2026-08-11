@@ -21,6 +21,8 @@ import {
   getBarberTransactionsForWeek,
   getBarberTransactionsByDateRange,
   getBarberSettlements,
+  getBarberMaintenanceForWeek,
+  type BarberMaintenanceStatus,
   getSettlementStatusForWeek,
   computeBenefitDiscount,
   registerCut,
@@ -113,7 +115,7 @@ const DEFAULT_SERVICES: ServiceOption[] = [
   { name: 'Otro', base_price: 0, is_active: true },
 ]
 
-type View = 'home' | 'register' | 'success' | 'settlements'
+type View = 'home' | 'register' | 'success' | 'settlements' | 'maintenance'
 
 // ─────────────────────────────────────────────────────────────────────────
 // COMPONENTE PRINCIPAL
@@ -135,6 +137,9 @@ export default function BarberMobileView() {
   const [settlements, setSettlements] = useState<SettlementWithBarber[]>([])
   const [settlementsLoaded, setSettlementsLoaded] = useState(false)
   const [settlementsLoading, setSettlementsLoading] = useState(false)
+  // Mantenimiento: tareas que el admin le asignó al barbero en la semana en curso.
+  const [maintenance, setMaintenance] = useState<BarberMaintenanceStatus | null>(null)
+  const [maintenanceLoading, setMaintenanceLoading] = useState(false)
   const [settlFilterStatus, setSettlFilterStatus] = useState('')
   // Filtros de liquidaciones: por defecto el mes actual. Semana opcional dentro del mes.
   const [settlFilterMonth, setSettlFilterMonth] = useState<string>(() => todayLocal().slice(0, 7))
@@ -260,6 +265,20 @@ export default function BarberMobileView() {
       // silently ignore — list will be empty
     } finally {
       setSettlementsLoading(false)
+    }
+  }
+
+  async function goToMaintenance() {
+    setView('maintenance')
+    if (!profile || !week) return
+    setMaintenanceLoading(true)
+    try {
+      const st = await getBarberMaintenanceForWeek(profile.branch_id, week.id, profile.id)
+      setMaintenance(st)
+    } catch {
+      setMaintenance(null)
+    } finally {
+      setMaintenanceLoading(false)
     }
   }
 
@@ -1161,6 +1180,81 @@ export default function BarberMobileView() {
   }
 
   // ── SETTLEMENTS ──────────────────────────────────────────────────────────
+  if (view === 'maintenance') {
+    const pct = maintenance && maintenance.total > 0
+      ? Math.round((maintenance.done / maintenance.total) * 100)
+      : 0
+    return (
+      <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
+        <header className="flex items-center gap-3 px-5 pt-safe pt-6 pb-4">
+          <button onClick={() => setView('home')} className="icon-btn"><IconBack /></button>
+          <h1 className="text-lg font-bold text-white">Mantenimiento</h1>
+        </header>
+
+        <div className="flex-1 overflow-y-auto px-5 pb-8">
+          {maintenanceLoading ? (
+            <p className="text-zinc-500 text-sm text-center py-10">Cargando tus tareas...</p>
+          ) : !maintenance || !maintenance.sheetExists ? (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-8 text-center">
+              <p className="text-zinc-400 text-sm">
+                Todavía no hay planilla de mantenimiento para esta semana.
+              </p>
+              <p className="text-zinc-600 text-xs mt-2">
+                Cuando el administrador la cargue, vas a ver acá las tareas que te tocan.
+              </p>
+            </div>
+          ) : maintenance.total === 0 ? (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-8 text-center">
+              <p className="text-zinc-400 text-sm">Esta semana no tenés tareas asignadas.</p>
+            </div>
+          ) : (
+            <>
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
+                    Tu semana
+                  </span>
+                  <span className={`text-sm font-bold ${maintenance.allDone ? 'text-emerald-400' : 'text-amber-400'}`}>
+                    {maintenance.done} de {maintenance.total}
+                  </span>
+                </div>
+                <div className="h-2 rounded-full bg-zinc-800 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${maintenance.allDone ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                {!maintenance.allDone && (
+                  <p className="text-zinc-500 text-xs mt-2">
+                    Las marca el administrador a medida que verifica las tareas.
+                  </p>
+                )}
+              </div>
+
+              <div className="bg-zinc-900 border border-zinc-800 rounded-xl divide-y divide-zinc-800">
+                {maintenance.items.map((it) => (
+                  <div key={it.id} className="px-4 py-3 flex items-center gap-3">
+                    <span className="text-zinc-600 text-sm w-5 text-right flex-shrink-0">{it.item_number}.</span>
+                    <span className={`flex-1 text-sm ${it.done ? 'text-zinc-500 line-through' : 'text-zinc-200'}`}>
+                      {it.description}
+                    </span>
+                    <span className={`flex-shrink-0 text-xs font-bold px-2.5 py-1 rounded-lg border ${
+                      it.done
+                        ? 'bg-emerald-500/15 border-emerald-600 text-emerald-400'
+                        : 'bg-zinc-800 border-zinc-700 text-zinc-500'
+                    }`}>
+                      {it.done ? 'SÍ' : 'NO'}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    )
+  }
+
   if (view === 'settlements') {
     const STATUS_FILTERS = [
       { value: '', label: 'Todas' },
@@ -1465,6 +1559,7 @@ export default function BarberMobileView() {
       onLogout={handleLogout}
       onRegisterCut={() => { setIsDrawerOpen(false); goToRegister() }}
       onViewLiquidations={() => { setIsDrawerOpen(false); goToSettlements() }}
+      onViewMaintenance={() => { setIsDrawerOpen(false); goToMaintenance() }}
       onRequestAdvance={() => { setIsDrawerOpen(false); setShowAdvanceModal(true); setAdvanceDone(false) }}
       advanceEnabled={advancesAllowed}
       barberName={profile?.full_name || 'Barbero'}

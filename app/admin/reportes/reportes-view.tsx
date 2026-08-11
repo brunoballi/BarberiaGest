@@ -111,28 +111,31 @@ export default function ReportesView() {
       const myBranches = await getMyBranchesCached()
       setMultiBranch(myBranches.length > 1)
       if (myBranches.length === 0) { setReports([]); setMonthFins([]); setDebtRows([]); return }
-      const data = await getReportByPeriod(myBranches, startDate, endDate)
+      // Los tres bloques son independientes entre sí: se piden en paralelo.
+      // Antes iban en cascada (reporte → deudas → detalle mensual) y la pantalla
+      // esperaba la suma de los tres tiempos en vez del más lento.
+      const [data, debtLists, fins] = await Promise.all([
+        getReportByPeriod(myBranches, startDate, endDate),
+        // Saldo deudor: liquidaciones confirmadas con deuda por sucursal
+        Promise.all(
+          myBranches.map(async (b) => {
+            const items = await getBarberDebtSummary(b.id)
+            return items.map((it) => ({ ...it, branchId: b.id, branchName: b.name }))
+          })
+        ),
+        // Detalle mensual (saldo inicial + comisiones + box + inyecciones − gastos = ganancia neta)
+        Promise.all(
+          myBranches.map(async (b) => {
+            const ms = await getMonthsWithWeeks(b.id)
+            const mrow = ms.find((m) => m.year === year && m.month === month)
+            if (!mrow) return null
+            const fin = await getMonthFinancials(b.id, mrow.id)
+            return { branchId: b.id, branchName: b.name, monthId: mrow.id, fin }
+          })
+        ),
+      ])
       setReports(data)
-
-      // Saldo deudor: liquidaciones confirmadas con deuda por sucursal
-      const debtLists = await Promise.all(
-        myBranches.map(async (b) => {
-          const items = await getBarberDebtSummary(b.id)
-          return items.map((it) => ({ ...it, branchId: b.id, branchName: b.name }))
-        })
-      )
       setDebtRows(debtLists.flat())
-
-      // Detalle mensual (saldo inicial + comisiones + box + inyecciones − gastos = ganancia neta)
-      const fins = await Promise.all(
-        myBranches.map(async (b) => {
-          const ms = await getMonthsWithWeeks(b.id)
-          const mrow = ms.find((m) => m.year === year && m.month === month)
-          if (!mrow) return null
-          const fin = await getMonthFinancials(b.id, mrow.id)
-          return { branchId: b.id, branchName: b.name, monthId: mrow.id, fin }
-        })
-      )
       setMonthFins(fins.filter((x): x is { branchId: string; branchName: string; monthId: string; fin: MonthFinancials } => x !== null))
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error al cargar reportes')
@@ -172,15 +175,29 @@ export default function ReportesView() {
       totalExpenses:  acc.totalExpenses + r.totalExpenses,
       expensesByCategory: acc.expensesByCategory,
       partnerWithdrawals: acc.partnerWithdrawals + r.partnerWithdrawals,
+      partnerWithdrawalsPartners: acc.partnerWithdrawalsPartners.concat(r.partnerWithdrawalsPartners),
       netProfit:      acc.netProfit + r.netProfit,
       profitMargin:   0,
     }),
-    { branchId: 'total', branchName: 'Total', cutCount: 0, totalIncome: 0, branchShare: 0, branchFromCuts: 0, branchFromRent: 0, branchCutsBarbers: [], branchRentBarbers: [], barberShare: 0, barbers: [], totalExpenses: 0, expensesByCategory: {}, partnerWithdrawals: 0, netProfit: 0, profitMargin: 0 }
+    { branchId: 'total', branchName: 'Total', cutCount: 0, totalIncome: 0, branchShare: 0, branchFromCuts: 0, branchFromRent: 0, branchCutsBarbers: [], branchRentBarbers: [], barberShare: 0, barbers: [], totalExpenses: 0, expensesByCategory: {}, partnerWithdrawals: 0, partnerWithdrawalsPartners: [], netProfit: 0, profitMargin: 0 }
   )
   total.profitMargin = total.totalIncome > 0 ? (total.netProfit / total.totalIncome) * 100 : 0
   // Consolidado: los barberos vienen concatenados por sucursal, se reordenan por aporte.
   total.branchCutsBarbers.sort((a, b) => b.total - a.total)
   total.branchRentBarbers.sort((a, b) => b.total - a.total)
+  // Un socio puede retirar de varias sucursales: en el consolidado se unifica
+  // en una sola línea por socio, si no aparecería repetido.
+  total.partnerWithdrawalsPartners = Object.values(
+    total.partnerWithdrawalsPartners.reduce<Record<string, { partnerId: string | null; fullName: string; total: number }>>(
+      (acc, p) => {
+        const key = p.partnerId ?? 'sin-socio'
+        if (!acc[key]) acc[key] = { partnerId: p.partnerId, fullName: p.fullName, total: 0 }
+        acc[key].total += p.total
+        return acc
+      },
+      {}
+    )
+  ).sort((a, b) => b.total - a.total)
   const avg = {
     totalIncome:   reports.length ? total.totalIncome   / reports.length : 0,
     branchShare:   reports.length ? total.branchShare   / reports.length : 0,
@@ -333,7 +350,7 @@ export default function ReportesView() {
                   {r.partnerWithdrawals > 0 && (
                     <>
                       <div className="report-card__divider" />
-                      <MetricRow label="Retiros de socios" value={formatARS(r.partnerWithdrawals)} color="amber" small />
+                      <PartnerBreakdownRow partners={r.partnerWithdrawalsPartners} total={r.partnerWithdrawals} />
                     </>
                   )}
                 </div>
@@ -359,7 +376,7 @@ export default function ReportesView() {
                 <MetricRow label="Ganancia neta"      value={formatARS(total.netProfit)} color={total.netProfit >= 0 ? 'violet' : 'red'} bold />
                 <MetricRow label="Margen promedio"    value={formatPct(avg.profitMargin)} color={avg.profitMargin >= 0 ? 'emerald' : 'red'} bold />
                 {total.partnerWithdrawals > 0 && (
-                  <MetricRow label="Retiros de socios" value={formatARS(total.partnerWithdrawals)} color="amber" small />
+                  <PartnerBreakdownRow partners={total.partnerWithdrawalsPartners} total={total.partnerWithdrawals} />
                 )}
                 <div className="report-card__divider" />
                 <p className="report-card__avg-title">Promedio por sucursal</p>
@@ -590,6 +607,46 @@ function BranchBreakdownRow({ total, fromCuts, fromRent, cutsBarbers, rentBarber
               ))}
             </>
           )}
+        </div>
+      )}
+    </>
+  )
+}
+
+/**
+ * Retiros de socios, con el detalle de cuánto retiró cada uno.
+ * Mismo comportamiento que el desglose por barbero: la fila total es clickeable
+ * y despliega las líneas por socio.
+ */
+function PartnerBreakdownRow({ partners, total }: {
+  partners: { partnerId: string | null; fullName: string; total: number }[]
+  total: number
+}) {
+  const [open, setOpen] = useState(false)
+  const hasBreakdown = partners.length > 0
+  return (
+    <>
+      <div
+        className="metric-row"
+        style={{ cursor: hasBreakdown ? 'pointer' : 'default' }}
+        onClick={() => hasBreakdown && setOpen((o) => !o)}
+      >
+        <span className="metric-row__label" style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', fontSize: '0.8rem' }}>
+          {hasBreakdown && <span style={{ fontSize: '0.6rem', color: '#71717a' }}>{open ? '▼' : '▶'}</span>}
+          Retiros de socios
+        </span>
+        <span className="metric-row__value" style={{ color: '#f59e0b', fontSize: '0.8rem' }}>
+          {formatARS(total)}
+        </span>
+      </div>
+      {open && hasBreakdown && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.2rem', margin: '0.1rem 0 0.3rem', paddingLeft: '0.9rem', borderLeft: '2px solid #27272a' }}>
+          {partners.map((p) => (
+            <div key={p.partnerId ?? 'sin-socio'} className="metric-row">
+              <span className="metric-row__label" style={{ fontSize: '0.72rem', color: '#a1a1aa' }}>{p.fullName}</span>
+              <span className="metric-row__value" style={{ fontSize: '0.78rem', color: '#d4d4d8' }}>{formatARS(p.total)}</span>
+            </div>
+          ))}
         </div>
       )}
     </>

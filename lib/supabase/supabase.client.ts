@@ -41,6 +41,7 @@ import type {
   Benefit,
   BenefitInsert,
   BenefitUpdate,
+  LifetimeMember,
   MaintenanceSettings,
   MaintenanceTemplateBlockWithTasks,
   MaintenanceSheetWithItems,
@@ -59,7 +60,7 @@ export const supabase = createBrowserClient(
 // ============================================================
 // AUTH HELPERS
 // ============================================================
-export async function getCurrentProfile(): Promise<Profile | null> {
+async function fetchCurrentProfile(): Promise<Profile | null> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
 
@@ -74,6 +75,33 @@ export async function getCurrentProfile(): Promise<Profile | null> {
     return null
   }
   return data
+}
+
+// Cache en memoria del perfil (10 min).
+// Cada pantalla admin lo pedía de nuevo al montar — el page.tsx del server ya lo
+// había resuelto para el guard y el componente cliente lo volvía a pedir. Además
+// deduplica las llamadas concurrentes (varios componentes montando a la vez
+// comparten la misma promesa en vuelo).
+// El logout hace window.location.href = '/login' (recarga completa), así que el
+// módulo se reinicia y no queda el perfil del usuario anterior.
+const PROFILE_TTL_MS = 10 * 60_000
+let profileCache: { at: number; promise: Promise<Profile | null> } | null = null
+
+export async function getCurrentProfile(): Promise<Profile | null> {
+  const now = Date.now()
+  if (profileCache && now - profileCache.at < PROFILE_TTL_MS) {
+    return profileCache.promise
+  }
+  const promise = fetchCurrentProfile()
+  profileCache = { at: now, promise }
+  // Un error no debe quedar cacheado: el próximo intento tiene que reintentar.
+  promise.catch(() => { profileCache = null })
+  return promise
+}
+
+/** Fuerza que el próximo getCurrentProfile vuelva a consultar (ej: tras editar el propio perfil). */
+export function invalidateCurrentProfile(): void {
+  profileCache = null
 }
 
 // ============================================================
@@ -185,7 +213,7 @@ export async function updateService(
 export async function getBenefitsByBranch(branchId: string): Promise<Benefit[]> {
   const { data, error } = await supabase
     .from('benefits')
-    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at, full_amount_to_barber')
+    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at, full_amount_to_barber, requires_member_document')
     .eq('branch_id', branchId)
     .order('name')
 
@@ -197,7 +225,7 @@ export async function getBenefitsByBranch(branchId: string): Promise<Benefit[]> 
 export async function getActiveBenefitsByBranch(branchId: string): Promise<Benefit[]> {
   const { data, error } = await supabase
     .from('benefits')
-    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at, full_amount_to_barber')
+    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at, full_amount_to_barber, requires_member_document')
     .eq('branch_id', branchId)
     .eq('is_active', true)
     .order('name')
@@ -965,6 +993,7 @@ export async function registerCut(
     discount_amount: payload.discount_amount ?? 0,
     discount_reason: payload.discount_reason ?? null,
     benefit_id: payload.benefit_id ?? null,
+    lifetime_member_id: payload.lifetime_member_id ?? null,
   }
 
   const { data, error } = await supabase
@@ -1182,7 +1211,7 @@ export async function getBarberTransactionsByDateRange(
 ): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
-    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, client_surname, discount_amount, discount_reason, benefit_id')
+    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, client_surname, discount_amount, discount_reason, benefit_id, lifetime_member_id')
     .eq('barber_id', barberId)
     .gte('transaction_date', startDate)
     .lte('transaction_date', endDate)
@@ -1199,7 +1228,7 @@ export async function getBarberTransactionsForWeek(
 ): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
-    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, client_surname, discount_amount, discount_reason, benefit_id')
+    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, client_surname, discount_amount, discount_reason, benefit_id, lifetime_member_id')
     .eq('barber_id', barberId)
     .eq('week_id', weekId)
     .order('transaction_date', { ascending: false })
@@ -1295,12 +1324,17 @@ export async function fullEditTransaction(
 ): Promise<void> {
   // Semana original ANTES de editar: si el corte se mueve de semana, la
   // liquidación vieja también hay que recalcularla (pierde este corte).
+  // Un solo SELECT antes del update: trae la semana original y los datos del
+  // barbero que hacen falta después. Antes eran dos consultas a la misma fila
+  // (una antes y otra después del update) por el mismo dato.
   const { data: prev } = await supabase
     .from('transactions')
-    .select('week_id')
+    .select('week_id, barber_id, transaction_date, barber:profiles!barber_id ( compensation_type, box_rental_amount )')
     .eq('id', txId)
     .single()
   const oldWeekId: string | null = prev?.week_id ?? null
+  const b = (prev as { barber?: { compensation_type?: string; box_rental_amount?: number | null } } | null)?.barber
+  const barberId = (prev as { barber_id: string } | null)?.barber_id
 
   const { error } = await supabase
     .from('transactions')
@@ -1310,17 +1344,13 @@ export async function fullEditTransaction(
 
   // Box_rental: editar corre el umbral del día → recalcular el reparto alquiler/barbero
   // de TODOS los cortes de esa fecha (fuente de verdad del split diario).
-  const { data: row } = await supabase
-    .from('transactions')
-    .select('barber_id, transaction_date, barber:profiles!barber_id ( compensation_type, box_rental_amount )')
-    .eq('id', txId)
-    .single()
-  const b = (row as { barber?: { compensation_type?: string; box_rental_amount?: number | null } } | null)?.barber
-  const barberId = (row as { barber_id: string } | null)?.barber_id
-  if (b?.compensation_type === 'box_rental' && barberId) {
+  // La fecha se toma de updates si la edición la cambió; si no, la original.
+  const effectiveDate = (updates.transaction_date as string | undefined)
+    ?? (prev as { transaction_date: string } | null)?.transaction_date
+  if (b?.compensation_type === 'box_rental' && barberId && effectiveDate) {
     await resyncBoxRentalDaySplits(
       barberId,
-      (row as { transaction_date: string }).transaction_date,
+      effectiveDate,
       Number(b.box_rental_amount ?? 0),
       false, // admin: preserva el flag is_manual_override que ya fijó fullEditTransaction
     )
@@ -1952,24 +1982,20 @@ export async function createExpense(payload: ExpenseInsert): Promise<Expense> {
   return data
 }
 
-/** Gasto con el nombre del usuario que lo registró (auditoría) */
+/** Gasto con el nombre del usuario que lo registró (auditoría) y, si es retiro, el del socio */
 export interface ExpenseWithUser extends Expense {
   registered_by_name: string | null
+  partner_name: string | null
 }
 
-export async function getExpensesByWeek(weekId: string): Promise<ExpenseWithUser[]> {
-  const { data, error } = await supabase
-    .from('expenses')
-    .select('*')
-    .eq('week_id', weekId)
-    .order('expense_date', { ascending: false })
-
-  if (error) throw new Error(`[getExpensesByWeek] ${error.message}`)
-  const rows = data ?? []
+/** Resuelve los nombres de quién registró cada gasto (mismo patrón que getAuditLog). */
+async function withRegisteredByName(rows: Expense[]): Promise<ExpenseWithUser[]> {
   if (rows.length === 0) return []
 
-  // Resolver nombres de quién registró cada gasto (mismo patrón que getAuditLog)
-  const userIds = [...new Set(rows.map((r) => r.registered_by).filter((id): id is string => !!id))]
+  // Un solo lookup para las dos referencias a profiles (quién registró y qué socio retiró).
+  const userIds = [...new Set(
+    rows.flatMap((r) => [r.registered_by, r.partner_id]).filter((id): id is string => !!id)
+  )]
   let userMap: Record<string, string> = {}
   if (userIds.length > 0) {
     const { data: profiles } = await supabase
@@ -1982,7 +2008,68 @@ export async function getExpensesByWeek(weekId: string): Promise<ExpenseWithUser
   return rows.map((r) => ({
     ...r,
     registered_by_name: userMap[r.registered_by] ?? null,
+    partner_name: r.partner_id ? (userMap[r.partner_id] ?? null) : null,
   }))
+}
+
+/**
+ * Socios habilitados para retirar en una sucursal: los admins con acceso a esa
+ * sucursal (admin_branches). No hay tabla de socios aparte — el socio ES el
+ * admin, que ya existe en el sistema.
+ */
+export async function getPartnersByBranch(
+  branchId: string
+): Promise<{ id: string; full_name: string }[]> {
+  const { data, error } = await supabase
+    .from('admin_branches')
+    .select('admin:profiles!admin_branches_admin_id_fkey(id, full_name, role, is_active)')
+    .eq('branch_id', branchId)
+
+  if (error) throw new Error(`[getPartnersByBranch] ${error.message}`)
+
+  type AdminRow = { id: string; full_name: string; role: string; is_active: boolean }
+  // El embed de PostgREST puede venir como objeto o como array según la inferencia.
+  const rows = (data ?? []) as unknown as { admin: AdminRow | AdminRow[] | null }[]
+
+  return rows
+    .flatMap((row) => (Array.isArray(row.admin) ? row.admin : row.admin ? [row.admin] : []))
+    .filter((a) => a.role === 'admin' && a.is_active)
+    .map((a) => ({ id: a.id, full_name: a.full_name }))
+    .sort((a, b) => a.full_name.localeCompare(b.full_name))
+}
+
+export async function getExpensesByWeek(weekId: string): Promise<ExpenseWithUser[]> {
+  const { data, error } = await supabase
+    .from('expenses')
+    .select('*')
+    .eq('week_id', weekId)
+    .order('expense_date', { ascending: false })
+
+  if (error) throw new Error(`[getExpensesByWeek] ${error.message}`)
+  return withRegisteredByName(data ?? [])
+}
+
+/**
+ * Gastos de una sucursal dentro de un rango de fechas (mes calendario).
+ * Filtra por expense_date, igual que month_financials(): el week_id de un gasto
+ * NO participa del cálculo financiero del mes, así que la vista mensual y el
+ * reporte de saldos miran exactamente las mismas filas.
+ */
+export async function getExpensesByDateRange(
+  branchId: string,
+  from: string,
+  to: string
+): Promise<ExpenseWithUser[]> {
+  const { data, error } = await supabase
+    .from('expenses')
+    .select('*')
+    .eq('branch_id', branchId)
+    .gte('expense_date', from)
+    .lte('expense_date', to)
+    .order('expense_date', { ascending: false })
+
+  if (error) throw new Error(`[getExpensesByDateRange] ${error.message}`)
+  return withRegisteredByName(data ?? [])
 }
 
 // ============================================================
@@ -2157,6 +2244,7 @@ export async function getReportByPeriod(
     branch_from_rent: number
     branch_cuts_barbers: { barber_id: string; full_name: string; total: number }[] | null
     branch_rent_barbers: { barber_id: string; full_name: string; total: number }[] | null
+    partner_withdrawals_partners: { partner_id: string | null; full_name: string; total: number }[] | null
   }
   const byId = new Map((data as ReportRow[] ?? []).map((r) => [r.branch_id, r]))
 
@@ -2198,6 +2286,9 @@ export async function getReportByPeriod(
       totalExpenses,
       expensesByCategory,
       partnerWithdrawals: Number(r?.partner_withdrawals ?? 0),
+      partnerWithdrawalsPartners: (r?.partner_withdrawals_partners ?? []).map((p) => ({
+        partnerId: p.partner_id, fullName: p.full_name, total: Number(p.total),
+      })),
       netProfit,
       profitMargin: totalIncome > 0 ? (netProfit / totalIncome) * 100 : 0,
     }
@@ -2262,6 +2353,7 @@ export async function updateExpense(
     p_amount: patch.amount ?? null,
     p_expense_date: patch.expense_date ?? null,
     p_notes: patch.notes ?? null,
+    p_partner_id: patch.partner_id ?? null,
   })
   if (error) throw new Error(`[updateExpense] ${error.message}`)
 }
@@ -2402,25 +2494,71 @@ export async function getMaintenanceSheetByWeek(
   return { ...sheet, items: (items ?? []) as MaintenanceSheetItem[] }
 }
 
-/** Crea la planilla de la semana copiando la plantilla actual (snapshot de ítems). */
-export async function createMaintenanceSheetFromTemplate(
+/**
+ * Deja la planilla de la semana en curso alineada con la plantilla actual.
+ *
+ * Es idempotente: si la planilla de esa semana no existe la crea, y si ya existe
+ * la sincroniza (por eso no puede chocar con UNIQUE(branch_id, week_id), que era
+ * el error al apretar "crear planilla" dos veces).
+ *
+ * Los SÍ/NO ya marcados se PRESERVAN: se reconocen por barbero + descripción, así
+ * editar la plantilla no borra el avance de la semana. Las tareas que desaparecen
+ * de la plantilla se van, y las nuevas entran en NO.
+ *
+ * Si la plantilla se queda sin ninguna tarea, se borra la planilla de la semana
+ * (no tiene sentido una planilla vacía) y devuelve null.
+ */
+export async function syncMaintenanceSheetFromTemplate(
   branchId: string,
   weekId: string,
   minPct: number,
   createdBy: string,
-): Promise<MaintenanceSheetWithItems> {
+): Promise<MaintenanceSheetWithItems | null> {
   const template = await getMaintenanceTemplate(branchId)
   const hasTasks = template.some((b) => b.tasks.length > 0)
+
+  const { data: existing, error: exErr } = await supabase
+    .from('maintenance_sheets')
+    .select('*')
+    .eq('branch_id', branchId)
+    .eq('week_id', weekId)
+    .maybeSingle()
+  if (exErr) throw new Error(`[syncMaintenanceSheetFromTemplate:lookup] ${exErr.message}`)
+
   if (!hasTasks) {
-    throw new Error('La plantilla está vacía. Configurá las tareas por barbero antes de crear la planilla.')
+    if (existing) {
+      const { error: dErr } = await supabase.from('maintenance_sheets').delete().eq('id', existing.id)
+      if (dErr) throw new Error(`[syncMaintenanceSheetFromTemplate:delete] ${dErr.message}`)
+    }
+    return null
   }
 
-  const { data: sheet, error } = await supabase
-    .from('maintenance_sheets')
-    .insert({ branch_id: branchId, week_id: weekId, min_approval_pct: minPct, created_by: createdBy })
-    .select()
-    .single()
-  if (error) throw new Error(`[createMaintenanceSheetFromTemplate] ${error.message}`)
+  let sheet = existing
+  if (!sheet) {
+    const { data, error } = await supabase
+      .from('maintenance_sheets')
+      .insert({ branch_id: branchId, week_id: weekId, min_approval_pct: minPct, created_by: createdBy })
+      .select()
+      .single()
+    if (error) throw new Error(`[syncMaintenanceSheetFromTemplate:insert] ${error.message}`)
+    sheet = data
+  }
+
+  // Snapshot de lo marcado antes de reemplazar los ítems.
+  const { data: prevItems } = await supabase
+    .from('maintenance_sheet_items')
+    .select('barber_id, description, done')
+    .eq('sheet_id', sheet.id)
+  const doneByKey = new Map(
+    ((prevItems ?? []) as { barber_id: string; description: string; done: boolean }[])
+      .map((i) => [`${i.barber_id}|${i.description}`, i.done])
+  )
+
+  const { error: delErr } = await supabase
+    .from('maintenance_sheet_items')
+    .delete()
+    .eq('sheet_id', sheet.id)
+  if (delErr) throw new Error(`[syncMaintenanceSheetFromTemplate:clear] ${delErr.message}`)
 
   // sort_order es un índice GLOBAL creciente: mantiene a los barberos agrupados y en
   // el orden de la plantilla al ordenar los ítems solo por sort_order.
@@ -2430,28 +2568,24 @@ export async function createMaintenanceSheetFromTemplate(
     b.tasks.forEach((t) => {
       itemRows.push({
         branch_id: branchId,
-        sheet_id: sheet.id,
+        sheet_id: sheet!.id,
         barber_id: b.barber_id,
         zone_label: b.zone_label,
         item_number: t.item_number,
         description: t.description,
-        done: false,
+        done: doneByKey.get(`${b.barber_id}|${t.description}`) ?? false,
         sort_order: order++,
       })
     })
   })
 
-  let items: MaintenanceSheetItem[] = []
-  if (itemRows.length > 0) {
-    const { data: ins, error: iErr } = await supabase
-      .from('maintenance_sheet_items')
-      .insert(itemRows)
-      .select()
-    if (iErr) throw new Error(`[createMaintenanceSheetFromTemplate:items] ${iErr.message}`)
-    items = (ins ?? []) as MaintenanceSheetItem[]
-    items.sort((a, z) => a.sort_order - z.sort_order)
-  }
+  const { data: ins, error: iErr } = await supabase
+    .from('maintenance_sheet_items')
+    .insert(itemRows)
+    .select()
+  if (iErr) throw new Error(`[syncMaintenanceSheetFromTemplate:items] ${iErr.message}`)
 
+  const items = ((ins ?? []) as MaintenanceSheetItem[]).sort((a, z) => a.sort_order - z.sort_order)
   return { ...sheet, items }
 }
 
@@ -2464,6 +2598,168 @@ export async function setMaintenanceItemDone(itemId: string, done: boolean): Pro
   if (error) throw new Error(`[setMaintenanceItemDone] ${error.message}`)
 }
 
+/**
+ * Elimina la planilla de una semana. Los ítems se borran por cascade.
+ * Reemplaza a "regenerar": si cambió la plantilla, se borra y se vuelve a crear.
+ */
+export async function deleteMaintenanceSheet(sheetId: string): Promise<void> {
+  const { error } = await supabase
+    .from('maintenance_sheets')
+    .delete()
+    .eq('id', sheetId)
+  if (error) throw new Error(`[deleteMaintenanceSheet] ${error.message}`)
+}
+
+// ============================================================
+// SOCIOS VITALICIOS
+// ============================================================
+/** Busca un socio vitalicio activo por documento. null = no está en la lista. */
+export async function findLifetimeMemberByDocument(
+  documentNumber: string,
+): Promise<LifetimeMember | null> {
+  const doc = documentNumber.trim()
+  if (!doc) return null
+  const { data, error } = await supabase
+    .from('lifetime_members')
+    .select('*')
+    .eq('document_number', doc)
+    .eq('is_active', true)
+    .maybeSingle()
+  if (error) throw new Error(`[findLifetimeMemberByDocument] ${error.message}`)
+  return (data as LifetimeMember) ?? null
+}
+
+export async function getLifetimeMembers(): Promise<LifetimeMember[]> {
+  const { data, error } = await supabase
+    .from('lifetime_members')
+    .select('*')
+    .order('full_name', { ascending: true })
+  if (error) throw new Error(`[getLifetimeMembers] ${error.message}`)
+  return (data ?? []) as LifetimeMember[]
+}
+
+export async function createLifetimeMember(
+  fullName: string,
+  documentNumber: string,
+): Promise<LifetimeMember> {
+  const { data, error } = await supabase
+    .from('lifetime_members')
+    .insert({ full_name: fullName.trim(), document_number: documentNumber.trim() })
+    .select()
+    .single()
+  if (error) {
+    // unique(document_number): mensaje entendible en vez del error crudo de Postgres.
+    if (error.code === '23505') throw new Error('Ya existe un socio vitalicio con ese documento.')
+    throw new Error(`[createLifetimeMember] ${error.message}`)
+  }
+  return data as LifetimeMember
+}
+
+export async function setLifetimeMemberActive(id: string, isActive: boolean): Promise<void> {
+  const { error } = await supabase
+    .from('lifetime_members')
+    .update({ is_active: isActive })
+    .eq('id', id)
+  if (error) throw new Error(`[setLifetimeMemberActive] ${error.message}`)
+}
+
+export async function deleteLifetimeMember(id: string): Promise<void> {
+  const { error } = await supabase.from('lifetime_members').delete().eq('id', id)
+  if (error) throw new Error(`[deleteLifetimeMember] ${error.message}`)
+}
+
+/** Estado del checklist de mantenimiento de un barbero en una semana. */
+export interface BarberMaintenanceStatus {
+  /** false = el admin todavía no creó la planilla de esa semana */
+  sheetExists: boolean
+  items: MaintenanceSheetItem[]
+  total: number
+  done: number
+  /** true solo si hay planilla y el barbero tiene TODAS sus tareas cumplidas */
+  allDone: boolean
+  pending: string[]
+}
+
+/**
+ * Tareas de mantenimiento de un barbero en una semana.
+ * La usan dos lugares: la vista mobile del barbero (para que vea lo que le tocó)
+ * y Liquidaciones (para habilitar o no el toggle de Mantenimiento).
+ */
+export async function getBarberMaintenanceForWeek(
+  branchId: string,
+  weekId: string,
+  barberId: string,
+): Promise<BarberMaintenanceStatus> {
+  const empty: BarberMaintenanceStatus = {
+    sheetExists: false, items: [], total: 0, done: 0, allDone: false, pending: [],
+  }
+
+  const { data: sheet, error } = await supabase
+    .from('maintenance_sheets')
+    .select('id')
+    .eq('branch_id', branchId)
+    .eq('week_id', weekId)
+    .maybeSingle()
+  if (error) throw new Error(`[getBarberMaintenanceForWeek] ${error.message}`)
+  if (!sheet) return empty
+
+  const { data: items, error: iErr } = await supabase
+    .from('maintenance_sheet_items')
+    .select('*')
+    .eq('sheet_id', sheet.id)
+    .eq('barber_id', barberId)
+    .order('sort_order', { ascending: true })
+  if (iErr) throw new Error(`[getBarberMaintenanceForWeek:items] ${iErr.message}`)
+
+  const rows = (items ?? []) as MaintenanceSheetItem[]
+  const done = rows.filter((i) => i.done).length
+  return {
+    sheetExists: true,
+    items: rows,
+    total: rows.length,
+    done,
+    // Sin tareas asignadas no hay nada que cumplir: no se bloquea la liquidación.
+    allDone: rows.length === 0 || done === rows.length,
+    pending: rows.filter((i) => !i.done).map((i) => i.description),
+  }
+}
+
+/**
+ * Estado del checklist de TODOS los barberos de una semana, en una sola query.
+ * Lo usa Liquidaciones para decidir, por fila, si el toggle de Mantenimiento
+ * se habilita. Devuelve sheetExists=false si el admin todavía no creó la planilla.
+ */
+export async function getMaintenanceStatusByBarber(
+  branchId: string,
+  weekId: string,
+): Promise<{ sheetExists: boolean; byBarber: Record<string, { total: number; done: number; allDone: boolean; pending: string[] }> }> {
+  const { data: sheet, error } = await supabase
+    .from('maintenance_sheets')
+    .select('id')
+    .eq('branch_id', branchId)
+    .eq('week_id', weekId)
+    .maybeSingle()
+  if (error) throw new Error(`[getMaintenanceStatusByBarber] ${error.message}`)
+  if (!sheet) return { sheetExists: false, byBarber: {} }
+
+  const { data: items, error: iErr } = await supabase
+    .from('maintenance_sheet_items')
+    .select('barber_id, description, done')
+    .eq('sheet_id', sheet.id)
+  if (iErr) throw new Error(`[getMaintenanceStatusByBarber:items] ${iErr.message}`)
+
+  const byBarber: Record<string, { total: number; done: number; allDone: boolean; pending: string[] }> = {}
+  for (const it of (items ?? []) as { barber_id: string; description: string; done: boolean }[]) {
+    if (!byBarber[it.barber_id]) byBarber[it.barber_id] = { total: 0, done: 0, allDone: false, pending: [] }
+    const s = byBarber[it.barber_id]
+    s.total++
+    if (it.done) s.done++
+    else s.pending.push(it.description)
+  }
+  for (const s of Object.values(byBarber)) s.allDone = s.done === s.total
+  return { sheetExists: true, byBarber }
+}
+
 /** Cambia el % mínimo de aprobación de una planilla ya creada. */
 export async function setMaintenanceSheetMinPct(sheetId: string, pct: number): Promise<void> {
   const { error } = await supabase
@@ -2471,66 +2767,6 @@ export async function setMaintenanceSheetMinPct(sheetId: string, pct: number): P
     .update({ min_approval_pct: pct, updated_at: new Date().toISOString() })
     .eq('id', sheetId)
   if (error) throw new Error(`[setMaintenanceSheetMinPct] ${error.message}`)
-}
-
-/**
- * Regenera los ítems de una planilla existente desde la plantilla ACTUAL del branch.
- * Borra el snapshot anterior (incluye los SÍ/NO marcados) y vuelve a copiar las
- * tareas vigentes. Conserva la planilla (id, semana, % de aprobación).
- */
-export async function regenerateMaintenanceSheet(
-  sheetId: string,
-  branchId: string,
-): Promise<MaintenanceSheetWithItems> {
-  const template = await getMaintenanceTemplate(branchId)
-  const hasTasks = template.some((b) => b.tasks.length > 0)
-  if (!hasTasks) {
-    throw new Error('La plantilla está vacía. Configurá las tareas por barbero antes de regenerar.')
-  }
-
-  const { error: delErr } = await supabase
-    .from('maintenance_sheet_items')
-    .delete()
-    .eq('sheet_id', sheetId)
-  if (delErr) throw new Error(`[regenerateMaintenanceSheet:delete] ${delErr.message}`)
-
-  const itemRows: Array<Omit<MaintenanceSheetItem, 'id' | 'created_at'>> = []
-  let order = 0
-  template.forEach((b) => {
-    b.tasks.forEach((t) => {
-      itemRows.push({
-        branch_id: branchId,
-        sheet_id: sheetId,
-        barber_id: b.barber_id,
-        zone_label: b.zone_label,
-        item_number: t.item_number,
-        description: t.description,
-        done: false,
-        sort_order: order++,
-      })
-    })
-  })
-
-  const { data: ins, error: iErr } = await supabase
-    .from('maintenance_sheet_items')
-    .insert(itemRows)
-    .select()
-  if (iErr) throw new Error(`[regenerateMaintenanceSheet:items] ${iErr.message}`)
-
-  await supabase
-    .from('maintenance_sheets')
-    .update({ updated_at: new Date().toISOString() })
-    .eq('id', sheetId)
-
-  const { data: sheet, error: sErr } = await supabase
-    .from('maintenance_sheets')
-    .select('*')
-    .eq('id', sheetId)
-    .single()
-  if (sErr) throw new Error(`[regenerateMaintenanceSheet:sheet] ${sErr.message}`)
-
-  const items = ((ins ?? []) as MaintenanceSheetItem[]).sort((a, z) => a.sort_order - z.sort_order)
-  return { ...sheet, items }
 }
 
 /** week_ids de la sucursal que ya tienen planilla (para marcar en el selector). */

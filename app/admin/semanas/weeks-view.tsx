@@ -19,6 +19,8 @@ import {
   calculateAllSettlementsForWeek,
   getSettlementsForWeek,
   setPresentismo,
+  setMantenimiento,
+  getMaintenanceStatusByBarber,
   confirmSettlement,
   deleteSettlement,
   updateBarberExtraDays,
@@ -86,6 +88,8 @@ export default function WeeksView() {
   const [settlements, setSettlements]   = useState<SettlementWithBarber[]>([])
   const [loadingDetail, setLoadingDetail] = useState(false)
   const [actionError, setActionError]   = useState<string | null>(null)
+  // Checklist de mantenimiento de la semana: habilita o bloquea el bono por barbero.
+  const [maintenance, setMaintenance] = useState<{ sheetExists: boolean; byBarber: Record<string, { total: number; done: number; allDone: boolean; pending: string[] }> } | null>(null)
 
   // Action in progress
   const [closing, setClosing]           = useState(false)
@@ -176,16 +180,24 @@ export default function WeeksView() {
     if (selectedWeek?.id === week.id) {
       setSelectedWeek(null)
       setSettlements([])
+      setMaintenance(null)
       return
     }
     setSelectedWeek(week)
     setActionError(null)
     setConfirmClose(false)
+    setMaintenance(null)
     if (week.status !== 'open') {
       setLoadingDetail(true)
       try {
-        const s = await getSettlementsForWeek(week.id)
+        // El checklist se pide junto con las liquidaciones: decide si el bono
+        // de mantenimiento se puede tocar en cada fila.
+        const [s, maint] = await Promise.all([
+          getSettlementsForWeek(week.id),
+          getMaintenanceStatusByBarber(week.branch_id, week.id),
+        ])
         setSettlements(s)
+        setMaintenance(maint)
       } catch (e) {
         setActionError(e instanceof Error ? e.message : 'Error al cargar liquidaciones')
       } finally {
@@ -269,6 +281,18 @@ export default function WeeksView() {
       setSettlements(updated)
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Error al actualizar presentismo')
+    }
+  }
+
+  async function handleMantenimiento(settlement: SettlementWithBarber, met: boolean) {
+    if (!selectedWeek) return
+    setActionError(null)
+    try {
+      await setMantenimiento(settlement.id, selectedWeek.id, settlement.barber_id, met)
+      const updated = await getSettlementsForWeek(selectedWeek.id)
+      setSettlements(updated)
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Error al actualizar mantenimiento')
     }
   }
 
@@ -565,7 +589,9 @@ export default function WeeksView() {
                                 key={s.id}
                                 settlement={s}
                                 weekStatus={week.status}
+                                maintenance={maintenance}
                                 onPresentismo={handlePresentismo}
+                                onMantenimiento={handleMantenimiento}
                                 onConfirm={handleConfirm}
                                 onDelete={handleDeleteSettlement}
                                 deleting={deletingSettlementId === s.id}
@@ -610,14 +636,19 @@ export default function WeeksView() {
 function SettlementRow({
   settlement: s,
   weekStatus,
+  maintenance,
   onPresentismo,
+  onMantenimiento,
   onConfirm,
   onDelete,
   deleting,
 }: {
   settlement: SettlementWithBarber
   weekStatus: Week['status']
+  /** Checklist de mantenimiento de la semana; null mientras carga o si no hay planilla. */
+  maintenance: { sheetExists: boolean; byBarber: Record<string, { total: number; done: number; allDone: boolean; pending: string[] }> } | null
   onPresentismo: (s: SettlementWithBarber, met: boolean) => void
+  onMantenimiento: (s: SettlementWithBarber, met: boolean) => void
   onConfirm: (id: string) => void
   onDelete: (id: string) => void
   deleting: boolean
@@ -625,6 +656,25 @@ function SettlementRow({
   const [confirmDelete, setConfirmDelete] = useState(false)
   const isSalary = s.barber.compensation_type === 'salary'
   const canEdit  = weekStatus === 'closed' && s.status === 'draft'
+
+  // El bono de mantenimiento solo se habilita si el admin ya cargó la planilla
+  // de la semana y este barbero tiene el 100% de sus tareas cumplidas.
+  const maint = (() => {
+    if (!maintenance) return { allDone: false, reason: 'Cargando el estado de mantenimiento...' }
+    if (!maintenance.sheetExists) {
+      return { allDone: false, reason: 'Todavía no se creó la planilla de mantenimiento de esta semana. Cargala desde Mantenimiento para habilitar el bono.' }
+    }
+    const st = maintenance.byBarber[s.barber_id]
+    if (!st || st.total === 0) {
+      // Sin tareas asignadas no hay nada que exigir.
+      return { allDone: true, reason: '' }
+    }
+    if (st.allDone) return { allDone: true, reason: '' }
+    return {
+      allDone: false,
+      reason: `Faltan ${st.total - st.done} de ${st.total} tarea(s) de mantenimiento: ${st.pending.join(', ')}`,
+    }
+  })()
 
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-3">
@@ -710,11 +760,32 @@ function SettlementRow({
               <span className="text-white text-xs">{s.presentismo_met ? 'Sí' : 'No'}</span>
             )}
           </div>
-          <div>
-            <span className="text-zinc-500 text-xs">Mantenimiento </span>
-            <span className="text-white text-xs">
-              {s.mantenimiento_met ? `Sí (+${formatARS(s.bonus_mantenimiento)})` : 'No'}
-            </span>
+          <div className="flex items-center gap-3">
+            <span className="text-zinc-500 text-xs">Mantenimiento</span>
+            {canEdit && maint.allDone ? (
+              <button
+                onClick={() => onMantenimiento(s, !s.mantenimiento_met)}
+                className={`text-xs px-2.5 py-1 rounded-full border transition-colors ${
+                  s.mantenimiento_met
+                    ? 'bg-emerald-900/50 text-emerald-400 border-emerald-800/50'
+                    : 'bg-zinc-800 text-zinc-500 border-zinc-700 hover:border-zinc-500'
+                }`}
+              >
+                {s.mantenimiento_met ? `Sí ✓ (+${formatARS(s.bonus_mantenimiento)})` : 'No'}
+              </button>
+            ) : canEdit ? (
+              // Grisado: primero hay que completar el checklist desde Mantenimiento.
+              <span
+                title={maint.reason}
+                className="text-xs px-2.5 py-1 rounded-full border bg-zinc-900 text-zinc-600 border-zinc-800 cursor-not-allowed"
+              >
+                Bloqueado
+              </span>
+            ) : (
+              <span className="text-white text-xs">
+                {s.mantenimiento_met ? `Sí (+${formatARS(s.bonus_mantenimiento)})` : 'No'}
+              </span>
+            )}
           </div>
           {s.bonus_objetivo_pct > 0 && (
             <div>

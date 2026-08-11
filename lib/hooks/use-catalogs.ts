@@ -26,6 +26,7 @@ export function invalidateBranches() {
   return getQueryClient().invalidateQueries({ queryKey: ['my-branches'] })
 }
 
+
 // Catálogos: cambian poco → staleTime largo (10 min). Se comparten por
 // branchId entre componentes/rutas, así no se re-consultan al navegar.
 const CATALOG_STALE = 10 * 60_000

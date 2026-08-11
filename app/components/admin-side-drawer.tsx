@@ -95,6 +95,33 @@ export function AdminSideDrawer({
           </button>
 
           <Link
+            href="/admin/gastos"
+            onClick={onClose}
+            className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
+          >
+            <span className="text-xl">💸</span>
+            <span className="font-medium">Gastos</span>
+          </Link>
+
+          <Link
+            href="/admin/saldo-inicial"
+            onClick={onClose}
+            className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
+          >
+            <span className="text-xl">💵</span>
+            <span className="font-medium">Saldo inicial</span>
+          </Link>
+
+          <Link
+            href="/admin/retiros-socios"
+            onClick={onClose}
+            className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
+          >
+            <span className="text-xl">🏦</span>
+            <span className="font-medium">Retiros socios</span>
+          </Link>
+
+          <Link
             href="/admin/reportes"
             onClick={onClose}
             className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
