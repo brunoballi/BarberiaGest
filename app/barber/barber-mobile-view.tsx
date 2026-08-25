@@ -53,6 +53,20 @@ function formatDate(dateStr: string): string {
   })
 }
 
+/** 'YYYY-MM' → 'Agosto 2026' */
+function formatMonthLabel(ym: string): string {
+  const [y, m] = ym.split('-').map(Number)
+  const lbl = new Date(y, m - 1, 1).toLocaleDateString('es-AR', { month: 'long', year: 'numeric' })
+  return lbl.charAt(0).toUpperCase() + lbl.slice(1)
+}
+
+/** 'Sem. 3 (18/08–24/08)' */
+function formatWeekOption(w: Week): string {
+  const dm = (d: string) =>
+    new Date(d + 'T12:00:00').toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' })
+  return `Sem. ${w.week_number} (${dm(w.start_date)}–${dm(w.end_date)})`
+}
+
 // ─── Íconos inline SVG ────────────────────────────────────────────────────
 const IconScissors = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} className="w-6 h-6">
@@ -137,9 +151,15 @@ export default function BarberMobileView() {
   const [settlements, setSettlements] = useState<SettlementWithBarber[]>([])
   const [settlementsLoaded, setSettlementsLoaded] = useState(false)
   const [settlementsLoading, setSettlementsLoading] = useState(false)
-  // Mantenimiento: tareas que el admin le asignó al barbero en la semana en curso.
+  // Mantenimiento: tareas que el admin le asignó al barbero. Arranca en la semana
+  // en curso, pero se puede filtrar por mes/semana igual que Liquidaciones: la
+  // liquidación de una semana se cierra cuando esa semana ya terminó, así que el
+  // barbero necesita poder mirar el cumplimiento de semanas anteriores.
   const [maintenance, setMaintenance] = useState<BarberMaintenanceStatus | null>(null)
   const [maintenanceLoading, setMaintenanceLoading] = useState(false)
+  const [maintWeeks, setMaintWeeks] = useState<Week[]>([])
+  const [maintFilterMonth, setMaintFilterMonth] = useState<string>('')
+  const [maintFilterWeek, setMaintFilterWeek] = useState<string>('')
   const [settlFilterStatus, setSettlFilterStatus] = useState('')
   // Filtros de liquidaciones: por defecto el mes actual. Semana opcional dentro del mes.
   const [settlFilterMonth, setSettlFilterMonth] = useState<string>(() => todayLocal().slice(0, 7))
@@ -268,18 +288,44 @@ export default function BarberMobileView() {
     }
   }
 
-  async function goToMaintenance() {
-    setView('maintenance')
-    if (!profile || !week) return
+  /** Trae el checklist de una semana puntual (la elegida en el filtro). */
+  const loadMaintenance = useCallback(async (weekId: string) => {
+    if (!profile) return
     setMaintenanceLoading(true)
     try {
-      const st = await getBarberMaintenanceForWeek(profile.branch_id, week.id, profile.id)
-      setMaintenance(st)
+      setMaintenance(await getBarberMaintenanceForWeek(profile.branch_id, weekId, profile.id))
     } catch {
       setMaintenance(null)
     } finally {
       setMaintenanceLoading(false)
     }
+  }, [profile])
+
+  async function goToMaintenance() {
+    setView('maintenance')
+    if (!profile || !week) return
+    // Al entrar siempre se muestra la semana en curso.
+    setMaintFilterMonth(week.start_date.slice(0, 7))
+    setMaintFilterWeek(week.id)
+    loadMaintenance(week.id)
+
+    if (maintWeeks.length > 0) return
+    try {
+      const ws = await getWeeksByBranch(profile.branch_id)
+      // Solo semanas ya empezadas: el calendario de la sucursal está armado con
+      // años de anticipación y las semanas futuras no tienen nada que mostrar.
+      const today = todayLocal()
+      setMaintWeeks(ws.filter((w) => w.start_date <= today))
+    } catch {
+      // Sin el listado, el filtro queda con la semana en curso únicamente.
+    }
+  }
+
+  /** Cambia la semana del checklist y trae su cumplimiento. */
+  function selectMaintWeek(weekId: string) {
+    if (!weekId || weekId === maintFilterWeek) return
+    setMaintFilterWeek(weekId)
+    loadMaintenance(weekId)
   }
 
   const today = todayLocal()
@@ -1184,12 +1230,73 @@ export default function BarberMobileView() {
     const pct = maintenance && maintenance.total > 0
       ? Math.round((maintenance.done / maintenance.total) * 100)
       : 0
+
+    // ── Opciones del filtro. maintWeeks son las semanas ya empezadas de la
+    // sucursal; la semana en curso se suma siempre, tanto si el listado todavía
+    // no cargó como si getOpenWeek devolvió una semana futura (pasa cuando la
+    // sucursal no tiene abierta la semana de hoy): si no, el selector arrancaría
+    // apuntando a una semana que no está entre sus opciones. ──
+    const maintWeekPool = week && !maintWeeks.some((w) => w.id === week.id)
+      ? [week, ...maintWeeks]
+      : maintWeeks
+    const maintMonthOptions = [...new Set(maintWeekPool.map((w) => w.start_date.slice(0, 7)))]
+      .sort((a, b) => b.localeCompare(a))
+    const maintWeekOptions = maintWeekPool
+      .filter((w) => w.start_date.slice(0, 7) === maintFilterMonth)
+      .sort((a, b) => b.start_date.localeCompare(a.start_date))
+    const selectedMaintWeek = maintWeekPool.find((w) => w.id === maintFilterWeek) ?? null
+    const isCurrentMaintWeek = !!week && maintFilterWeek === week.id
+
+    // Al cambiar de mes se salta a la semana más reciente de ese mes.
+    function changeMaintMonth(ym: string) {
+      setMaintFilterMonth(ym)
+      const first = maintWeekPool
+        .filter((w) => w.start_date.slice(0, 7) === ym)
+        .sort((a, b) => b.start_date.localeCompare(a.start_date))[0]
+      if (first) selectMaintWeek(first.id)
+    }
+
     return (
       <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
         <header className="flex items-center gap-3 px-5 pt-safe pt-6 pb-4">
           <button onClick={() => setView('home')} className="icon-btn"><IconBack /></button>
-          <h1 className="text-lg font-bold text-white">Mantenimiento</h1>
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold text-white leading-tight">Mantenimiento</h1>
+            {selectedMaintWeek && (
+              <p className="text-xs text-zinc-500 truncate">
+                {formatWeekOption(selectedMaintWeek)}
+                {isCurrentMaintWeek ? ' · en curso' : ''}
+              </p>
+            )}
+          </div>
         </header>
+
+        {/* Filtros mes + semana (mismo patrón que Mis liquidaciones) */}
+        <div className="px-5 pb-3 grid grid-cols-2 gap-2">
+          <select
+            value={maintFilterMonth}
+            onChange={(e) => changeMaintMonth(e.target.value)}
+            className="settl-select"
+            aria-label="Filtrar mantenimiento por mes"
+          >
+            {maintMonthOptions.map((ym) => (
+              <option key={ym} value={ym}>{formatMonthLabel(ym)}</option>
+            ))}
+          </select>
+          <select
+            value={maintFilterWeek}
+            onChange={(e) => selectMaintWeek(e.target.value)}
+            className="settl-select"
+            disabled={maintWeekOptions.length === 0}
+            aria-label="Filtrar mantenimiento por semana"
+          >
+            {maintWeekOptions.map((w) => (
+              <option key={w.id} value={w.id}>
+                {formatWeekOption(w)}{w.id === week?.id ? ' · en curso' : ''}
+              </option>
+            ))}
+          </select>
+        </div>
 
         <div className="flex-1 overflow-y-auto px-5 pb-8">
           {maintenanceLoading ? (
@@ -1197,7 +1304,7 @@ export default function BarberMobileView() {
           ) : !maintenance || !maintenance.sheetExists ? (
             <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-8 text-center">
               <p className="text-zinc-400 text-sm">
-                Todavía no hay planilla de mantenimiento para esta semana.
+                No hay planilla de mantenimiento para esta semana.
               </p>
               <p className="text-zinc-600 text-xs mt-2">
                 Cuando el administrador la cargue, vas a ver acá las tareas que te tocan.
@@ -1212,7 +1319,7 @@ export default function BarberMobileView() {
               <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mb-4">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
-                    Tu semana
+                    {isCurrentMaintWeek ? 'Tu semana' : 'Cumplimiento'}
                   </span>
                   <span className={`text-sm font-bold ${maintenance.allDone ? 'text-emerald-400' : 'text-amber-400'}`}>
                     {maintenance.done} de {maintenance.total}

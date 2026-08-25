@@ -144,16 +144,29 @@ export async function getAdvancesPendingForBarber(
  *
  * Implementación robusta: dos queries simples en vez de un join (evita ambigüedades
  * de PostgREST que devuelve la relación a veces como objeto, a veces como array).
+ *
+ * El filtro por admin_id es OBLIGATORIO: la policy admin_branches_admin_read
+ * (migración 045) deja que cualquier admin lea TODAS las filas de la tabla para
+ * poder armar el selector de socios. Sin este .eq() la query devolvía el mapeo
+ * completo admin→sucursal y cada admin terminaba viendo todas las sucursales en
+ * /admin/select-branch, incluidas las que no le corresponden.
  */
 export async function getMyBranches(): Promise<Branch[]> {
+  const profile = await getCurrentProfile()
+  if (!profile) return []
+
   // 1. IDs de sucursales que tiene asignadas el usuario actual
   const { data: rows, error: errAB } = await supabase
     .from('admin_branches')
     .select('branch_id')
+    .eq('admin_id', profile.id)
 
   if (errAB) throw new Error(`[getMyBranches/admin_branches] ${errAB.message}`)
 
+  // Admins legacy: se crearon antes de admin_branches y no tienen filas ahí.
+  // Su sucursal es la del propio perfil; sin este fallback quedarían sin acceso.
   const ids = (rows ?? []).map((r) => r.branch_id)
+  if (ids.length === 0 && profile.branch_id) ids.push(profile.branch_id)
   if (ids.length === 0) return []
 
   // 2. Cargar las sucursales completas
