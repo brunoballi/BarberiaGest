@@ -32,6 +32,7 @@ import {
   todayLocal,
   supabase,
 } from '@/lib/supabase/supabase.client'
+import { settlementCompensation, isBoxRentalSettlement } from '@/lib/settlement-model'
 import { useServices, useActiveBenefits } from '@/lib/hooks/use-catalogs'
 import { BarberSideDrawer } from '@/app/components/barber-side-drawer'
 import './barber.css'
@@ -1405,7 +1406,10 @@ export default function BarberMobileView() {
     const totalCuts    = filtered.reduce((sum, s) => sum + s.total_cuts, 0)
     // Box_rental: el barbero cobra durante la semana; su "resultado" es lo que se
     // llevó tras el alquiler (total_earned), no el neto a recibir (que tiende a 0).
-    const isBoxRentalBarber = profile?.compensation_type === 'box_rental'
+    // Sale de las liquidaciones del filtro, no del perfil de hoy: si el barbero
+    // cambió de modelo, un mes viejo se etiquetaría mal. Mes con esquemas
+    // mezclados → cae en la etiqueta genérica "Total ganado".
+    const isBoxRentalBarber = filtered.length > 0 && filtered.every(isBoxRentalSettlement)
     const totalEarnedMonth  = filtered.reduce((sum, s) => sum + s.total_earned, 0)
 
     // ── Paginación ──
@@ -1500,7 +1504,7 @@ export default function BarberMobileView() {
                       <span className="text-zinc-700">·</span>
                       <span className="text-zinc-400">Facturado {formatARS(s.gross_amount)}</span>
                       <span className="text-zinc-700">·</span>
-                      {profile?.compensation_type === 'box_rental' ? (
+                      {isBoxRentalSettlement(s) ? (
                         <span className="text-amber-400 font-semibold">Llevado {formatARS(s.total_earned)}</span>
                       ) : (
                         <span className="text-amber-400 font-semibold">Neto {formatARS(s.net_payable)}</span>
@@ -1521,7 +1525,7 @@ export default function BarberMobileView() {
 
                 {isExpanded && (
                   <div className="border-t border-zinc-800 px-4 py-3 space-y-2">
-                    {profile?.compensation_type === 'box_rental' ? (
+                    {isBoxRentalSettlement(s) ? (
                       // ── Alquiler de box: facturado − alquiler diario = saldo que se llevó ──
                       <>
                         <SettlRow label="Facturado" value={formatARS(s.gross_amount)} />
@@ -1563,7 +1567,7 @@ export default function BarberMobileView() {
                           </>
                         ) : (
                           (s.vip_amount === 0 || s.barber_gross - s.vip_amount > 0) && (
-                            <SettlRow label={profile?.compensation_type === 'salary' ? 'Sueldo base' : 'Comisión'} value={formatARS(s.barber_gross - s.vip_amount)} />
+                            <SettlRow label={settlementCompensation(s) === 'salary' ? 'Sueldo base' : 'Comisión'} value={formatARS(s.barber_gross - s.vip_amount)} />
                           )
                         )}
                         {s.vip_amount > 0 && (

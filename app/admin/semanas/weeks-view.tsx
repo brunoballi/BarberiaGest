@@ -28,6 +28,7 @@ import {
   updateBarberExtraDays,
   supabase,
 } from '@/lib/supabase/supabase.client'
+import { settlementCompensation } from '@/lib/settlement-model'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -656,7 +657,7 @@ function SettlementRow({
   deleting: boolean
 }) {
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const isSalary = s.barber.compensation_type === 'salary'
+  const isSalary = settlementCompensation(s) === 'salary'
   const canEdit  = weekStatus === 'closed' && s.status === 'draft'
 
   // Misma regla que en la grilla de Liquidaciones: bloquea solo si al barbero le

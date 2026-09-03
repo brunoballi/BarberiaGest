@@ -20,6 +20,7 @@ import {
   WEEK_STATUS_LABELS,
   SETTLEMENT_STATUS_LABELS,
 } from '@/lib/supabase/database.types'
+import { settlementCompensation } from '@/lib/settlement-model'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import {
   getMonthsWithWeeks,
@@ -149,7 +150,7 @@ function settlTotalGanado(s: SettlementWithBarber): number {
 //   a su cuenta), sin el VIP ya saldado.
 // - alquiler de box: el facturado de la semana (lo cobró en sus cortes).
 function settlTotalCobrado(s: SettlementWithBarber): number {
-  if (s.barber.compensation_type === 'box_rental') return s.gross_amount
+  if (settlementCompensation(s) === 'box_rental') return s.gross_amount
   return s.already_collected - s.vip_settled
 }
 
@@ -158,7 +159,7 @@ function settlTotalCobrado(s: SettlementWithBarber): number {
 // - comisión / sueldo: el neto (diferencia) que queda por saldar entre lo
 //   ganado y lo ya cobrado.
 function settlAPagar(s: SettlementWithBarber): number {
-  if (s.barber.compensation_type === 'box_rental') return s.box_rent
+  if (settlementCompensation(s) === 'box_rental') return s.box_rent
   return s.net_payable
 }
 
@@ -680,7 +681,7 @@ export default function AdminDashboard() {
     // alquiler devengado (ver "A pagar"), no una deuda real del barbero — el
     // alquiler total de la semana se cobra igual. No corresponde el modal de
     // devolución acá, se marca pagado directo.
-    if (s.net_payable < 0 && s.barber.compensation_type !== 'box_rental') {
+    if (s.net_payable < 0 && settlementCompensation(s) !== 'box_rental') {
       setDebtModal({
         settlementId: s.id,
         barberId:     s.barber_id,
@@ -995,7 +996,7 @@ export default function AdminDashboard() {
           const hasSettlFilters = !!(settlFilterBarber || settlFilterMantenimiento || settlFilterPresentismo || settlFilterAdelantos || settlFilterAPagar || settlFilterEstado)
           const filteredSettlements = settlements.filter((s) => {
             // Mantenimiento/presentismo aplican a salary y % comisión (no a alquiler de box)
-            const hasBonuses = s.barber.compensation_type !== 'box_rental'
+            const hasBonuses = settlementCompensation(s) !== 'box_rental'
             if (settlFilterBarber && s.barber_id !== settlFilterBarber) return false
             if (settlFilterEstado && s.status !== settlFilterEstado) return false
             if (settlFilterMantenimiento === 'na' && hasBonuses) return false
@@ -1103,11 +1104,11 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody>
                   {pagedSettlements.map((s) => {
-                    const hasBonuses = s.barber.compensation_type !== 'box_rental'
+                    const hasBonuses = settlementCompensation(s) !== 'box_rental'
                     // Bono de mantenimiento: bloqueado si al barbero le falta al
                     // menos una tarea de la planilla de esta semana.
                     const maint = maintenanceGate(maintStatus, s.barber_id)
-                    const isBoxRentalRow = s.barber.compensation_type === 'box_rental'
+                    const isBoxRentalRow = settlementCompensation(s) === 'box_rental'
                     const isPositive = s.net_payable >= 0
                     // Deuda saldada: liquidación negativa ya marcada como pagada.
                     // Ya no debe nada, así que no se muestra como "Debe" ni en rojo.
@@ -1127,7 +1128,7 @@ export default function AdminDashboard() {
                             <div>
                               <p className="barber-name">{s.barber.full_name}</p>
                               <p className="barber-type">
-                                {s.barber.compensation_type === 'percentage' ? '% comisión' : s.barber.compensation_type === 'box_rental' ? 'Alquiler box' : 'Salario'}
+                                {settlementCompensation(s) === 'percentage' ? '% comisión' : settlementCompensation(s) === 'box_rental' ? 'Alquiler box' : 'Salario'}
                               </p>
                             </div>
                           </div>
@@ -1349,7 +1350,7 @@ export default function AdminDashboard() {
                           )}
                         </td>
                         <td>
-                          {s.barber.compensation_type === 'box_rental' ? (
+                          {settlementCompensation(s) === 'box_rental' ? (
                             <span className="td-muted" title="Alquiler devengado: alquiler diario × días con cortes en la semana">
                               {formatARS(s.box_rent)}
                             </span>
@@ -1514,8 +1515,8 @@ export default function AdminDashboard() {
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.gross_amount, 0))}</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + settlFacturadoNeto(x), 0))}</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + x.vip_amount, 0))}</strong></td>
-                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + (x.barber.compensation_type !== 'box_rental' ? settlComisionBase(x) : 0), 0))}</strong></td>
-                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + (x.barber.compensation_type !== 'box_rental' ? settlBasico(x) : 0), 0))}</strong></td>
+                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + (settlementCompensation(x) !== 'box_rental' ? settlComisionBase(x) : 0), 0))}</strong></td>
+                    <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + (settlementCompensation(x) !== 'box_rental' ? settlBasico(x) : 0), 0))}</strong></td>
                     <td colSpan={4}></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + settlTotalGanado(x), 0))}</strong></td>
                     <td><strong>{formatARS(filteredSettlements.reduce((s, x) => s + settlTotalCobrado(x), 0))}</strong></td>
@@ -1526,7 +1527,7 @@ export default function AdminDashboard() {
                         // aparte, lo que los barberos deben (netos negativos sin saldar).
                         const aPagar = filteredSettlements.reduce((s, x) => s + Math.max(settlAPagar(x), 0), 0)
                         const deuda = filteredSettlements.reduce(
-                          (s, x) => s + (x.barber.compensation_type !== 'box_rental' && x.status !== 'paid' && x.net_payable < 0 ? -x.net_payable : 0), 0)
+                          (s, x) => s + (settlementCompensation(x) !== 'box_rental' && x.status !== 'paid' && x.net_payable < 0 ? -x.net_payable : 0), 0)
                         return (
                           <>
                             <strong className="net-payable--pos">{formatARS(aPagar)}</strong>

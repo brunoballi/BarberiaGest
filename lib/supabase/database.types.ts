@@ -214,6 +214,14 @@ export interface Settlement {
   presentismo_rate_snap: number | null
   mantenimiento_rate_snap: number | null
   mantenimiento_min_cuts_snap: number | null
+  // Modelo de compensación con el que se calculó ESTA liquidación (migración 049).
+  // Congelado: no sigue a profiles.compensation_type si el barbero cambia de modelo,
+  // así una semana vieja no se reinterpreta con el esquema de hoy. Para leerlo usar
+  // settlementCompensation() de @/lib/settlement-model, nunca s.barber.compensation_type.
+  // null solo en filas anteriores a la 049 que nunca se recalcularon.
+  compensation_type_snap: CompensationType | null
+  box_rental_amount_snap: number | null
+  commission_rate_snap: number | null
   mantenimiento_met: boolean | null
   presentismo_met: boolean | null
   // Alquiler de box que el barbero (box_rental) paga a la barbería esa semana (editable en borrador)
