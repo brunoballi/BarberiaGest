@@ -1224,7 +1224,7 @@ export async function getBarberTransactionsByDateRange(
 ): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
-    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, client_surname, discount_amount, discount_reason, benefit_id, lifetime_member_id')
+    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, client_surname, discount_amount, discount_reason, benefit_id, benefit_full_amount_snap, lifetime_member_id')
     .eq('barber_id', barberId)
     .gte('transaction_date', startDate)
     .lte('transaction_date', endDate)
@@ -1241,7 +1241,7 @@ export async function getBarberTransactionsForWeek(
 ): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
-    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, client_surname, discount_amount, discount_reason, benefit_id, lifetime_member_id')
+    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, client_surname, discount_amount, discount_reason, benefit_id, benefit_full_amount_snap, lifetime_member_id')
     .eq('barber_id', barberId)
     .eq('week_id', weekId)
     .order('transaction_date', { ascending: false })

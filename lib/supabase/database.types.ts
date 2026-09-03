@@ -155,6 +155,11 @@ export interface Transaction {
   discount_reason: string | null
   // Mejora 1: beneficio aplicado (opcional, para reporting)
   benefit_id: string | null
+  // Flag VIP (benefits.full_amount_to_barber) vigente cuando se registró el corte
+  // (migración 056). Congelado: no sigue al beneficio si después lo editan, así una
+  // semana vieja no se reinterpreta. Lo llena el trigger trg_transactions_benefit_vip_snap,
+  // no hace falta mandarlo al insertar. NULL cuando el corte no tiene beneficio.
+  benefit_full_amount_snap: boolean | null
   /** Socio vitalicio al que se le aplicó el beneficio (null si no aplica). */
   lifetime_member_id: string | null
 }
@@ -222,6 +227,9 @@ export interface Settlement {
   compensation_type_snap: CompensationType | null
   box_rental_amount_snap: number | null
   commission_rate_snap: number | null
+  // Precio del corte clásico vigente en la semana (migración 053), usado para el tramo
+  // básico/comisión del barbero nuevo. NULL cuando el barbero no es "nuevo".
+  classic_price_snap: number | null
   mantenimiento_met: boolean | null
   presentismo_met: boolean | null
   // Alquiler de box que el barbero (box_rental) paga a la barbería esa semana (editable en borrador)
@@ -324,7 +332,7 @@ export type WeekInsert = Omit<Week, 'id' | 'created_at' | 'closed_at' | 'closed_
 
 export type TransactionInsert = Omit<
   Transaction,
-  'id' | 'created_at' | 'updated_at' | 'is_manual_override' | 'override_notes' | 'benefit_id' | 'lifetime_member_id'
+  'id' | 'created_at' | 'updated_at' | 'is_manual_override' | 'override_notes' | 'benefit_id' | 'lifetime_member_id' | 'benefit_full_amount_snap'
 > & {
   lifetime_member_id?: string | null
   is_manual_override?: boolean
