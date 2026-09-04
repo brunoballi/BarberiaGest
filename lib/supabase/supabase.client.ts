@@ -187,7 +187,7 @@ export async function getMyBranches(): Promise<Branch[]> {
 export async function getServicesByBranch(branchId: string): Promise<ServiceCatalog[]> {
   const { data, error } = await supabase
     .from('service_catalog')
-    .select('id, name, base_price, is_active, branch_id, created_at')
+    .select('id, name, base_price, is_active, branch_id, created_at, archived_at')
     .eq('branch_id', branchId)
     .order('name')
 
@@ -226,7 +226,7 @@ export async function updateService(
 export async function getBenefitsByBranch(branchId: string): Promise<Benefit[]> {
   const { data, error } = await supabase
     .from('benefits')
-    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at, full_amount_to_barber, requires_member_document')
+    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at, full_amount_to_barber, requires_member_document, archived_at')
     .eq('branch_id', branchId)
     .order('name')
 
@@ -238,7 +238,7 @@ export async function getBenefitsByBranch(branchId: string): Promise<Benefit[]> 
 export async function getActiveBenefitsByBranch(branchId: string): Promise<Benefit[]> {
   const { data, error } = await supabase
     .from('benefits')
-    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at, full_amount_to_barber, requires_member_document')
+    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at, full_amount_to_barber, requires_member_document, archived_at')
     .eq('branch_id', branchId)
     .eq('is_active', true)
     .order('name')
@@ -2679,6 +2679,71 @@ export async function setLifetimeMemberActive(id: string, isActive: boolean): Pr
 export async function deleteLifetimeMember(id: string): Promise<void> {
   const { error } = await supabase.from('lifetime_members').delete().eq('id', id)
   if (error) throw new Error(`[deleteLifetimeMember] ${error.message}`)
+}
+
+export async function updateLifetimeMember(
+  id: string,
+  fullName: string,
+  documentNumber: string,
+): Promise<void> {
+  const { error } = await supabase
+    .from('lifetime_members')
+    .update({ full_name: fullName.trim(), document_number: documentNumber.trim() })
+    .eq('id', id)
+  if (error) {
+    if (error.code === '23505') throw new Error('Ya existe otro socio vitalicio con ese documento.')
+    throw new Error(`[updateLifetimeMember] ${error.message}`)
+  }
+}
+
+// ============================================================
+// ELIMINAR O ARCHIVAR (migración 058)
+// ============================================================
+
+/** Los cuatro módulos que comparten el botón "Eliminar". */
+export type DeletableKind = 'barbero' | 'servicio' | 'beneficio' | 'socio'
+
+export interface DeleteOrArchiveResult {
+  /** true = se borró de la tabla. false = tenía historial y quedó archivado. */
+  eliminado: boolean
+  archivado?: boolean
+  nombre: string
+  /** Por qué no se pudo borrar. n en null = referencia detectada pero sin contar. */
+  usos?: { que: string; n: number | null }[]
+}
+
+/**
+ * Borra el registro si no tiene historial; si lo tiene, lo archiva (sale de la
+ * grilla principal) y devuelve el detalle de qué lo está reteniendo.
+ *
+ * La decisión la toma el RPC y no el cliente: chequear desde acá sería una
+ * carrera (alguien puede cargar un corte entre el chequeo y el borrado), y
+ * además hay cuatro FK en CASCADE que borrarían datos en silencio.
+ */
+export async function deleteOrArchive(
+  kind: DeletableKind,
+  id: string,
+): Promise<DeleteOrArchiveResult> {
+  const { data, error } = await supabase.rpc('admin_delete_or_archive', {
+    p_kind: kind,
+    p_id: id,
+  })
+  if (error) throw new Error(`[deleteOrArchive] ${error.message}`)
+  return data as DeleteOrArchiveResult
+}
+
+export async function unarchive(kind: DeletableKind, id: string): Promise<void> {
+  const { error } = await supabase.rpc('admin_unarchive', { p_kind: kind, p_id: id })
+  if (error) throw new Error(`[unarchive] ${error.message}`)
+}
+
+/** Mensaje para el admin cuando el registro no se pudo borrar. */
+export function mensajeDeArchivado(r: DeleteOrArchiveResult): string {
+  const detalle = (r.usos ?? [])
+    .map((u) => (u.n != null ? `${u.n} ${u.que}` : u.que))
+    .join(', ')
+  return `No se puede eliminar "${r.nombre}" porque tiene ${detalle}. ` +
+         `Se archivó: ya no aparece en la lista, pero su historial queda intacto.`
 }
 
 /** Estado del checklist de mantenimiento de un barbero en una semana. */

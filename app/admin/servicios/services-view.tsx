@@ -9,6 +9,9 @@ import {
   getServicesByBranch,
   createService,
   updateService,
+  deleteOrArchive,
+  unarchive,
+  mensajeDeArchivado,
 } from '@/lib/supabase/supabase.client'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import { CurrencyInput } from '@/app/components/currency-input'
@@ -43,6 +46,11 @@ export default function ServicesView() {
   const [editPrice, setEditPrice]   = useState('')
   const [saving, setSaving]         = useState(false)
   const [editError, setEditError]   = useState<string | null>(null)
+
+  // Eliminar / archivar
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [notice, setNotice]         = useState<string | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
 
   // Toggle active confirm
   const [togglingId, setTogglingId] = useState<string | null>(null)
@@ -151,8 +159,40 @@ export default function ServicesView() {
     }
   }
 
-  const active   = services.filter((s) => s.is_active)
-  const inactive = services.filter((s) => !s.is_active)
+  // ── Eliminar (o archivar si tiene historial) ───────────────────────────
+  async function handleDelete(svc: ServiceCatalog) {
+    if (deletingId !== svc.id) { setDeletingId(svc.id); return }
+    try {
+      const r = await deleteOrArchive('servicio', svc.id)
+      if (r.eliminado) {
+        setServices((prev) => prev.filter((s) => s.id !== svc.id))
+        setNotice(`Se eliminó "${r.nombre}".`)
+      } else {
+        setServices((prev) => prev.map((s) =>
+          s.id === svc.id ? { ...s, is_active: false, archived_at: new Date().toISOString() } : s))
+        setNotice(mensajeDeArchivado(r))
+      }
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : 'Error al eliminar')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  async function handleUnarchive(svc: ServiceCatalog) {
+    try {
+      await unarchive('servicio', svc.id)
+      setServices((prev) => prev.map((s) => s.id === svc.id ? { ...s, archived_at: null } : s))
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : 'Error al desarchivar')
+    }
+  }
+
+  // Los archivados salen de la grilla principal: ese era el ruido que
+  // confundía al admin (quedaban visibles como "desactivados").
+  const archived = services.filter((s) => s.archived_at != null)
+  const active   = services.filter((s) => s.is_active && s.archived_at == null)
+  const inactive = services.filter((s) => !s.is_active && s.archived_at == null)
 
   if (loading) return <div className="flex items-center justify-center h-64 text-zinc-400">Cargando servicios...</div>
   if (error)   return <div className="p-6 text-red-400">{error}</div>
@@ -224,6 +264,14 @@ export default function ServicesView() {
         </div>
       )}
 
+      {/* Aviso de eliminado/archivado */}
+      {notice && (
+        <div className="bg-zinc-900 border border-amber-500/40 rounded-xl px-5 py-3 flex items-start gap-3">
+          <p className="flex-1 text-sm text-zinc-200">{notice}</p>
+          <button onClick={() => setNotice(null)} className="text-xs text-zinc-500 hover:text-white">Cerrar</button>
+        </div>
+      )}
+
       {/* Active services */}
       <section className="space-y-3">
         <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
@@ -252,6 +300,9 @@ export default function ServicesView() {
                 onCancelEdit={() => { setEditingId(null); setEditError(null) }}
                 onToggle={handleToggle}
                 onCancelToggle={() => setTogglingId(null)}
+                deletingId={deletingId}
+                onDelete={handleDelete}
+                onCancelDelete={() => setDeletingId(null)}
               />
             ))}
           </div>
@@ -282,9 +333,40 @@ export default function ServicesView() {
                 onCancelEdit={() => { setEditingId(null); setEditError(null) }}
                 onToggle={handleToggle}
                 onCancelToggle={() => setTogglingId(null)}
+                deletingId={deletingId}
+                onDelete={handleDelete}
+                onCancelDelete={() => setDeletingId(null)}
               />
             ))}
           </div>
+        </section>
+      )}
+
+      {/* Archivados — fuera de la grilla principal, plegados */}
+      {archived.length > 0 && (
+        <section className="space-y-3">
+          <button
+            onClick={() => setShowArchived((v) => !v)}
+            className="text-xs font-semibold uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            {showArchived ? '▾' : '▸'} Archivados · {archived.length}
+          </button>
+          {showArchived && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {archived.map((svc) => (
+                <div key={svc.id} className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-4 flex items-center justify-between gap-4 opacity-60">
+                  <div>
+                    <p className="text-white font-semibold text-sm">{svc.name}</p>
+                    <p className="text-zinc-500 text-xs mt-0.5">Archivado · tiene historial</p>
+                  </div>
+                  <button onClick={() => handleUnarchive(svc)}
+                    className="text-xs text-zinc-500 hover:text-emerald-400 transition-colors flex-shrink-0">
+                    Restaurar
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
     </div>
@@ -295,6 +377,7 @@ export default function ServicesView() {
 function ServiceRow({
   svc, editingId, editName, editPrice, editError, saving, togglingId,
   onEdit, onEditName, onEditPrice, onSave, onCancelEdit, onToggle, onCancelToggle,
+  deletingId, onDelete, onCancelDelete,
 }: {
   svc: ServiceCatalog
   editingId: string | null
@@ -310,9 +393,13 @@ function ServiceRow({
   onCancelEdit: () => void
   onToggle: (s: ServiceCatalog) => void
   onCancelToggle: () => void
+  deletingId: string | null
+  onDelete: (s: ServiceCatalog) => void
+  onCancelDelete: () => void
 }) {
   const isEditing  = editingId === svc.id
   const isToggling = togglingId === svc.id
+  const isDeleting = deletingId === svc.id
 
   return (
     <div className={`bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-4 space-y-3 ${!svc.is_active ? 'opacity-60' : ''}`}>
@@ -369,6 +456,20 @@ function ServiceRow({
               <button onClick={() => onToggle(svc)}
                 className={`text-xs transition-colors ${svc.is_active ? 'text-zinc-500 hover:text-red-400' : 'text-zinc-500 hover:text-emerald-400'}`}>
                 {svc.is_active ? 'Desactivar' : 'Activar'}
+              </button>
+            )}
+            {isDeleting ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400">¿Eliminar?</span>
+                <button onClick={() => onDelete(svc)}
+                  className="text-xs text-red-400 hover:text-red-300 font-semibold">Sí</button>
+                <button onClick={onCancelDelete}
+                  className="text-xs text-zinc-500 hover:text-zinc-300">No</button>
+              </div>
+            ) : (
+              <button onClick={() => onDelete(svc)}
+                className="text-xs text-zinc-500 hover:text-red-400 transition-colors">
+                Eliminar
               </button>
             )}
           </div>

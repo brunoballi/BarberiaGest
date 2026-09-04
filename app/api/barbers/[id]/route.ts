@@ -148,34 +148,31 @@ export async function DELETE(
     return NextResponse.json({ error: 'Barbero no encontrado en tu sucursal' }, { status: 404 })
   }
 
-  if (target.is_active) {
-    return NextResponse.json(
-      { error: 'Solo se pueden eliminar barberos inactivos. Desactivalo primero.' },
-      { status: 409 }
-    )
+  // La decisión (borrar de verdad vs archivar) la toma el RPC admin_delete_or_archive,
+  // que es la misma lógica que usan servicios, beneficios y socios vitalicios.
+  //
+  // Antes se chequeaba acá a mano solo transactions/settlements/advances, y eso
+  // dejaba afuera cuatro relaciones en CASCADE: barber_debt_payments,
+  // maintenance_sheet_items, maintenance_template_blocks y admin_branches. Un
+  // barbero con planillas de mantenimiento pero sin cortes pasaba el chequeo y
+  // deleteUser() se las llevaba puestas en silencio.
+  //
+  // Se llama con serverClient (la sesión del admin) y no con adminClient: el RPC
+  // exige auth_role() = 'admin', y el service role no tiene auth.uid().
+  const { data: resultado, error: rpcErr } = await serverClient.rpc('admin_delete_or_archive', {
+    p_kind: 'barbero',
+    p_id: id,
+  })
+  if (rpcErr) return NextResponse.json({ error: rpcErr.message }, { status: 500 })
+
+  const r = resultado as { eliminado: boolean; nombre: string; usos?: unknown[] }
+
+  // Se borró el profile: limpiar también el usuario de auth, que queda huérfano.
+  // Si falla no se revierte nada — el registro ya no está y el usuario de auth
+  // sin profile no puede entrar a ningún lado.
+  if (r.eliminado) {
+    await adminClient.auth.admin.deleteUser(id)
   }
 
-  // Verificar que no tenga datos asociados (no perder histórico)
-  const [{ count: txCount }, { count: settCount }, { count: advCount }] = await Promise.all([
-    adminClient.from('transactions').select('id', { count: 'exact', head: true }).eq('barber_id', id),
-    adminClient.from('settlements').select('id', { count: 'exact', head: true }).eq('barber_id', id),
-    adminClient.from('advances').select('id', { count: 'exact', head: true }).eq('barber_id', id),
-  ])
-
-  if ((txCount ?? 0) > 0 || (settCount ?? 0) > 0 || (advCount ?? 0) > 0) {
-    return NextResponse.json(
-      { error: 'No se puede eliminar: el barbero tiene cortes, liquidaciones o adelantos. Mantenelo como inactivo.' },
-      { status: 409 }
-    )
-  }
-
-  // Eliminar usuario de auth → cascade a profiles. Si no tuviera cuenta auth,
-  // borrar el profile directamente como fallback.
-  const { error: authErr } = await adminClient.auth.admin.deleteUser(id)
-  if (authErr) {
-    const { error: profErr } = await adminClient.from('profiles').delete().eq('id', id)
-    if (profErr) return NextResponse.json({ error: profErr.message }, { status: 500 })
-  }
-
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, ...r })
 }

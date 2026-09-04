@@ -12,6 +12,10 @@ import {
   getLifetimeMembers,
   createLifetimeMember,
   setLifetimeMemberActive,
+  updateLifetimeMember,
+  deleteOrArchive,
+  unarchive,
+  mensajeDeArchivado,
 } from '@/lib/supabase/supabase.client'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import { CurrencyInput } from '@/app/components/currency-input'
@@ -59,6 +63,11 @@ export default function BenefitsView() {
 
   // Toggle active confirm
   const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  // Eliminar / archivar
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [notice, setNotice]         = useState<string | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
 
   const loadBenefits = useCallback(async (branchId: string) => {
     const data = await getBenefitsByBranch(branchId)
@@ -180,8 +189,38 @@ export default function BenefitsView() {
     }
   }
 
-  const active   = benefits.filter((b) => b.is_active)
-  const inactive = benefits.filter((b) => !b.is_active)
+  // ── Eliminar (o archivar si tiene historial) ───────────────────────────
+  async function handleDelete(b: Benefit) {
+    if (deletingId !== b.id) { setDeletingId(b.id); return }
+    try {
+      const r = await deleteOrArchive('beneficio', b.id)
+      if (r.eliminado) {
+        setBenefits((prev) => prev.filter((x) => x.id !== b.id))
+        setNotice(`Se eliminó "${r.nombre}".`)
+      } else {
+        setBenefits((prev) => prev.map((x) =>
+          x.id === b.id ? { ...x, is_active: false, archived_at: new Date().toISOString() } : x))
+        setNotice(mensajeDeArchivado(r))
+      }
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : 'Error al eliminar')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  async function handleUnarchive(b: Benefit) {
+    try {
+      await unarchive('beneficio', b.id)
+      setBenefits((prev) => prev.map((x) => x.id === b.id ? { ...x, archived_at: null } : x))
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : 'Error al desarchivar')
+    }
+  }
+
+  const archived = benefits.filter((b) => b.archived_at != null)
+  const active   = benefits.filter((b) => b.is_active && b.archived_at == null)
+  const inactive = benefits.filter((b) => !b.is_active && b.archived_at == null)
 
   if (loading) return <div className="flex items-center justify-center h-64 text-zinc-400">Cargando beneficios...</div>
   if (error)   return <div className="p-6 text-red-400">{error}</div>
@@ -289,6 +328,13 @@ export default function BenefitsView() {
         </div>
       )}
 
+      {notice && (
+        <div className="bg-zinc-900 border border-amber-500/40 rounded-xl px-5 py-3 flex items-start gap-3">
+          <p className="flex-1 text-sm text-zinc-200">{notice}</p>
+          <button onClick={() => setNotice(null)} className="text-xs text-zinc-500 hover:text-white">Cerrar</button>
+        </div>
+      )}
+
       {/* Active benefits */}
       <section className="space-y-3">
         <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
@@ -308,6 +354,7 @@ export default function BenefitsView() {
                 onEdit={openEdit} onEditName={setEditName} onEditDesc={setEditDesc} onEditType={setEditType} onEditValue={setEditValue}
                 onSave={handleSaveEdit} onCancelEdit={() => { setEditingId(null); setEditError(null) }}
                 onToggle={handleToggle} onCancelToggle={() => setTogglingId(null)}
+                deletingId={deletingId} onDelete={handleDelete} onCancelDelete={() => setDeletingId(null)}
               />
             ))}
           </div>
@@ -329,9 +376,37 @@ export default function BenefitsView() {
                 onEdit={openEdit} onEditName={setEditName} onEditDesc={setEditDesc} onEditType={setEditType} onEditValue={setEditValue}
                 onSave={handleSaveEdit} onCancelEdit={() => { setEditingId(null); setEditError(null) }}
                 onToggle={handleToggle} onCancelToggle={() => setTogglingId(null)}
+                deletingId={deletingId} onDelete={handleDelete} onCancelDelete={() => setDeletingId(null)}
               />
             ))}
           </div>
+        </section>
+      )}
+
+      {archived.length > 0 && (
+        <section className="space-y-3">
+          <button
+            onClick={() => setShowArchived((v) => !v)}
+            className="text-xs font-semibold uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            {showArchived ? '▾' : '▸'} Archivados · {archived.length}
+          </button>
+          {showArchived && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {archived.map((b) => (
+                <div key={b.id} className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-4 flex items-center justify-between gap-4 opacity-60">
+                  <div>
+                    <p className="text-white font-semibold text-sm">{b.name}</p>
+                    <p className="text-zinc-500 text-xs mt-0.5">Archivado · tiene historial</p>
+                  </div>
+                  <button onClick={() => handleUnarchive(b)}
+                    className="text-xs text-zinc-500 hover:text-emerald-400 transition-colors flex-shrink-0">
+                    Restaurar
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
@@ -350,6 +425,13 @@ function LifetimeMembersSection() {
   const [doc, setDoc] = useState('')
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
+
+  // Edicion inline: el admin se equivocaba al cargar y no habia forma de corregir.
+  const [editingId, setEditingId]   = useState<string | null>(null)
+  const [editName, setEditName]     = useState('')
+  const [editDoc, setEditDoc]       = useState('')
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [notice, setNotice]         = useState<string | null>(null)
 
   const load = useCallback(async () => {
     try {
@@ -379,10 +461,43 @@ function LifetimeMembersSection() {
     }
   }
 
+  function openEdit(m: LifetimeMember) {
+    setEditingId(m.id); setEditName(m.full_name); setEditDoc(m.document_number); setErr(null)
+  }
+
+  async function handleSaveEdit(id: string) {
+    if (!editName.trim() || !editDoc.trim()) { setErr('Completá nombre y documento.'); return }
+    setSaving(true); setErr(null)
+    try {
+      await updateLifetimeMember(id, editName, editDoc)
+      setEditingId(null)
+      await load()
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : 'Error al guardar')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function handleDelete(m: LifetimeMember) {
+    if (deletingId !== m.id) { setDeletingId(m.id); return }
+    try {
+      const r = await deleteOrArchive('socio', m.id)
+      setNotice(r.eliminado ? 'Se eliminó a ' + r.nombre + '.' : mensajeDeArchivado(r))
+      await load()
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : 'Error al eliminar')
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  const visibles = members.filter((m) => m.archived_at == null)
+
   return (
     <section className="mt-10">
       <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-3">
-        Socios vitalicios · {members.length}
+        Socios vitalicios · {visibles.length}
       </h2>
       <p className="text-zinc-500 text-sm mb-4">
         Lista única para todas las sucursales. Se usa para validar el DNI en los beneficios
@@ -412,27 +527,81 @@ function LifetimeMembersSection() {
         </button>
       </form>
       {err && <p className="text-red-400 text-sm mb-3">{err}</p>}
+      {notice && (
+        <div className="bg-zinc-900 border border-amber-500/40 rounded-xl px-5 py-3 mb-3 flex items-start gap-3">
+          <p className="flex-1 text-sm text-zinc-200">{notice}</p>
+          <button onClick={() => setNotice(null)} className="text-xs text-zinc-500 hover:text-white">Cerrar</button>
+        </div>
+      )}
 
       {loading ? (
         <p className="text-zinc-500 text-sm">Cargando...</p>
-      ) : members.length === 0 ? (
+      ) : visibles.length === 0 ? (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-8 text-center">
           <p className="text-zinc-500 text-sm">Todavía no hay socios vitalicios cargados.</p>
         </div>
       ) : (
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl divide-y divide-zinc-800">
-          {members.map((m) => (
-            <div key={m.id} className="px-4 py-3 flex items-center gap-3">
-              <span className={`flex-1 text-sm ${m.is_active ? 'text-zinc-200' : 'text-zinc-600 line-through'}`}>
-                {m.full_name}
-              </span>
-              <span className="text-zinc-500 text-xs font-mono">{m.document_number}</span>
-              <button
-                onClick={async () => { await setLifetimeMemberActive(m.id, !m.is_active); load() }}
-                className={`text-xs transition-colors ${m.is_active ? 'text-zinc-500 hover:text-red-400' : 'text-zinc-500 hover:text-emerald-400'}`}
-              >
-                {m.is_active ? 'Desactivar' : 'Activar'}
-              </button>
+          {visibles.map((m) => (
+            <div key={m.id} className="px-4 py-3">
+              {editingId === m.id ? (
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    placeholder="Nombre y apellido"
+                    className="flex-1 bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
+                  />
+                  <input
+                    value={editDoc}
+                    onChange={(e) => setEditDoc(e.target.value)}
+                    placeholder="DNI sin puntos"
+                    inputMode="numeric"
+                    className="sm:w-40 bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
+                  />
+                  <div className="flex gap-2">
+                    <button onClick={() => handleSaveEdit(m.id)} disabled={saving}
+                      className="bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-zinc-950 font-bold px-4 py-2 rounded-lg text-xs transition-colors">
+                      {saving ? 'Guardando...' : 'Guardar'}
+                    </button>
+                    <button onClick={() => { setEditingId(null); setErr(null) }}
+                      className="text-zinc-400 hover:text-white px-4 py-2 rounded-lg text-xs border border-zinc-700 transition-colors">
+                      Cancelar
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <span className={`flex-1 text-sm ${m.is_active ? 'text-zinc-200' : 'text-zinc-600 line-through'}`}>
+                    {m.full_name}
+                  </span>
+                  <span className="text-zinc-500 text-xs font-mono">{m.document_number}</span>
+                  <button onClick={() => openEdit(m)}
+                    className="text-xs text-zinc-400 hover:text-amber-400 transition-colors">
+                    Editar
+                  </button>
+                  <button
+                    onClick={async () => { await setLifetimeMemberActive(m.id, !m.is_active); load() }}
+                    className={`text-xs transition-colors ${m.is_active ? 'text-zinc-500 hover:text-red-400' : 'text-zinc-500 hover:text-emerald-400'}`}
+                  >
+                    {m.is_active ? 'Desactivar' : 'Activar'}
+                  </button>
+                  {deletingId === m.id ? (
+                    <span className="flex items-center gap-2">
+                      <span className="text-xs text-zinc-400">¿Eliminar?</span>
+                      <button onClick={() => handleDelete(m)}
+                        className="text-xs text-red-400 hover:text-red-300 font-semibold">Sí</button>
+                      <button onClick={() => setDeletingId(null)}
+                        className="text-xs text-zinc-500 hover:text-zinc-300">No</button>
+                    </span>
+                  ) : (
+                    <button onClick={() => handleDelete(m)}
+                      className="text-xs text-zinc-500 hover:text-red-400 transition-colors">
+                      Eliminar
+                    </button>
+                  )}
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -445,6 +614,7 @@ function LifetimeMembersSection() {
 function BenefitRow({
   benefit, editingId, editName, editDesc, editType, editValue, editError, saving, togglingId,
   onEdit, onEditName, onEditDesc, onEditType, onEditValue, onSave, onCancelEdit, onToggle, onCancelToggle,
+  deletingId, onDelete, onCancelDelete,
 }: {
   benefit: Benefit
   editingId: string | null
@@ -464,6 +634,9 @@ function BenefitRow({
   onCancelEdit: () => void
   onToggle: (b: Benefit) => void
   onCancelToggle: () => void
+  deletingId: string | null
+  onDelete: (b: Benefit) => void
+  onCancelDelete: () => void
 }) {
   const isEditing  = editingId === benefit.id
   const isToggling = togglingId === benefit.id
@@ -538,6 +711,20 @@ function BenefitRow({
               <button onClick={() => onToggle(benefit)}
                 className={`text-xs transition-colors ${benefit.is_active ? 'text-zinc-500 hover:text-red-400' : 'text-zinc-500 hover:text-emerald-400'}`}>
                 {benefit.is_active ? 'Desactivar' : 'Activar'}
+              </button>
+            )}
+            {deletingId === benefit.id ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-400">¿Eliminar?</span>
+                <button onClick={() => onDelete(benefit)}
+                  className="text-xs text-red-400 hover:text-red-300 font-semibold">Sí</button>
+                <button onClick={onCancelDelete}
+                  className="text-xs text-zinc-500 hover:text-zinc-300">No</button>
+              </div>
+            ) : (
+              <button onClick={() => onDelete(benefit)}
+                className="text-xs text-zinc-500 hover:text-red-400 transition-colors">
+                Eliminar
               </button>
             )}
           </div>

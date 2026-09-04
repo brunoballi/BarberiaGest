@@ -17,6 +17,7 @@ import {
   supabase,
   updateBarberProfile,
 } from '@/lib/supabase/supabase.client'
+import { mensajeDeArchivado, unarchive } from '@/lib/supabase/supabase.client'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import { CurrencyInput } from '@/app/components/currency-input'
 import { TextInput } from '@/app/components/text-input'
@@ -242,6 +243,8 @@ export default function BarbersAbm() {
 
   // Hard delete (eliminar definitivamente) confirmation
   const [hardDeletingId, setHardDeletingId] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
+  const [showArchived, setShowArchived] = useState(false)
 
   const loadBarbers = useCallback(async (branchId: string) => {
     const data = await getAllBarbersByBranch(branchId)
@@ -513,29 +516,52 @@ export default function BarbersAbm() {
     }
   }
 
-  // ── Delete (soft) ─────────────────────────────────────────────────────────
+  // ── Eliminar ──────────────────────────────────────────────────────────────
+  // Borra de verdad si el barbero no tiene historial. Si lo tiene, el backend
+  // lo archiva (sale de la grilla) y devuelve el detalle de qué lo retiene,
+  // que es lo que se le muestra al admin en vez de un "no se puede" pelado.
+  async function eliminarBarbero(barber: Profile) {
+    const res  = await fetch(`/api/barbers/${barber.id}`, { method: 'DELETE' })
+    const json = await res.json().catch(() => ({}))
+    if (!res.ok) throw new Error(json.error ?? 'Error al eliminar')
+    if (json.eliminado) {
+      setBarbers((prev) => prev.filter((b) => b.id !== barber.id))
+      setNotice(`Se eliminó a ${json.nombre}.`)
+    } else {
+      setBarbers((prev) => prev.map((b) => b.id === barber.id
+        ? { ...b, is_active: false, archived_at: new Date().toISOString() } : b))
+      setNotice(mensajeDeArchivado(json))
+    }
+  }
+
   async function handleDelete(barber: Profile) {
     if (deletingId !== barber.id) { setDeletingId(barber.id); return }
     try {
-      await updateBarberProfile(barber.id, { is_active: false })
-      setBarbers((prev) => prev.map((b) => b.id === barber.id ? { ...b, is_active: false } : b))
+      await eliminarBarbero(barber)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al eliminar')
+      setNotice(e instanceof Error ? e.message : 'Error al eliminar')
     } finally {
       setDeletingId(null)
     }
   }
 
-  // ── Hard delete (eliminar definitivamente, solo inactivos sin datos) ───────
+  async function handleUnarchive(barber: Profile) {
+    try {
+      await unarchive('barbero', barber.id)
+      setBarbers((prev) => prev.map((b) => b.id === barber.id ? { ...b, archived_at: null } : b))
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : 'Error al desarchivar')
+    }
+  }
+
+  // ── Eliminar definitivamente (botón de los inactivos) ─────────────────────
+  // Mismo camino que handleDelete: el backend decide borrar o archivar.
   async function handleHardDelete(barber: Profile) {
     if (hardDeletingId !== barber.id) { setHardDeletingId(barber.id); return }
     try {
-      const res = await fetch(`/api/barbers/${barber.id}`, { method: 'DELETE' })
-      const json = await res.json().catch(() => ({}))
-      if (!res.ok) throw new Error(json.error ?? 'Error al eliminar')
-      setBarbers((prev) => prev.filter((b) => b.id !== barber.id))
+      await eliminarBarbero(barber)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Error al eliminar')
+      setNotice(e instanceof Error ? e.message : 'Error al eliminar')
     } finally {
       setHardDeletingId(null)
     }
@@ -554,8 +580,11 @@ export default function BarbersAbm() {
     return <div className="p-6 text-red-400">{error}</div>
   }
 
-  const active = barbers.filter((b) => b.is_active)
-  const inactive = barbers.filter((b) => !b.is_active)
+  // Los archivados salen de la grilla principal: quedaban visibles como
+  // "inactivos" y el admin los leía como si siguieran de alta.
+  const archived = barbers.filter((b) => b.archived_at != null)
+  const active   = barbers.filter((b) => b.is_active && b.archived_at == null)
+  const inactive = barbers.filter((b) => !b.is_active && b.archived_at == null)
 
   return (
     <div className="w-full px-4 py-8 space-y-6">
@@ -1056,6 +1085,14 @@ export default function BarbersAbm() {
         )}
       </section>
 
+      {/* Aviso de eliminado / archivado */}
+      {notice && (
+        <div className="bg-zinc-900 border border-amber-500/40 rounded-xl px-5 py-3 flex items-start gap-3">
+          <p className="flex-1 text-sm text-zinc-200">{notice}</p>
+          <button onClick={() => setNotice(null)} className="text-xs text-zinc-500 hover:text-white">Cerrar</button>
+        </div>
+      )}
+
       {/* Inactive barbers */}
       {inactive.length > 0 && (
         <section className="space-y-3">
@@ -1082,6 +1119,34 @@ export default function BarbersAbm() {
               />
             ))}
           </div>
+        </section>
+      )}
+
+      {/* Archivados — fuera de la grilla principal, plegados */}
+      {archived.length > 0 && (
+        <section className="space-y-3">
+          <button
+            onClick={() => setShowArchived((v) => !v)}
+            className="text-xs font-semibold uppercase tracking-widest text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            {showArchived ? '▾' : '▸'} Archivados · {archived.length}
+          </button>
+          {showArchived && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {archived.map((barber) => (
+                <div key={barber.id} className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-4 flex items-center justify-between gap-4 opacity-60">
+                  <div>
+                    <p className="text-white font-semibold text-sm">{barber.full_name}</p>
+                    <p className="text-zinc-500 text-xs mt-0.5">Archivado · tiene historial</p>
+                  </div>
+                  <button onClick={() => handleUnarchive(barber)}
+                    className="text-xs text-zinc-500 hover:text-emerald-400 transition-colors flex-shrink-0">
+                    Restaurar
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </section>
       )}
 

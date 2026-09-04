@@ -58,6 +58,9 @@ export interface Profile {
   // Adelantos: si está habilitado para pedir adelantos y su tope por solicitud (0 = sin tope)
   advance_enabled: boolean
   advance_limit: number
+  /** Se intento eliminar pero tenia historial: queda fuera de la grilla principal.
+   *  Distinto de is_active = false, que es una pausa deliberada y sigue visible. */
+  archived_at: string | null
 }
 
 export interface Benefit {
@@ -76,6 +79,9 @@ export interface Benefit {
   /** Si es true, al elegir este beneficio hay que ingresar el DNI y validarlo
    *  contra la lista de socios vitalicios. Si el DNI no está, no se guarda el corte. */
   requires_member_document: boolean
+  /** Se intento eliminar pero tenia historial: queda fuera de la grilla principal.
+   *  Distinto de is_active = false, que es una pausa deliberada y sigue visible. */
+  archived_at: string | null
 }
 
 /** Socio vitalicio habilitado para el beneficio. Lista global (no por sucursal). */
@@ -85,6 +91,9 @@ export interface LifetimeMember {
   document_number: string
   is_active: boolean
   created_at: string
+  /** Se intento eliminar pero tenia historial: queda fuera de la grilla principal.
+   *  Distinto de is_active = false, que es una pausa deliberada y sigue visible. */
+  archived_at: string | null
 }
 
 export interface ServiceCatalog {
@@ -94,6 +103,9 @@ export interface ServiceCatalog {
   base_price: number
   is_active: boolean
   created_at: string
+  /** Se intento eliminar pero tenia historial: queda fuera de la grilla principal.
+   *  Distinto de is_active = false, que es una pausa deliberada y sigue visible. */
+  archived_at: string | null
 }
 
 export interface Month {
@@ -304,7 +316,7 @@ export type BranchInsert = Omit<Branch, 'id' | 'created_at'>
 
 export type BarberDebtPaymentInsert = Omit<BarberDebtPayment, 'id' | 'created_at'>
 
-export type ProfileInsert = Omit<Profile, 'created_at' | 'receives_transfers' | 'advance_enabled' | 'advance_limit' | 'is_new_barber' | 'classic_service_id'> & {
+export type ProfileInsert = Omit<Profile, 'created_at' | 'archived_at' | 'receives_transfers' | 'advance_enabled' | 'advance_limit' | 'is_new_barber' | 'classic_service_id'> & {
   receives_transfers?: boolean
   advance_enabled?: boolean
   advance_limit?: number
@@ -312,7 +324,7 @@ export type ProfileInsert = Omit<Profile, 'created_at' | 'receives_transfers' | 
   classic_service_id?: string | null
 }
 
-export type BenefitInsert = Omit<Benefit, 'id' | 'created_at' | 'is_active' | 'full_amount_to_barber'> & {
+export type BenefitInsert = Omit<Benefit, 'id' | 'created_at' | 'archived_at' | 'is_active' | 'full_amount_to_barber'> & {
   is_active?: boolean
   full_amount_to_barber?: boolean
 }
@@ -321,7 +333,7 @@ export type BenefitUpdate = Partial<
   Pick<Benefit, 'name' | 'description' | 'discount_type' | 'discount_value' | 'is_active' | 'full_amount_to_barber'>
 >
 
-export type ServiceCatalogInsert = Omit<ServiceCatalog, 'id' | 'created_at'>
+export type ServiceCatalogInsert = Omit<ServiceCatalog, 'id' | 'created_at' | 'archived_at'>
 
 export type WeekInsert = Omit<Week, 'id' | 'created_at' | 'closed_at' | 'closed_by' | 'month_id' | 'barber_extra_days'> & {
   month_id?: string | null
