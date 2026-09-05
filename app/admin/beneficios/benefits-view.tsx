@@ -16,6 +16,7 @@ import {
   deleteOrArchive,
   unarchive,
   mensajeDeArchivado,
+  mensajeDeEliminado,
 } from '@/lib/supabase/supabase.client'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import { CurrencyInput } from '@/app/components/currency-input'
@@ -196,7 +197,7 @@ export default function BenefitsView() {
       const r = await deleteOrArchive('beneficio', b.id)
       if (r.eliminado) {
         setBenefits((prev) => prev.filter((x) => x.id !== b.id))
-        setNotice(`Se eliminó "${r.nombre}".`)
+        setNotice(mensajeDeEliminado(r))
       } else {
         setBenefits((prev) => prev.map((x) =>
           x.id === b.id ? { ...x, is_active: false, archived_at: new Date().toISOString() } : x))
@@ -483,7 +484,7 @@ function LifetimeMembersSection() {
     if (deletingId !== m.id) { setDeletingId(m.id); return }
     try {
       const r = await deleteOrArchive('socio', m.id)
-      setNotice(r.eliminado ? 'Se eliminó a ' + r.nombre + '.' : mensajeDeArchivado(r))
+      setNotice(r.eliminado ? mensajeDeEliminado(r) : mensajeDeArchivado(r))
       await load()
     } catch (e) {
       setNotice(e instanceof Error ? e.message : 'Error al eliminar')

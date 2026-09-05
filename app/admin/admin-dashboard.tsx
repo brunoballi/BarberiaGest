@@ -21,6 +21,7 @@ import {
   SETTLEMENT_STATUS_LABELS,
 } from '@/lib/supabase/database.types'
 import { settlementCompensation } from '@/lib/settlement-model'
+import { txServiceName } from '@/lib/transaction-model'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import {
   getMonthsWithWeeks,
@@ -1572,14 +1573,14 @@ export default function AdminDashboard() {
             for (const t of transactions) if (!m.has(t.barber_id)) m.set(t.barber_id, t.barber.full_name)
             return Array.from(m).sort((a, b) => a[1].localeCompare(b[1]))
           })()
-          const serviceOptions = Array.from(new Set(transactions.map((t) => t.service?.name).filter(Boolean))) as string[]
+          const serviceOptions = Array.from(new Set(transactions.map((t) => txServiceName(t)).filter(Boolean))) as string[]
           const hasFilters = filterDateFrom || filterDateTo || filterBarber || filterMethod || filterService
           const filtered = transactions.filter((tx) => {
             if (filterDateFrom && tx.transaction_date < filterDateFrom) return false
             if (filterDateTo && tx.transaction_date > filterDateTo) return false
             if (filterBarber && tx.barber_id !== filterBarber) return false
             if (filterMethod && tx.payment_method !== filterMethod) return false
-            if (filterService && (tx.service?.name ?? '') !== filterService) return false
+            if (filterService && (txServiceName(tx) ?? '') !== filterService) return false
             return true
           })
           const txTotalPages = Math.max(1, Math.ceil(filtered.length / txPageSize))
@@ -1658,7 +1659,7 @@ export default function AdminDashboard() {
                     <tr key={tx.id} className={tx.is_manual_override ? 'tr-override' : ''}>
                       <td className="td-date td-left">{formatDate(tx.transaction_date)}</td>
                       <td className="td-left">{tx.barber.full_name}</td>
-                      <td className="td-left">{tx.service?.name ?? '—'}</td>
+                      <td className="td-left">{txServiceName(tx) ?? "—"}</td>
                       <td className="td-muted td-left">{[tx.client_name, tx.client_surname].filter(Boolean).join(' ') || '—'}</td>
                       <td className="td-left">
                         {tx.benefit ? (
@@ -2620,7 +2621,7 @@ function OverrideSplitModal({
         <div className="modal-body">
           <p className="form-label" style={{ marginBottom: 12 }}>
             Total del corte: <strong>{formatARS(total)}</strong>
-            {tx.service && <span style={{ color: '#a1a1aa' }}> · {tx.service.name}</span>}
+            {txServiceName(tx) && <span style={{ color: '#a1a1aa' }}> · {txServiceName(tx)}</span>}
           </p>
           {err && <p className="form-error">{err}</p>}
           <div className="form-row">

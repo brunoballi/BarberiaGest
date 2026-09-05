@@ -172,6 +172,13 @@ export interface Transaction {
   // semana vieja no se reinterpreta. Lo llena el trigger trg_transactions_benefit_vip_snap,
   // no hace falta mandarlo al insertar. NULL cuando el corte no tiene beneficio.
   benefit_full_amount_snap: boolean | null
+  // Nombres congelados al registrar el corte (migración 059). Permiten borrar el
+  // servicio, el beneficio o el socio del catálogo sin que el historial pierda lo que
+  // decía: al borrarse, el id queda en null y el nombre es lo único que sobrevive.
+  // Los llena el trigger trg_transactions_benefit_vip_snap, no hace falta mandarlos.
+  service_name_snap: string | null
+  benefit_name_snap: string | null
+  lifetime_member_name_snap: string | null
   /** Socio vitalicio al que se le aplicó el beneficio (null si no aplica). */
   lifetime_member_id: string | null
 }
@@ -344,7 +351,9 @@ export type WeekInsert = Omit<Week, 'id' | 'created_at' | 'closed_at' | 'closed_
 
 export type TransactionInsert = Omit<
   Transaction,
-  'id' | 'created_at' | 'updated_at' | 'is_manual_override' | 'override_notes' | 'benefit_id' | 'lifetime_member_id' | 'benefit_full_amount_snap'
+  'id' | 'created_at' | 'updated_at' | 'is_manual_override' | 'override_notes' | 'benefit_id' | 'lifetime_member_id'
+  // Los escribe el trigger trg_transactions_benefit_vip_snap, no el cliente.
+  | 'benefit_full_amount_snap' | 'service_name_snap' | 'benefit_name_snap' | 'lifetime_member_name_snap'
 > & {
   lifetime_member_id?: string | null
   is_manual_override?: boolean

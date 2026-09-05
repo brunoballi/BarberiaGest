@@ -12,6 +12,7 @@ import {
   deleteOrArchive,
   unarchive,
   mensajeDeArchivado,
+  mensajeDeEliminado,
 } from '@/lib/supabase/supabase.client'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import { CurrencyInput } from '@/app/components/currency-input'
@@ -166,7 +167,7 @@ export default function ServicesView() {
       const r = await deleteOrArchive('servicio', svc.id)
       if (r.eliminado) {
         setServices((prev) => prev.filter((s) => s.id !== svc.id))
-        setNotice(`Se eliminó "${r.nombre}".`)
+        setNotice(mensajeDeEliminado(r))
       } else {
         setServices((prev) => prev.map((s) =>
           s.id === svc.id ? { ...s, is_active: false, archived_at: new Date().toISOString() } : s))

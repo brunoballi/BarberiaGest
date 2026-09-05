@@ -15,6 +15,7 @@ import type {
   SettlementWithBarber,
 } from '@/lib/supabase/database.types'
 import { MONTH_NAMES } from '@/lib/supabase/supabase.client'
+import { txServiceName } from '@/lib/transaction-model'
 import { generateMonthReport } from '@/lib/pdf/month-report'
 
 const SERVICE_COLORS = ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899', '#14b8a6', '#eab308', '#3b82f6', '#f97316']
@@ -159,7 +160,7 @@ export default function MonthDetailModal({ month, weeks, branchName, data, loadi
   const cortesPorServicio = useMemo(() => {
     const map = new Map<string, number>()
     for (const t of filteredTransactions) {
-      const name = t.service?.name ?? 'Sin servicio'
+      const name = txServiceName(t) ?? 'Sin servicio'
       map.set(name, (map.get(name) ?? 0) + 1)
     }
     return [...map.entries()]

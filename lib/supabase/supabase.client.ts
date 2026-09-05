@@ -1224,7 +1224,7 @@ export async function getBarberTransactionsByDateRange(
 ): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
-    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, client_surname, discount_amount, discount_reason, benefit_id, benefit_full_amount_snap, lifetime_member_id')
+    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, client_surname, discount_amount, discount_reason, benefit_id, benefit_full_amount_snap, service_name_snap, benefit_name_snap, lifetime_member_name_snap, lifetime_member_id')
     .eq('barber_id', barberId)
     .gte('transaction_date', startDate)
     .lte('transaction_date', endDate)
@@ -1241,7 +1241,7 @@ export async function getBarberTransactionsForWeek(
 ): Promise<Transaction[]> {
   const { data, error } = await supabase
     .from('transactions')
-    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, client_surname, discount_amount, discount_reason, benefit_id, benefit_full_amount_snap, lifetime_member_id')
+    .select('id, barber_id, week_id, branch_id, service_id, transaction_date, amount, payment_method, barber_share, branch_share, barber_already_collected, commission_rate_snapshot, is_manual_override, override_notes, created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount, client_name, client_surname, discount_amount, discount_reason, benefit_id, benefit_full_amount_snap, service_name_snap, benefit_name_snap, lifetime_member_name_snap, lifetime_member_id')
     .eq('barber_id', barberId)
     .eq('week_id', weekId)
     .order('transaction_date', { ascending: false })
@@ -1261,6 +1261,7 @@ export async function getWeekTransactions(
       commission_rate_snapshot, is_manual_override, override_notes,
       created_by, created_at, updated_at, cash_amount, transfer_amount, card_amount,
       client_name, client_surname, discount_amount, discount_reason, benefit_id,
+      service_name_snap, benefit_name_snap, lifetime_member_name_snap,
       barber:profiles!barber_id ( id, full_name, compensation_type, receives_transfers, box_rental_amount, is_new_barber, classic_service_id ),
       service:service_catalog!service_id ( id, name ),
       benefit:benefits!benefit_id ( id, name, full_amount_to_barber )
@@ -2681,6 +2682,7 @@ export async function deleteLifetimeMember(id: string): Promise<void> {
   if (error) throw new Error(`[deleteLifetimeMember] ${error.message}`)
 }
 
+
 export async function updateLifetimeMember(
   id: string,
   fullName: string,
@@ -2710,6 +2712,11 @@ export interface DeleteOrArchiveResult {
   nombre: string
   /** Por qué no se pudo borrar. n en null = referencia detectada pero sin contar. */
   usos?: { que: string; n: number | null }[]
+  /**
+   * Solo cuando eliminado = true: cortes que usaban este registro y que quedaron
+   * con el nombre congelado en su historial (migraciones 059 y 060).
+   */
+  afectados?: number
 }
 
 /**
@@ -2744,6 +2751,18 @@ export function mensajeDeArchivado(r: DeleteOrArchiveResult): string {
     .join(', ')
   return `No se puede eliminar "${r.nombre}" porque tiene ${detalle}. ` +
          `Se archivó: ya no aparece en la lista, pero su historial queda intacto.`
+}
+
+/**
+ * Mensaje cuando el registro SÍ se borró. Si había cortes que lo usaban, aclara que
+ * el historial no se perdió: desde la 059 el corte guarda el nombre y desde la 060
+ * la FK es ON DELETE SET NULL, así que la lista de cortes sigue mostrando lo mismo.
+ */
+export function mensajeDeEliminado(r: DeleteOrArchiveResult): string {
+  const n = r.afectados ?? 0
+  if (n === 0) return `Se eliminó "${r.nombre}".`
+  return `Se eliminó "${r.nombre}". ${n} ${n === 1 ? 'corte conserva' : 'cortes conservan'} ` +
+         `el nombre en su historial.`
 }
 
 /** Estado del checklist de mantenimiento de un barbero en una semana. */
