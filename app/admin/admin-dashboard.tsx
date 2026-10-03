@@ -981,7 +981,7 @@ export default function AdminDashboard() {
 
         {/* ─── TAB: LIVE ─── */}
         {tab === 'live' && selectedWeek && (
-          <LiveDashboard transactions={liveTransactions} weekNumber={weeks.length - weeks.findIndex((w) => w.id === selectedWeek.id)} />
+          <LiveDashboard transactions={liveTransactions} weekNumber={weeks.findIndex((w) => w.id === selectedWeek.id) + 1} />
         )}
 
         {/* ─── TAB: LIQUIDACIONES ─── */}
