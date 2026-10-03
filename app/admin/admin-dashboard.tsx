@@ -11,7 +11,6 @@ import {
   type SettlementWithBarber,
   type TransactionWithRelations,
   type Profile,
-  type AdvanceWithBarber,
   type Advance,
   type ServiceCatalog,
   type PaymentMethod,
@@ -30,7 +29,6 @@ import {
   getBarbersByBranch,
   getSettlementsForWeek,
   getWeekTransactions,
-  getAdvancesByDateRange,
   getExpensesByWeek,
   type ExpenseWithUser,
   closeWeek,
@@ -209,7 +207,6 @@ export default function AdminDashboard() {
   const [maintStatus, setMaintStatus] = useState<MaintenanceStatus | null>(null)
   const [loadingMaint, setLoadingMaint] = useState(false)
   const [transactions, setTransactions] = useState<TransactionWithRelations[]>([])
-  const [weekAdvances, setWeekAdvances] = useState<AdvanceWithBarber[]>([])
   const [expenses, setExpenses] = useState<ExpenseWithUser[]>([])
 
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -401,12 +398,7 @@ export default function AdminDashboard() {
           setLoadingMaint(false)
         }
       } else if (tab === 'transacciones') {
-        const [txData, advData] = await Promise.all([
-          getWeekTransactions(selectedWeek.id),
-          getAdvancesByDateRange(selectedBranch, selectedWeek.start_date, selectedWeek.end_date),
-        ])
-        setTransactions(txData)
-        setWeekAdvances(advData)
+        setTransactions(await getWeekTransactions(selectedWeek.id))
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error cargando datos')
@@ -465,17 +457,12 @@ export default function AdminDashboard() {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'transactions', filter: `week_id=eq.${selectedWeek.id}` },
         async () => {
-          const [txData, advData] = await Promise.all([
-            getWeekTransactions(selectedWeek.id),
-            getAdvancesByDateRange(selectedBranch, selectedWeek.start_date, selectedWeek.end_date),
-          ])
-          setTransactions(txData)
-          setWeekAdvances(advData)
+          setTransactions(await getWeekTransactions(selectedWeek.id))
         }
       )
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [tab, selectedWeek, selectedBranch])
+  }, [tab, selectedWeek])
 
   // ─── Realtime: pestaña liquidaciones (settlements + expenses de la semana) ──
   // Sin guard de 'open': las liquidaciones se confirman/pagan en semanas cerradas.
@@ -1763,59 +1750,6 @@ export default function AdminDashboard() {
               onPageSizeChange={(s) => { setTxPageSize(s); setTxPage(1) }}
               itemLabel="transacciones"
             />
-
-            {/* ── Adelantos del período ─────────────────────────── */}
-            {weekAdvances.length > 0 && (
-              <div className="advances-section">
-                <div className="advances-section__header">
-                  <span className="advances-section__title">Adelantos del período</span>
-                  <span className="advances-section__total">
-                    Total: <strong>{formatARS(weekAdvances.reduce((s, a) => s + a.amount, 0))}</strong>
-                  </span>
-                </div>
-                <div className="admin-table-wrap">
-                  <table className="admin-table">
-                    <thead>
-                      <tr>
-                        <th>Fecha</th>
-                        <th>Barbero</th>
-                        <th>Motivo</th>
-                        <th>Estado</th>
-                        <th>Monto</th>
-                        <th>Origen</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {weekAdvances.map((adv) => (
-                        <tr key={adv.id}>
-                          <td className="td-date">{formatDate(adv.advance_date)}</td>
-                          <td>{adv.barber.full_name}</td>
-                          <td>{adv.reason ?? '—'}</td>
-                          <td>
-                            <span className={`badge ${adv.status === 'approved' ? 'badge--green' : 'badge--violet'}`}>
-                              {adv.status === 'approved' ? 'Autorizado' : 'Pendiente'}
-                            </span>
-                          </td>
-                          <td className="td-amber"><strong>{formatARS(adv.amount)}</strong></td>
-                          <td>
-                            <span className="text-xs text-zinc-500">
-                              {adv.registered_by === adv.barber_id ? 'Barbero' : 'Admin'}
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr className="tfoot-row">
-                        <td colSpan={4}><strong>{weekAdvances.length} adelanto{weekAdvances.length !== 1 ? 's' : ''}</strong></td>
-                        <td><strong className="td-amber">{formatARS(weekAdvances.reduce((s, a) => s + a.amount, 0))}</strong></td>
-                        <td></td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </div>
-            )}
           </div>
           )
         })()}
