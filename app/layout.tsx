@@ -16,6 +16,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'Flowi — Management',
   description: 'Flowi — Sistema de gestión para barberías',
+  // El traductor automático del navegador reescribe el DOM y rompe a React al
+  // cambiar de pantalla (la app ya está en español).
+  other: { google: 'notranslate' },
 };
 
 export default function RootLayout({
@@ -25,7 +28,8 @@ export default function RootLayout({
 }>) {
   return (
     <html
-      lang="en"
+      lang="es"
+      translate="no"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">
