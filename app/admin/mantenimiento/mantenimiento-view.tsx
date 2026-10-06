@@ -368,19 +368,22 @@ export default function MantenimientoView() {
   const hayTareas = draftBlocks.some((b) => b.tasks.some((t) => t.description.trim()))
 
   /**
-   * Semanas elegibles: las del mes corriente. Se agrega la última del mes
-   * anterior SOLO cuando la semana en curso es la primera del mes, porque en ese
-   * caso la que se está liquidando cae fuera del mes y quedaría inalcanzable
-   * (que es justo el bloqueo que este selector viene a evitar).
+   * Semanas elegibles: las últimas semanas ya empezadas (más la en curso).
+   *
+   * No se limita al mes corriente: el calendario parte las semanas en el cambio
+   * de mes (ej: 28/09–30/09 y 01/10–04/10), y una semana de pocos días queda
+   * "del mes anterior" mientras todavía se está liquidando. Con el selector atado
+   * al mes, esa semana quedaba inalcanzable y su bono de mantenimiento trabado
+   * sin forma de completar el checklist.
    */
+  const WEEKS_BACK = 8
   const weekOptions = (() => {
     if (!currentWeek) return []
-    const delMes = weeks
-      .filter((w) => w.month_id === currentWeek.month_id)
-      .sort((a, b) => a.start_date.localeCompare(b.start_date))
-    // weeks viene DESC por start_date: la primera anterior a la actual es la inmediata.
-    const previa = weeks.find((w) => w.start_date < currentWeek.start_date) ?? null
-    return previa && previa.month_id !== currentWeek.month_id ? [previa, ...delMes] : delMes
+    const today = todayLocal()
+    // weeks viene DESC por start_date: las primeras ya empezadas son las más recientes.
+    const recientes = weeks.filter((w) => w.start_date <= today).slice(0, WEEKS_BACK)
+    if (!recientes.some((w) => w.id === currentWeek.id)) recientes.push(currentWeek)
+    return recientes.sort((a, b) => a.start_date.localeCompare(b.start_date))
   })()
 
   return (
@@ -506,7 +509,6 @@ export default function MantenimientoView() {
                   <option key={w.id} value={w.id}>
                     Semana {w.week_number} · {weekRangeLabel(w)}
                     {w.id === currentWeek?.id ? ' (en curso)' : ''}
-                    {w.month_id !== currentWeek?.month_id ? ' (mes anterior)' : ''}
                   </option>
                 ))}
               </select>
