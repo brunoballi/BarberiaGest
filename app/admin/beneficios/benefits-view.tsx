@@ -50,6 +50,8 @@ export default function BenefitsView() {
   const [formValue, setFormValue] = useState('')
   // Beneficio de socio vitalicio: exige DNI y lo valida contra la lista.
   const [formRequiresDoc, setFormRequiresDoc] = useState(false)
+  // Beneficio VIP: el monto cobrado va 100% al barbero (comisión %).
+  const [formFullToBarber, setFormFullToBarber] = useState(false)
   const [creating, setCreating]   = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
 
@@ -59,6 +61,8 @@ export default function BenefitsView() {
   const [editDesc, setEditDesc]   = useState('')
   const [editType, setEditType]   = useState<'fixed' | 'percentage'>('percentage')
   const [editValue, setEditValue] = useState('')
+  const [editRequiresDoc, setEditRequiresDoc]   = useState(false)
+  const [editFullToBarber, setEditFullToBarber] = useState(false)
   const [saving, setSaving]       = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
 
@@ -125,11 +129,12 @@ export default function BenefitsView() {
         discount_value: value,
         is_active:      true,
         requires_member_document: formRequiresDoc,
+        full_amount_to_barber:    formFullToBarber,
       }
       const created = await createBenefit(payload)
       setBenefits((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
       setShowForm(false)
-      setFormName(''); setFormDesc(''); setFormValue(''); setFormType('percentage'); setFormRequiresDoc(false)
+      setFormName(''); setFormDesc(''); setFormValue(''); setFormType('percentage'); setFormRequiresDoc(false); setFormFullToBarber(false)
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Error al crear')
     } finally {
@@ -144,6 +149,8 @@ export default function BenefitsView() {
     setEditDesc(b.description ?? '')
     setEditType(b.discount_type)
     setEditValue(String(b.discount_value))
+    setEditRequiresDoc(b.requires_member_document)
+    setEditFullToBarber(b.full_amount_to_barber)
     setEditError(null)
   }
 
@@ -161,10 +168,20 @@ export default function BenefitsView() {
         description:    editDesc.trim() || null,
         discount_type:  editType,
         discount_value: value,
+        requires_member_document: editRequiresDoc,
+        full_amount_to_barber:    editFullToBarber,
       })
       setBenefits((prev) =>
         prev
-          .map((b) => b.id === id ? { ...b, name: editName.trim(), description: editDesc.trim() || null, discount_type: editType, discount_value: value } : b)
+          .map((b) => b.id === id ? {
+            ...b,
+            name: editName.trim(),
+            description: editDesc.trim() || null,
+            discount_type: editType,
+            discount_value: value,
+            requires_member_document: editRequiresDoc,
+            full_amount_to_barber: editFullToBarber,
+          } : b)
           .sort((a, b) => a.name.localeCompare(b.name))
       )
       setEditingId(null)
@@ -314,6 +331,20 @@ export default function BenefitsView() {
                 </span>
               </span>
             </label>
+            <label className="flex items-start gap-2.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={formFullToBarber}
+                onChange={(e) => setFormFullToBarber(e.target.checked)}
+                className="mt-0.5 accent-amber-500"
+              />
+              <span className="text-sm text-zinc-300">
+                Beneficio VIP (100% para el barbero)
+                <span className="block text-xs text-zinc-500 mt-0.5">
+                  En barberos de comisión %, lo que paga el cliente va entero al barbero y la barbería no gana nada de ese corte.
+                </span>
+              </span>
+            </label>
             {formError && <p className="text-red-400 text-sm">{formError}</p>}
             <div className="flex gap-3">
               <button type="submit" disabled={creating}
@@ -352,6 +383,8 @@ export default function BenefitsView() {
                 key={b.id} benefit={b}
                 editingId={editingId} editName={editName} editDesc={editDesc} editType={editType} editValue={editValue}
                 editError={editError} saving={saving} togglingId={togglingId}
+                editRequiresDoc={editRequiresDoc} editFullToBarber={editFullToBarber}
+                onEditRequiresDoc={setEditRequiresDoc} onEditFullToBarber={setEditFullToBarber}
                 onEdit={openEdit} onEditName={setEditName} onEditDesc={setEditDesc} onEditType={setEditType} onEditValue={setEditValue}
                 onSave={handleSaveEdit} onCancelEdit={() => { setEditingId(null); setEditError(null) }}
                 onToggle={handleToggle} onCancelToggle={() => setTogglingId(null)}
@@ -374,6 +407,8 @@ export default function BenefitsView() {
                 key={b.id} benefit={b}
                 editingId={editingId} editName={editName} editDesc={editDesc} editType={editType} editValue={editValue}
                 editError={editError} saving={saving} togglingId={togglingId}
+                editRequiresDoc={editRequiresDoc} editFullToBarber={editFullToBarber}
+                onEditRequiresDoc={setEditRequiresDoc} onEditFullToBarber={setEditFullToBarber}
                 onEdit={openEdit} onEditName={setEditName} onEditDesc={setEditDesc} onEditType={setEditType} onEditValue={setEditValue}
                 onSave={handleSaveEdit} onCancelEdit={() => { setEditingId(null); setEditError(null) }}
                 onToggle={handleToggle} onCancelToggle={() => setTogglingId(null)}
@@ -614,6 +649,7 @@ function LifetimeMembersSection() {
 // ─── BenefitRow ──────────────────────────────────────────────────────────────
 function BenefitRow({
   benefit, editingId, editName, editDesc, editType, editValue, editError, saving, togglingId,
+  editRequiresDoc, editFullToBarber, onEditRequiresDoc, onEditFullToBarber,
   onEdit, onEditName, onEditDesc, onEditType, onEditValue, onSave, onCancelEdit, onToggle, onCancelToggle,
   deletingId, onDelete, onCancelDelete,
 }: {
@@ -626,6 +662,10 @@ function BenefitRow({
   editError: string | null
   saving: boolean
   togglingId: string | null
+  editRequiresDoc: boolean
+  editFullToBarber: boolean
+  onEditRequiresDoc: (v: boolean) => void
+  onEditFullToBarber: (v: boolean) => void
   onEdit: (b: Benefit) => void
   onEditName: (v: string) => void
   onEditDesc: (v: string) => void
@@ -669,6 +709,18 @@ function BenefitRow({
               className="bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
             />
           </div>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input type="checkbox" checked={editRequiresDoc}
+              onChange={(e) => onEditRequiresDoc(e.target.checked)}
+              className="mt-0.5 accent-amber-500" />
+            <span className="text-xs text-zinc-300">Requiere documento de socio vitalicio</span>
+          </label>
+          <label className="flex items-start gap-2 cursor-pointer">
+            <input type="checkbox" checked={editFullToBarber}
+              onChange={(e) => onEditFullToBarber(e.target.checked)}
+              className="mt-0.5 accent-amber-500" />
+            <span className="text-xs text-zinc-300">Beneficio VIP (100% para el barbero)</span>
+          </label>
           {editError && <p className="text-red-400 text-xs">{editError}</p>}
           <div className="flex gap-2">
             <button onClick={() => onSave(benefit.id)} disabled={saving}
@@ -689,6 +741,11 @@ function BenefitRow({
               {benefit.full_amount_to_barber && (
                 <span className="text-[0.65rem] font-bold uppercase tracking-wide text-amber-400 border border-amber-500/40 rounded px-1.5 py-0.5">
                   VIP
+                </span>
+              )}
+              {benefit.requires_member_document && (
+                <span className="text-[0.65rem] font-bold uppercase tracking-wide text-violet-300 border border-violet-500/40 rounded px-1.5 py-0.5">
+                  Socio · DNI
                 </span>
               )}
             </div>

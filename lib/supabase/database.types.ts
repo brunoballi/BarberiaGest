@@ -337,7 +337,7 @@ export type BenefitInsert = Omit<Benefit, 'id' | 'created_at' | 'archived_at' | 
 }
 
 export type BenefitUpdate = Partial<
-  Pick<Benefit, 'name' | 'description' | 'discount_type' | 'discount_value' | 'is_active' | 'full_amount_to_barber'>
+  Pick<Benefit, 'name' | 'description' | 'discount_type' | 'discount_value' | 'is_active' | 'full_amount_to_barber' | 'requires_member_document'>
 >
 
 export type ServiceCatalogInsert = Omit<ServiceCatalog, 'id' | 'created_at' | 'archived_at'>

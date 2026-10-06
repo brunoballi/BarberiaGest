@@ -1104,6 +1104,9 @@ export async function updateCut(
     discount_amount: payload.discount_amount ?? 0,
     discount_reason: payload.discount_reason ?? null,
     benefit_id: payload.benefit_id ?? null,
+    // El socio vitalicio acompaña al beneficio: si se cambia o quita el beneficio,
+    // el vínculo anterior no puede quedar colgado.
+    lifetime_member_id: payload.lifetime_member_id ?? null,
     // Una edición del barbero NO es un override de admin: reseteamos el flag para
     // cumplir la RLS del barbero (WITH CHECK exige is_manual_override = false) y
     // permitir re-editar cortes que el admin haya tocado antes.
@@ -2627,17 +2630,26 @@ export async function deleteMaintenanceSheet(sheetId: string): Promise<void> {
 // ============================================================
 // SOCIOS VITALICIOS
 // ============================================================
+/**
+ * Deja el documento en su forma canónica: sin puntos, espacios ni guiones.
+ * "42.130.238" y "42 130 238" pasan a "42130238", que es como se guarda en la lista.
+ */
+export function normalizeDocument(documentNumber: string): string {
+  return documentNumber.replace(/[.\s-]/g, '').toUpperCase()
+}
+
 /** Busca un socio vitalicio activo por documento. null = no está en la lista. */
 export async function findLifetimeMemberByDocument(
   documentNumber: string,
 ): Promise<LifetimeMember | null> {
-  const doc = documentNumber.trim()
+  const doc = normalizeDocument(documentNumber)
   if (!doc) return null
   const { data, error } = await supabase
     .from('lifetime_members')
     .select('*')
     .eq('document_number', doc)
     .eq('is_active', true)
+    .is('archived_at', null)
     .maybeSingle()
   if (error) throw new Error(`[findLifetimeMemberByDocument] ${error.message}`)
   return (data as LifetimeMember) ?? null
@@ -2658,7 +2670,7 @@ export async function createLifetimeMember(
 ): Promise<LifetimeMember> {
   const { data, error } = await supabase
     .from('lifetime_members')
-    .insert({ full_name: fullName.trim(), document_number: documentNumber.trim() })
+    .insert({ full_name: fullName.trim(), document_number: normalizeDocument(documentNumber) })
     .select()
     .single()
   if (error) {
@@ -2690,7 +2702,7 @@ export async function updateLifetimeMember(
 ): Promise<void> {
   const { error } = await supabase
     .from('lifetime_members')
-    .update({ full_name: fullName.trim(), document_number: documentNumber.trim() })
+    .update({ full_name: fullName.trim(), document_number: normalizeDocument(documentNumber) })
     .eq('id', id)
   if (error) {
     if (error.code === '23505') throw new Error('Ya existe otro socio vitalicio con ese documento.')

@@ -25,6 +25,7 @@ import {
   type BarberMaintenanceStatus,
   getSettlementStatusForWeek,
   computeBenefitDiscount,
+  findLifetimeMemberByDocument,
   registerCut,
   updateCut,
   getBarberClosedWeekIds,
@@ -183,6 +184,8 @@ export default function BarberMobileView() {
   const benefitsQuery = useActiveBenefits(profile?.branch_id)
   const benefits = benefitsQuery.data ?? []
   const [benefitId, setBenefitId] = useState<string>('')
+  // DNI del socio vitalicio: lo exigen los beneficios con requires_member_document.
+  const [memberDocument, setMemberDocument] = useState<string>('')
   const [observations, setObservations] = useState<string>('')
   const [splitPayment, setSplitPayment] = useState(false)
   const [cashPart, setCashPart] = useState<string>('')
@@ -558,6 +561,33 @@ export default function BarberMobileView() {
 
     try {
       setSubmitting(true)
+
+      // Beneficio de socio vitalicio: el DNI tiene que estar en la lista.
+      // Si no está, NO se guarda el corte (misma regla que en el alta del admin).
+      let lifetimeMemberId: string | null = null
+      if (selectedBenefit?.requires_member_document) {
+        const keepExisting =
+          !!editingTx &&
+          editingTx.benefit_id === selectedBenefit.id &&
+          !!editingTx.lifetime_member_id &&
+          !memberDocument.trim()
+        if (keepExisting) {
+          // Edición de un corte que ya tenía socio validado: se conserva.
+          lifetimeMemberId = editingTx.lifetime_member_id
+        } else {
+          if (!memberDocument.trim()) {
+            setFormSubmitError('Ingresá el DNI del socio vitalicio')
+            return
+          }
+          const member = await findLifetimeMemberByDocument(memberDocument)
+          if (!member) {
+            setFormSubmitError('El DNI no está en la lista de socios vitalicios. Por favor, comunicate con el administrador.')
+            return
+          }
+          lifetimeMemberId = member.id
+        }
+      }
+
       const payload: RegisterCutPayload = {
         service_id:       selectedServiceData?.id ?? null,
         amount:           effectiveAmount,
@@ -572,6 +602,7 @@ export default function BarberMobileView() {
         discount_reason:  discountReasonFinal,
         benefit_id:       benefitId || null,
         benefit_full_amount_to_barber: isVipFullToBarber,
+        lifetime_member_id: lifetimeMemberId,
       }
       if (editingTx) {
         const updated = await updateCut(editingTx.id, payload, profile)
@@ -698,6 +729,7 @@ export default function BarberMobileView() {
     setCustomAmount(String(tx.amount + (tx.discount_amount || 0)))
     setDiscountAmount(tx.discount_amount > 0 ? String(tx.discount_amount) : '')
     setBenefitId(tx.benefit_id ?? '')
+    setMemberDocument('')
     setClientName(tx.client_name ?? '')
     setClientSurname(tx.client_surname ?? '')
     // discount_reason guardado = "[beneficio] | [observaciones]". Recuperamos solo
@@ -733,6 +765,7 @@ export default function BarberMobileView() {
     setTransferPart('')
     setObservations('')
     setBenefitId('')
+    setMemberDocument('')
     setClientName('')
     setClientSurname('')
     setDiscountAmount('')
@@ -1025,6 +1058,7 @@ export default function BarberMobileView() {
                 onChange={(e) => {
                   const id = e.target.value
                   setBenefitId(id)
+                  setMemberDocument('')
                   if (!id) { setDiscountAmount(''); setDiscountReason('') }
                 }}
                 className="client-name-input"
@@ -1036,6 +1070,28 @@ export default function BarberMobileView() {
                   </option>
                 ))}
               </select>
+              {/* Socio vitalicio: DNI obligatorio, se valida contra la lista al guardar */}
+              {selectedBenefit?.requires_member_document && (
+                <div style={{ marginTop: 10 }}>
+                  <label className="section-label">Número de documento del socio *</label>
+                  <TextInput
+                    className="client-name-input"
+                    value={memberDocument}
+                    onChange={setMemberDocument}
+                    placeholder={
+                      editingTx?.lifetime_member_id && editingTx.benefit_id === selectedBenefit.id
+                        ? 'Ya validado — dejalo vacío para conservarlo'
+                        : 'DNI sin puntos'
+                    }
+                    inputMode="numeric"
+                    allowNumbers
+                    maxLength={12}
+                  />
+                  <p className="text-xs text-zinc-500" style={{ marginTop: 6 }}>
+                    Se valida contra la lista de socios vitalicios al guardar.
+                  </p>
+                </div>
+              )}
               {selectedBenefit && discountNum > 0 && (
                 <p className="discount-hint" style={{ color: '#34d399' }}>
                   Ahorra {formatARS(discountNum)} con &quot;{selectedBenefit.name}&quot;
