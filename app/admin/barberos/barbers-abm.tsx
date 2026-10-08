@@ -322,8 +322,12 @@ export default function BarbersAbm() {
           inviteForm.mantenimiento_rate ? parseFloat(inviteForm.mantenimiento_rate) / 100 : null,
         mantenimiento_min_cuts:
           inviteForm.mantenimiento_min_cuts ? parseInt(inviteForm.mantenimiento_min_cuts, 10) : null,
+        // Solo aplica al alquiler de box: con otra modalidad el campo está oculto y
+        // arrastraba un valor viejo que no se podía ver ni borrar.
         box_rental_amount:
-          inviteForm.box_rental_amount ? parseFloat(inviteForm.box_rental_amount) : null,
+          inviteForm.compensation_type === 'box_rental' && inviteForm.box_rental_amount
+            ? parseFloat(inviteForm.box_rental_amount)
+            : null,
         is_new_barber:
           inviteForm.compensation_type === 'percentage' ? inviteForm.is_new_barber : false,
         classic_service_id:
@@ -402,7 +406,11 @@ export default function BarbersAbm() {
         presentismo_rate: editForm.presentismo_rate ? parseFloat(editForm.presentismo_rate) / 100 : null,
         mantenimiento_rate: editForm.mantenimiento_rate ? parseFloat(editForm.mantenimiento_rate) / 100 : null,
         mantenimiento_min_cuts: editForm.mantenimiento_min_cuts ? parseInt(editForm.mantenimiento_min_cuts, 10) : null,
-        box_rental_amount: editForm.box_rental_amount ? parseFloat(editForm.box_rental_amount) : null,
+        // Solo aplica al alquiler de box (ver el mismo criterio en el alta).
+        box_rental_amount:
+          editForm.compensation_type === 'box_rental' && editForm.box_rental_amount
+            ? parseFloat(editForm.box_rental_amount)
+            : null,
         is_new_barber: editForm.compensation_type === 'percentage' ? editForm.is_new_barber : false,
         classic_service_id:
           editForm.compensation_type === 'percentage' && editForm.is_new_barber && editForm.classic_service_id
