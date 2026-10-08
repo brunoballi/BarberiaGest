@@ -5,6 +5,7 @@
 // ============================================================
 
 import { createBrowserClient } from '@supabase/ssr'
+import { isAuthRetryableFetchError } from '@supabase/supabase-js'
 import type {
   Branch,
   BranchReport,
@@ -52,17 +53,54 @@ import type {
 // ============================================================
 // CLIENT SINGLETON
 // ============================================================
+// Sin tope de tiempo, un pedido colgado (señal móvil mala) deja la pantalla en
+// "Cargando" para siempre. Con tope falla con un mensaje claro y el usuario puede
+// reintentar. Las subidas de archivos (/storage/) quedan afuera: pueden tardar más.
+const REQUEST_TIMEOUT_MS = 30_000
+const TIMEOUT_MESSAGE = 'La conexión tardó demasiado. Revisá tu señal e intentá de nuevo.'
+
+function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+  if (url.includes('/storage/v1/')) return fetch(input, init)
+
+  const controller = new AbortController()
+  let timedOut = false
+  const timer = setTimeout(() => { timedOut = true; controller.abort() }, REQUEST_TIMEOUT_MS)
+
+  // Respeta la cancelación del llamador (ej: abortSignal de supabase-js).
+  const outer = init?.signal
+  if (outer) {
+    if (outer.aborted) controller.abort()
+    else outer.addEventListener('abort', () => controller.abort(), { once: true })
+  }
+
+  return fetch(input, { ...init, signal: controller.signal })
+    .catch((e) => { throw timedOut ? new Error(TIMEOUT_MESSAGE) : e })
+    .finally(() => clearTimeout(timer))
+}
+
 export const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+  { global: { fetch: fetchWithTimeout } }
 )
 
 // ============================================================
 // AUTH HELPERS
 // ============================================================
+// Por qué getCurrentProfile devolvió null: la sesión realmente no existe (vencida,
+// revocada, sin perfil) o fue un problema pasajero (sin señal, timeout, error del
+// servidor). Distinguirlos evita cerrarle la sesión a alguien por un corte de internet.
+type ProfileFailure = 'none' | 'no-session' | 'transient'
+let profileFailure: ProfileFailure = 'none'
+
 async function fetchCurrentProfile(): Promise<Profile | null> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
+  profileFailure = 'none'
+  const { data: { user }, error: authError } = await supabase.auth.getUser()
+  if (!user) {
+    profileFailure = authError && isAuthRetryableFetchError(authError) ? 'transient' : 'no-session'
+    return null
+  }
 
   const { data, error } = await supabase
     .from('profiles')
@@ -72,6 +110,8 @@ async function fetchCurrentProfile(): Promise<Profile | null> {
 
   if (error) {
     console.error('[getCurrentProfile]', error.message)
+    // PGRST116: no hay fila de perfil para ese usuario → no hay sesión utilizable.
+    profileFailure = error.code === 'PGRST116' ? 'no-session' : 'transient'
     return null
   }
   return data
@@ -84,6 +124,8 @@ async function fetchCurrentProfile(): Promise<Profile | null> {
 // comparten la misma promesa en vuelo).
 // El logout hace window.location.href = '/login' (recarga completa), así que el
 // módulo se reinicia y no queda el perfil del usuario anterior.
+// Solo se cachea un perfil válido: un null (sesión caída o falla de red) NO se
+// guarda, porque si no el "Reintentar" devolvía el mismo null durante 10 minutos.
 const PROFILE_TTL_MS = 10 * 60_000
 let profileCache: { at: number; promise: Promise<Profile | null> } | null = null
 
@@ -94,9 +136,35 @@ export async function getCurrentProfile(): Promise<Profile | null> {
   }
   const promise = fetchCurrentProfile()
   profileCache = { at: now, promise }
-  // Un error no debe quedar cacheado: el próximo intento tiene que reintentar.
-  promise.catch(() => { profileCache = null })
+  const forget = () => { if (profileCache?.promise === promise) profileCache = null }
+  promise.then((p) => { if (p === null) forget() }).catch(forget)
   return promise
+}
+
+/**
+ * La sesión se perdió: limpia la sesión local y manda a /login, recordando adónde
+ * volver. Se limpia ANTES de redirigir para que servidor y cliente vean lo mismo y
+ * no haya rebote entre /login y la pantalla protegida.
+ */
+export async function redirectToLogin(): Promise<void> {
+  if (typeof window === 'undefined') return
+  invalidateCurrentProfile()
+  try { await supabase.auth.signOut({ scope: 'local' }) } catch { /* sin red: igual redirigimos */ }
+  const next = window.location.pathname + window.location.search
+  window.location.replace(`/login?next=${encodeURIComponent(next)}`)
+}
+
+/**
+ * Qué hacer cuando getCurrentProfile devuelve null. Sesión vencida → redirige al
+ * login. Falla pasajera (sin señal) → devuelve el mensaje para mostrar junto al
+ * botón "Reintentar", sin cerrar la sesión.
+ */
+export async function handleMissingProfile(): Promise<string> {
+  if (profileFailure === 'transient') {
+    return 'No pudimos verificar tu sesión. Revisá tu conexión e intentá de nuevo.'
+  }
+  await redirectToLogin()
+  return 'Tu sesión venció. Redirigiendo al ingreso…'
 }
 
 /** Fuerza que el próximo getCurrentProfile vuelva a consultar (ej: tras editar el propio perfil). */

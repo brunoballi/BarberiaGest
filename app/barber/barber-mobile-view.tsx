@@ -16,6 +16,7 @@ import {
 } from '@/lib/supabase/database.types'
 import {
   getCurrentProfile,
+  handleMissingProfile,
   getOpenWeek,
   getWeeksByBranch,
   getBarberTransactionsForWeek,
@@ -225,7 +226,7 @@ export default function BarberMobileView() {
       setError(null)
 
       const p = await getCurrentProfile()
-      if (!p) { setError('No autenticado'); return }
+      if (!p) { setError(await handleMissingProfile()); return }
       setProfile(p)
 
       // Servicios y beneficios ahora vienen de React Query (useServices/useActiveBenefits).

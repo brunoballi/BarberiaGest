@@ -7,6 +7,7 @@ import type { RevenueBalance, MonthWithWeeks } from '@/lib/supabase/database.typ
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import {
   getCurrentProfile,
+  handleMissingProfile,
   getMonthsWithWeeks,
   getInitialBalance,
   setInitialBalance,
@@ -59,7 +60,7 @@ export default function SaldoInicialView() {
     try {
       setLoading(true)
       const [p, bs] = await Promise.all([getCurrentProfile(), getMyBranchesCached()])
-      if (!p) { setError('No autenticado'); return }
+      if (!p) { setError(await handleMissingProfile()); return }
       if (bs.length === 0) { setError('No tenés sucursales asignadas.'); return }
 
       const stored = getStoredBranch()

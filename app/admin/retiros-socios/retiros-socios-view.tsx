@@ -7,6 +7,7 @@ import { type Week } from '@/lib/supabase/database.types'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import {
   getCurrentProfile,
+  handleMissingProfile,
   getWeeksByBranch,
   getExpensesByDateRange,
   getPartnersByBranch,
@@ -91,7 +92,7 @@ export default function RetirosSociosView() {
     try {
       setLoading(true)
       const [p, bs] = await Promise.all([getCurrentProfile(), getMyBranchesCached()])
-      if (!p) { setError('No autenticado'); return }
+      if (!p) { setError(await handleMissingProfile()); return }
       if (bs.length === 0) { setError('No tenés sucursales asignadas.'); return }
       setCurrentUserId(p.id)
 

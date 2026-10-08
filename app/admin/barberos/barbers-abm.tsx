@@ -12,6 +12,7 @@ import type {
 } from '@/lib/supabase/database.types'
 import {
   getCurrentProfile,
+  handleMissingProfile,
   getAllBarbersByBranch,
   getServicesByBranch,
   supabase,
@@ -256,7 +257,7 @@ export default function BarbersAbm() {
       setLoading(true)
       setError(null)
       const [p, bs] = await Promise.all([getCurrentProfile(), getMyBranchesCached()])
-      if (!p) { setError('No autenticado'); return }
+      if (!p) { setError(await handleMissingProfile()); return }
       if (bs.length === 0) { setError('No tenés sucursales asignadas.'); return }
       setAdminProfile(p)
       setBranches(bs)

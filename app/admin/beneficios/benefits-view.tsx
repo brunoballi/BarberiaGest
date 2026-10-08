@@ -6,6 +6,7 @@ import { usePersistedBranch, getStoredBranch } from '@/lib/hooks/usePersistedBra
 import type { Branch, Profile, Benefit, BenefitInsert, LifetimeMember } from '@/lib/supabase/database.types'
 import {
   getCurrentProfile,
+  handleMissingProfile,
   getBenefitsByBranch,
   createBenefit,
   updateBenefit,
@@ -83,7 +84,7 @@ export default function BenefitsView() {
     try {
       setLoading(true)
       const [p, bs] = await Promise.all([getCurrentProfile(), getMyBranchesCached()])
-      if (!p) { setError('No autenticado'); return }
+      if (!p) { setError(await handleMissingProfile()); return }
       if (bs.length === 0) { setError('No tenés sucursales asignadas.'); return }
       setProfile(p)
       setBranches(bs)

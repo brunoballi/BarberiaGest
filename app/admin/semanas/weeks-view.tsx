@@ -11,6 +11,7 @@ import type {
 import { WEEK_STATUS_LABELS, SETTLEMENT_STATUS_LABELS } from '@/lib/supabase/database.types'
 import {
   getCurrentProfile,
+  handleMissingProfile,
   getWeeksByBranch,
   createWeek,
   closeWeek,
@@ -111,7 +112,7 @@ export default function WeeksView() {
       setLoading(true)
       setError(null)
       const [p, bs] = await Promise.all([getCurrentProfile(), getMyBranchesCached()])
-      if (!p) { setError('No autenticado'); return }
+      if (!p) { setError(await handleMissingProfile()); return }
       if (bs.length === 0) { setError('No tenés sucursales asignadas. Contactá al administrador.'); return }
       setProfile(p)
       setBranches(bs)
