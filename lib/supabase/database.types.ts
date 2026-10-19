@@ -699,3 +699,40 @@ export interface MaintenanceTemplateDraftBlock {
   zone_label: string
   tasks: { item_number: number; description: string }[]
 }
+
+// ============================================================
+// RESEÑAS FLOWY
+// ============================================================
+export type FlowyReviewKind = 'admin' | 'barber'
+export type FlowyReviewSyncStatus = 'pending' | 'sent' | 'failed'
+
+export interface FlowyReview {
+  id: string
+  branch_id: string
+  kind: FlowyReviewKind
+  submitted_by: string | null
+  reviewer_name: string
+  rating: number
+  comment: string | null
+  photo_url: string | null
+  sync_status: FlowyReviewSyncStatus
+  sync_error: string | null
+  sent_at: string | null
+  created_at: string
+}
+
+export type FlowyReviewInsert = Omit<
+  FlowyReview,
+  'id' | 'sync_status' | 'sync_error' | 'sent_at' | 'created_at'
+>
+
+/** Reseña con datos de la sucursal, para el panel /admin/resenas. */
+export interface FlowyReviewWithBranch extends FlowyReview {
+  branch: Pick<Branch, 'id' | 'name'> | null
+}
+
+export interface FlowyReviewPrompt {
+  profile_id: string
+  snoozed_until: string | null
+  updated_at: string
+}

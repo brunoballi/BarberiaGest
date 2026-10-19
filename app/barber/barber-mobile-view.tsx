@@ -33,10 +33,13 @@ import {
   createAdvance,
   todayLocal,
   supabase,
+  hasBarberFlowyReview,
+  getFlowyReviewSnooze,
 } from '@/lib/supabase/supabase.client'
 import { settlementCompensation, isBoxRentalSettlement } from '@/lib/settlement-model'
 import { useServices, useActiveBenefits } from '@/lib/hooks/use-catalogs'
 import { BarberSideDrawer } from '@/app/components/barber-side-drawer'
+import { FlowyReviewBarberPrompt } from '@/app/components/flowy-review-barber-prompt'
 import './barber.css'
 
 // ─── Utilidades ───────────────────────────────────────────────────────────
@@ -220,6 +223,10 @@ export default function BarberMobileView() {
   // week_ids liquidados (confirmed/paid) dentro del filtro por rango → bloquean edición.
   const [closedWeekIds, setClosedWeekIds] = useState<Set<string>>(new Set())
 
+  // Popup de opinión para Flowy: se ofrece hasta que el barbero la haga una
+  // vez, o mientras no esté "posponida" (snoozed_until en el futuro).
+  const [showFlowyReviewPrompt, setShowFlowyReviewPrompt] = useState(false)
+
   const loadData = useCallback(async () => {
     try {
       setLoading(true)
@@ -228,6 +235,16 @@ export default function BarberMobileView() {
       const p = await getCurrentProfile()
       if (!p) { setError(await handleMissingProfile()); return }
       setProfile(p)
+
+      // Popup de opinión Flowy (barberos y admins que también atienden).
+      if (p.role === 'barber' || p.is_barber) {
+        Promise.all([hasBarberFlowyReview(p.id), getFlowyReviewSnooze(p.id)])
+          .then(([already, snoozedUntil]) => {
+            if (already) return
+            if (!snoozedUntil || new Date(snoozedUntil) <= new Date()) setShowFlowyReviewPrompt(true)
+          })
+          .catch(() => {})
+      }
 
       // Servicios y beneficios ahora vienen de React Query (useServices/useActiveBenefits).
       const w = await getOpenWeek(p.branch_id)
@@ -1721,6 +1738,14 @@ export default function BarberMobileView() {
   return (
     <>
     {advanceModal}
+    {showFlowyReviewPrompt && profile && (
+      <FlowyReviewBarberPrompt
+        profileId={profile.id}
+        branchId={profile.branch_id}
+        fullName={profile.full_name}
+        onClose={() => setShowFlowyReviewPrompt(false)}
+      />
+    )}
     <BarberSideDrawer
       isOpen={isDrawerOpen}
       onClose={() => setIsDrawerOpen(false)}

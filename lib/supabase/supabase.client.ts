@@ -48,6 +48,8 @@ import type {
   MaintenanceSheetWithItems,
   MaintenanceSheetItem,
   MaintenanceTemplateDraftBlock,
+  FlowyReviewKind,
+  FlowyReviewWithBranch,
 } from './database.types'
 
 // ============================================================
@@ -3064,4 +3066,107 @@ export async function getMaintenanceWeeksWithSheet(branchId: string): Promise<st
     .eq('branch_id', branchId)
   if (error) throw new Error(`[getMaintenanceWeeksWithSheet] ${error.message}`)
   return (data ?? []).map((r) => r.week_id as string)
+}
+
+// ============================================================
+// RESEÑAS FLOWY
+// ============================================================
+
+/** true si CUALQUIER admin de esta instalación ya dejó su reseña a Flowy. */
+export async function hasClientFlowyReview(): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('flowy_reviews')
+    .select('id', { count: 'exact', head: true })
+    .eq('kind', 'admin')
+  if (error) throw new Error(`[hasClientFlowyReview] ${error.message}`)
+  return (count ?? 0) > 0
+}
+
+/** true si este barbero (por id de perfil) ya dejó su reseña. */
+export async function hasBarberFlowyReview(profileId: string): Promise<boolean> {
+  const { count, error } = await supabase
+    .from('flowy_reviews')
+    .select('id', { count: 'exact', head: true })
+    .eq('kind', 'barber')
+    .eq('submitted_by', profileId)
+  if (error) throw new Error(`[hasBarberFlowyReview] ${error.message}`)
+  return (count ?? 0) > 0
+}
+
+/** snoozed_until del popup de barbero, o null si nunca lo pospuso (o hay que preguntarle ya). */
+export async function getFlowyReviewSnooze(profileId: string): Promise<string | null> {
+  const { data, error } = await supabase
+    .from('flowy_review_prompts')
+    .select('snoozed_until')
+    .eq('profile_id', profileId)
+    .maybeSingle()
+  if (error) throw new Error(`[getFlowyReviewSnooze] ${error.message}`)
+  return data?.snoozed_until ?? null
+}
+
+/** El barbero tocó "ahora no": reintentar en ~10 días. */
+export async function snoozeFlowyReviewPrompt(profileId: string): Promise<void> {
+  const snoozedUntil = new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString()
+  const { error } = await supabase
+    .from('flowy_review_prompts')
+    .upsert({ profile_id: profileId, snoozed_until: snoozedUntil, updated_at: new Date().toISOString() })
+  if (error) throw new Error(`[snoozeFlowyReviewPrompt] ${error.message}`)
+}
+
+/** Sube la foto (negocio o persona) al bucket público 'flowy-reviews' y devuelve su URL pública. */
+export async function uploadFlowyReviewPhoto(file: File, pathPrefix: string): Promise<string> {
+  const ext = file.name.split('.').pop() || 'jpg'
+  const path = `${pathPrefix}/${Date.now()}.${ext}`
+  const { error } = await supabase.storage.from('flowy-reviews').upload(path, file, {
+    cacheControl: '3600',
+    upsert: false,
+  })
+  if (error) throw new Error(`[uploadFlowyReviewPhoto] ${error.message}`)
+  const { data } = supabase.storage.from('flowy-reviews').getPublicUrl(path)
+  return data.publicUrl
+}
+
+export interface SubmitFlowyReviewInput {
+  kind: FlowyReviewKind
+  branchId: string
+  reviewerName: string
+  rating: number
+  comment?: string | null
+  photoUrl?: string | null
+}
+
+/** Guarda la reseña (siempre) y, si hay webhook configurado, intenta mandarla a Flowy ya mismo. */
+export async function submitFlowyReview(
+  input: SubmitFlowyReviewInput
+): Promise<{ ok: boolean; synced: boolean; error?: string }> {
+  const res = await fetch('/api/flowy-review', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(input),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data?.error ?? '[submitFlowyReview] Error enviando la reseña')
+  return data
+}
+
+/** Todas las reseñas (admin + barbero) para el panel /admin/resenas. Más nuevas primero. */
+export async function listFlowyReviews(): Promise<FlowyReviewWithBranch[]> {
+  const { data, error } = await supabase
+    .from('flowy_reviews')
+    .select('*, branch:branches(id, name)')
+    .order('created_at', { ascending: false })
+  if (error) throw new Error(`[listFlowyReviews] ${error.message}`)
+  return (data ?? []) as unknown as FlowyReviewWithBranch[]
+}
+
+/** Reintenta el envío a Flowy de una reseña 'pending'/'failed'. Admin only (lo valida la API route). */
+export async function retryFlowyReviewSync(id: string): Promise<{ ok: boolean; synced: boolean; error?: string }> {
+  const res = await fetch('/api/flowy-review/retry', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id }),
+  })
+  const data = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(data?.error ?? '[retryFlowyReviewSync] Error reintentando el envío')
+  return data
 }
