@@ -17,6 +17,7 @@ import {
 } from '@/lib/supabase/supabase.client'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import { CurrencyInput } from '@/app/components/currency-input'
+import { canUseTurnero } from '@/lib/turnero-access'
 
 function formatARS(n: number): string {
   return new Intl.NumberFormat('es-AR', {
@@ -48,6 +49,9 @@ export default function ServicesView() {
   const [editPrice, setEditPrice]   = useState('')
   const [saving, setSaving]         = useState(false)
   const [editError, setEditError]   = useState<string | null>(null)
+  // Turnero en prueba (lib/turnero-access.ts): solo el usuario desarrollador ve y edita estos campos.
+  const [editDuration, setEditDuration] = useState('')
+  const [editBookable, setEditBookable] = useState(false)
 
   // Eliminar / archivar
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -56,6 +60,8 @@ export default function ServicesView() {
 
   // Toggle active confirm
   const [togglingId, setTogglingId] = useState<string | null>(null)
+
+  const turnero = canUseTurnero(profile?.id)
 
   const loadServices = useCallback(async (branchId: string) => {
     const data = await getServicesByBranch(branchId)
@@ -120,6 +126,8 @@ export default function ServicesView() {
     setEditingId(svc.id)
     setEditName(svc.name)
     setEditPrice(String(svc.base_price))
+    setEditDuration(svc.duration_min != null ? String(svc.duration_min) : '')
+    setEditBookable(!!svc.is_bookable)
     setEditError(null)
   }
 
@@ -129,13 +137,27 @@ export default function ServicesView() {
       setEditError('Nombre y precio son requeridos')
       return
     }
+    // Turnero: la duracion define los huecos de la agenda; un servicio reservable la necesita.
+    let turneroFields: { duration_min: number | null; is_bookable: boolean } | Record<string, never> = {}
+    if (turnero) {
+      const dur = editDuration.trim() === '' ? null : parseInt(editDuration, 10)
+      if (dur !== null && (isNaN(dur) || dur < 5 || dur > 480)) {
+        setEditError('La duración tiene que estar entre 5 y 480 minutos')
+        return
+      }
+      if (editBookable && dur === null) {
+        setEditError('Para habilitar la reserva online cargá la duración')
+        return
+      }
+      turneroFields = { duration_min: dur, is_bookable: editBookable }
+    }
     setSaving(true)
     setEditError(null)
     try {
-      await updateService(id, { name: editName.trim(), base_price: price })
+      await updateService(id, { name: editName.trim(), base_price: price, ...turneroFields })
       setServices((prev) =>
         prev
-          .map((s) => s.id === id ? { ...s, name: editName.trim(), base_price: price } : s)
+          .map((s) => s.id === id ? { ...s, name: editName.trim(), base_price: price, ...turneroFields } : s)
           .sort((a, b) => a.name.localeCompare(b.name))
       )
       setEditingId(null)
@@ -293,6 +315,11 @@ export default function ServicesView() {
                 editName={editName}
                 editPrice={editPrice}
                 editError={editError}
+                turnero={turnero}
+                editDuration={editDuration}
+                editBookable={editBookable}
+                onEditDuration={setEditDuration}
+                onEditBookable={setEditBookable}
                 saving={saving}
                 togglingId={togglingId}
                 onEdit={openEdit}
@@ -326,6 +353,11 @@ export default function ServicesView() {
                 editName={editName}
                 editPrice={editPrice}
                 editError={editError}
+                turnero={turnero}
+                editDuration={editDuration}
+                editBookable={editBookable}
+                onEditDuration={setEditDuration}
+                onEditBookable={setEditBookable}
                 saving={saving}
                 togglingId={togglingId}
                 onEdit={openEdit}
@@ -378,6 +410,7 @@ export default function ServicesView() {
 // ─── ServiceRow ────────────────────────────────────────────────────────────
 function ServiceRow({
   svc, editingId, editName, editPrice, editError, saving, togglingId,
+  turnero, editDuration, editBookable, onEditDuration, onEditBookable,
   onEdit, onEditName, onEditPrice, onSave, onCancelEdit, onToggle, onCancelToggle,
   deletingId, onDelete, onCancelDelete,
 }: {
@@ -386,6 +419,11 @@ function ServiceRow({
   editName: string
   editPrice: string
   editError: string | null
+  turnero: boolean
+  editDuration: string
+  editBookable: boolean
+  onEditDuration: (v: string) => void
+  onEditBookable: (v: boolean) => void
   saving: boolean
   togglingId: string | null
   onEdit: (s: ServiceCatalog) => void
@@ -421,6 +459,26 @@ function ServiceRow({
               className="bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
             />
           </div>
+          {turnero && (
+            <div className="rounded-lg border border-dashed border-zinc-700 p-3 space-y-2">
+              <p className="text-[11px] uppercase tracking-wide text-zinc-500">Turnero (en prueba)</p>
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="text-xs text-zinc-400">Duración (min)
+                  <input
+                    type="number" min={5} max={480} step={5} inputMode="numeric"
+                    value={editDuration}
+                    onChange={(e) => onEditDuration(e.target.value)}
+                    placeholder="30"
+                    className="ml-2 w-20 bg-zinc-800 border border-zinc-700 text-white rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-amber-500"
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-xs text-zinc-300 cursor-pointer">
+                  <input type="checkbox" checked={editBookable} onChange={(e) => onEditBookable(e.target.checked)} />
+                  Reservable online
+                </label>
+              </div>
+            </div>
+          )}
           {editError && <p className="text-red-400 text-xs">{editError}</p>}
           <div className="flex gap-2">
             <button onClick={() => onSave(svc.id)} disabled={saving}
@@ -440,6 +498,11 @@ function ServiceRow({
             <p className="text-amber-400 text-sm font-medium mt-0.5">
               {svc.base_price > 0 ? formatARS(svc.base_price) : 'Sin precio base'}
             </p>
+            {turnero && (
+              <p className="text-xs mt-1 text-zinc-500">
+                {svc.is_bookable ? `Reservable online · ${svc.duration_min} min` : svc.duration_min ? `No reservable · ${svc.duration_min} min` : 'No reservable'}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
             <button onClick={() => onEdit(svc)}

@@ -1,0 +1,131 @@
+/* ─── Interruptor de tema ──────────────────────────────────────────────
+   Los dos íconos viven dentro del riel y el knob se desliza por encima:
+   así se ve a dónde vas a ir, no solo dónde estás. */
+
+.theme-toggle {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  flex-shrink: 0;
+  line-height: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* El riel mide 28px de alto y con el dedo se erra. En mobile el botón se lleva
+   a los 44px mínimos y centra la píldora adentro: crece el área tocable, no el
+   tamaño visual. Se hace con min-height y no con un ::after invisible porque en
+   la topbar del admin hay otros botones al lado y las áreas superpuestas harían
+   que se toque el equivocado. Va acotado a mobile: con mouse 28px se acierta,
+   y aplicarlo en desktop solo agrandaba la topbar sin ganar nada. */
+@media (max-width: 767px) {
+  .theme-toggle { min-height: 44px; }
+}
+
+.theme-toggle__track {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 3.25rem;
+  height: 1.75rem;
+  padding: 0 0.3rem;
+  border-radius: 999px;
+  background: var(--bg3);
+  border: 1px solid var(--border-mid);
+}
+
+.theme-toggle:hover .theme-toggle__track {
+  border-color: var(--green);
+}
+
+.theme-toggle__icon {
+  font-size: 0.7rem;
+  line-height: 1;
+  z-index: 1;
+  transition: opacity 0.2s ease;
+}
+
+/* Se atenúa el ícono del tema ACTIVO y se resalta el otro: el interruptor
+   comunica la acción disponible, no el estado — que ya se ve en la pantalla. */
+.theme-toggle__icon--moon { opacity: 0.35; }
+.theme-toggle__icon--sun  { opacity: 1; }
+.theme-toggle--on .theme-toggle__icon--moon { opacity: 1; }
+.theme-toggle--on .theme-toggle__icon--sun  { opacity: 0.35; }
+
+.theme-toggle__knob {
+  position: absolute;
+  top: 50%;
+  left: 0.15rem;
+  transform: translateY(-50%);
+  width: 1.3rem;
+  height: 1.3rem;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.theme-toggle--on .theme-toggle__knob {
+  transform: translateY(-50%) translateX(1.45rem);
+}
+
+/* Antes de que el efecto lea el tema real no se anima, para que no se vea
+   el knob viajando solo al cargar la página. */
+.theme-toggle--init .theme-toggle__knob {
+  transition: none;
+}
+
+.theme-toggle:focus-visible .theme-toggle__track {
+  outline: 2px solid var(--green);
+  outline-offset: 2px;
+}
+
+/* ─── Variante ícono (pie del menú del admin) ──────────────────────────
+   Botón cuadrado con luna y sol superpuestos: al cambiar, uno rota y se
+   achica mientras el otro entra. */
+.theme-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  border-radius: 0.75rem;
+  border: 1px solid transparent;
+  background: var(--green);
+  color: #fff;
+  cursor: pointer;
+  overflow: hidden;
+  transition: background-color 0.3s ease, transform 0.15s ease;
+}
+.theme-icon:active { transform: scale(0.92); }
+.theme-icon svg {
+  position: absolute;
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease;
+}
+.theme-icon__moon { transform: rotate(0deg) scale(1); opacity: 1; }
+.theme-icon__sun { transform: rotate(-90deg) scale(0.4); opacity: 0; }
+.theme-icon--light .theme-icon__moon { transform: rotate(90deg) scale(0.4); opacity: 0; }
+.theme-icon--light .theme-icon__sun { transform: rotate(0deg) scale(1); opacity: 1; }
+
+/* Cambio de tema suave en todo el sistema: la clase la pone el botón solo
+   durante el cambio (~450 ms). */
+html.theme-anim,
+html.theme-anim *,
+html.theme-anim *::before,
+html.theme-anim *::after {
+  transition: background-color 0.35s ease, color 0.35s ease, border-color 0.35s ease, fill 0.35s ease, stroke 0.35s ease !important;
+}
+
+/* La regla de arriba pisaría el giro de la luna/sol justo mientras se cambia. */
+html.theme-anim .theme-icon svg {
+  transition: transform 0.45s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.3s ease !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .theme-icon svg, html.theme-anim .theme-icon svg { transition: none !important; }
+  html.theme-anim, html.theme-anim *, html.theme-anim *::before, html.theme-anim *::after { transition: none !important; }
+}

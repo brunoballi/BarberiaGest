@@ -255,7 +255,7 @@ export async function getMyBranches(): Promise<Branch[]> {
 export async function getServicesByBranch(branchId: string): Promise<ServiceCatalog[]> {
   const { data, error } = await supabase
     .from('service_catalog')
-    .select('id, name, base_price, is_active, branch_id, created_at, archived_at')
+    .select('id, name, base_price, is_active, branch_id, created_at, archived_at, duration_min, is_bookable, description, image_url')
     .eq('branch_id', branchId)
     .order('name')
 
@@ -276,7 +276,7 @@ export async function createService(payload: ServiceCatalogInsert): Promise<Serv
 
 export async function updateService(
   id: string,
-  updates: Partial<Pick<ServiceCatalog, 'name' | 'base_price' | 'is_active'>>
+  updates: Partial<Pick<ServiceCatalog, 'name' | 'base_price' | 'is_active' | 'duration_min' | 'is_bookable' | 'description' | 'image_url'>>
 ): Promise<void> {
   const { error } = await supabase
     .from('service_catalog')
