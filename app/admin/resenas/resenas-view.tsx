@@ -11,7 +11,7 @@ function formatDate(iso: string): string {
 }
 
 function statusBadge(status: FlowyReviewWithBranch['sync_status']) {
-  if (status === 'sent') return <span className="badge badge--green">Enviada a Flowy</span>
+  if (status === 'sent') return <span className="badge badge--green">Enviada a Flowi</span>
   if (status === 'failed') return <span className="badge badge--red">Falló el envío</span>
   return <span className="badge badge--gray">Pendiente de enviar</span>
 }
@@ -79,14 +79,14 @@ export default function FlowyReviewsView() {
           <span className="admin-logo">VALHALLA</span>
           <span className="admin-badge">Admin</span>
           <span className="admin-brand-separator">·</span>
-          <span className="admin-brand-branch">Reseñas Flowy</span>
+          <span className="admin-brand-branch">Reseñas Flowi</span>
         </div>
       </div>
 
       <main className="admin-content">
         {pendingCount > 0 && (
           <div style={{ background: '#78350f33', border: '1px solid #b45309', borderRadius: '0.5rem', padding: '0.75rem 1rem', marginBottom: '1rem', fontSize: '0.85rem', color: '#fcd34d' }}>
-            Hay reseñas sin enviar a la web de Flowy. Si todavía no configuraste la URL de destino
+            Hay reseñas sin enviar a la web de Flowi. Si todavía no configuraste la URL de destino
             (variable <code>FLOWY_REVIEWS_WEBHOOK_URL</code>) es normal: no se pierden, quedan acá
             abajo y podés mandarlas con &quot;Reintentar&quot; en cuanto esté lista.
           </div>
@@ -96,7 +96,7 @@ export default function FlowyReviewsView() {
           <div className="table-toolbar">
             <span className="toolbar-total">
               {reviews.length} reseña{reviews.length !== 1 ? 's' : ''}
-              {pendingCount > 0 && ` · ${pendingCount} sin enviar a Flowy`}
+              {pendingCount > 0 && ` · ${pendingCount} sin enviar a Flowi`}
             </span>
           </div>
 

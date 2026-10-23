@@ -31,7 +31,6 @@ import {
 import { PhoneInput } from '@/app/components/phone-input'
 import TurnoFicha from './turno-ficha'
 import './reservar.css'
-import ThemeToggle from '@/app/components/theme-toggle'
 import BranchesMap from '@/app/components/branches-map'
 
 function formatARS(n: number): string {
@@ -448,7 +447,6 @@ export default function BookingView() {
             <p className="bk-header__title">Sucursales</p>
             <p className="bk-header__sub">¿A qué sucursal querés ir?</p>
           </div>
-          <ThemeToggle />
         </header>
         <div className="bk-body">
           <div className="bk-branches bk-branches--big">
@@ -597,7 +595,6 @@ export default function BookingView() {
             <p className="bk-header__title">¿Con quién te querés atender?</p>
             <p className="bk-header__sub">Paso {stepIndex('barbero')} de {totalSteps}</p>
           </div>
-          <ThemeToggle />
         </header>
 
         <div className="bk-body">
@@ -661,7 +658,6 @@ export default function BookingView() {
                 )}
                 {branch?.address && <p className="bk-header__sub">{branch.address}</p>}
               </div>
-              <ThemeToggle />
             </>
           ) : (
             <>

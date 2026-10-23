@@ -289,7 +289,7 @@ export default function AdminDashboard() {
   // no haya cargado nada, para chequear si viene trabajando.
   const [branchBarbers, setBranchBarbers] = useState<Profile[]>([])
 
-  // Popup de reseña a Flowy: se ofrece una vez por sesión si el cliente
+  // Popup de reseña a Flowi: se ofrece una vez por sesión si el cliente
   // (esta instalación) todavía no dejó ninguna reseña de admin.
   const [showFlowyReviewModal, setShowFlowyReviewModal] = useState(false)
 
@@ -334,7 +334,7 @@ export default function AdminDashboard() {
         setAdminIsBarber(profile.is_barber ?? false)
         setBranches(branchList)
 
-        // Reseña a Flowy: se ofrece una sola vez por sesión de navegador, y
+        // Reseña a Flowi: se ofrece una sola vez por sesión de navegador, y
         // solo si ningún admin de esta instalación la dejó todavía.
         if (typeof window !== 'undefined' && !sessionStorage.getItem('flowy_admin_review_prompted')) {
           hasClientFlowyReview()
@@ -1888,7 +1888,7 @@ export default function AdminDashboard() {
         />
       )}
 
-      {/* Popup: reseña a Flowy (una vez por sesión, hasta que el cliente ya haya dejado una) */}
+      {/* Popup: reseña a Flowi (una vez por sesión, hasta que el cliente ya haya dejado una) */}
       {showFlowyReviewModal && selectedBranch && (
         <FlowyReviewAdminModal
           branchId={selectedBranch}

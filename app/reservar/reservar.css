@@ -211,7 +211,8 @@
 }
 .bk-credit__brand {
   font-weight: 700;
-  color: var(--green-text);
+  /* Verde esmeralda de Flowi: es la marca del proveedor, no el acento del tema. */
+  color: #1d9e75;
   /* line-height:1 ajustado a mano: sin esto la caja de línea trae un
      colchón de interlineado del navegador que no tiene relación fija con
      la altura real de la letra, y el punto de abajo queda mal calibrado. */
@@ -261,7 +262,7 @@
 .bk-service:hover { border-color: var(--border-strong); }
 .bk-service--on {
   border-color: var(--green);
-  background: rgba(29, 158, 117, 0.1);
+  background: rgba(245, 158, 11, 0.1);
 }
 
 .bk-service__main { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
@@ -295,7 +296,7 @@
 .bk-barber-card:hover { border-color: var(--border-strong); }
 .bk-barber-card--on {
   border-color: var(--green);
-  background: rgba(29, 158, 117, 0.1);
+  background: rgba(245, 158, 11, 0.1);
 }
 .bk-barber-card__photo {
   width: 100%;
@@ -342,7 +343,7 @@
   font-size: 0.65rem;
   font-weight: 700;
   vertical-align: middle;
-  background: rgba(29, 158, 117, 0.18);
+  background: rgba(245, 158, 11, 0.18);
   color: var(--green);
 }
 
@@ -424,7 +425,7 @@
 .bk-day--on {
   border-color: var(--green);
   background: var(--green);
-  color: #fff;
+  color: #0f0f0f;
 }
 .bk-day__dow { font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.04em; }
 .bk-day__num { font-size: 1.05rem; font-weight: 700; }
@@ -467,7 +468,7 @@
 .bk-slot--on {
   border-color: var(--green);
   background: var(--green);
-  color: #fff;
+  color: #0f0f0f;
 }
 
 .bk-empty {
@@ -512,13 +513,13 @@
   border-radius: 0.7rem;
   border: none;
   background: var(--green);
-  color: #fff;
+  color: #0f0f0f;
   font-size: 0.95rem;
   font-weight: 700;
   cursor: pointer;
   transition: background 0.15s ease;
 }
-.bk-btn:hover:not(:disabled) { background: #23b384; }
+.bk-btn:hover:not(:disabled) { background: #d97706; }
 .bk-btn:disabled { opacity: 0.45; cursor: default; }
 .bk-btn--sm { width: auto; flex-shrink: 0; padding: 0.7rem 1.3rem; }
 .bk-btn--ghost {
@@ -531,9 +532,10 @@
   color: var(--green-text);
   margin-top: 1rem;
 }
-.bk-btn--ghost:hover:not(:disabled) { background: rgba(29, 158, 117, 0.1); }
+.bk-btn--ghost:hover:not(:disabled) { background: rgba(245, 158, 11, 0.1); }
 .bk-btn--danger {
   background: #dc2626;
+  color: #fff;
   margin-top: 1rem;
 }
 .bk-btn--danger:hover:not(:disabled) { background: #b91c1c; }
@@ -579,7 +581,7 @@
   height: 3rem;
   margin: 0 auto 0.75rem;
   border-radius: 50%;
-  background: rgba(29, 158, 117, 0.15);
+  background: rgba(245, 158, 11, 0.15);
   color: var(--green-text);
   font-size: 1.6rem;
   display: flex;
@@ -669,7 +671,7 @@
   font-size: 0.72rem;
   font-weight: 700;
 }
-.bk-badge--ok     { background: rgba(29, 158, 117, 0.16); color: var(--green-text); }
+.bk-badge--ok     { background: rgba(245, 158, 11, 0.16); color: var(--green-text); }
 .bk-badge--info   { background: rgba(59, 130, 246, 0.16); color: #3b82f6; }
 .bk-badge--muted  { background: var(--surface-alt); color: var(--text-muted); }
 .bk-badge--danger { background: rgba(220, 38, 38, 0.16); color: #ef4444; }

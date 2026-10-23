@@ -12,8 +12,10 @@ import {
   cancelAppointment,
   setAppointmentStatus,
   APPOINTMENT_STATUS_LABELS,
+  getScheduleExceptions,
   type AgendaAppointment,
   type AppointmentStatus,
+  type ScheduleException,
 } from '@/lib/supabase/appointments'
 import {
   getWhatsAppDeliveries,
@@ -26,6 +28,7 @@ import {
 } from '@/lib/supabase/whatsapp-status'
 import { PhoneInput } from '@/app/components/phone-input'
 import { confirmDialog, alertDialog, errorDialog } from '@/lib/confirm-dialog'
+import AgendaGrid from './agenda-grid'
 import '../admin-dashboard.css'
 
 function todayISO(): string {
@@ -50,8 +53,8 @@ function horaLocal(iso: string): string {
 /**
  * Agenda del día para el admin: crear, mover y cancelar turnos a mano.
  *
- * No es un calendario con arrastre — es una lista del día, ordenada por
- * horario, con las acciones como botones. Mover un turno abre un formulario
+ * Grilla del día en columnas (una por barbero). No hay arrastre: se toca un
+ * turno y se abre su detalle, con las acciones como botones. Mover un turno abre un formulario
  * chico con la fecha/hora nueva, en vez de arrastrar tarjetas: mismo nivel de
  * interacción que el resto del panel (ver manual-cut-modal.tsx).
  *
@@ -67,19 +70,26 @@ export default function TurnosView() {
   const [services, setServices] = useState<ServiceCatalog[]>([])
   const [date, setDate] = useState(todayISO())
   const [agenda, setAgenda] = useState<AgendaAppointment[]>([])
+  const [bloqueos, setBloqueos] = useState<ScheduleException[]>([])
   const [loading, setLoading] = useState(true)
   const [loadingAgenda, setLoadingAgenda] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
   const [moving, setMoving] = useState<AgendaAppointment | null>(null)
+  const [selected, setSelected] = useState<AgendaAppointment | null>(null)
   const [wa, setWa] = useState<Map<string, WhatsAppDelivery[]>>(new Map())
   const [waFailures, setWaFailures] = useState<WhatsAppFailureSummary | null>(null)
 
   const cargarAgenda = useCallback(async (bId: string, d: string) => {
     setLoadingAgenda(true)
     try {
-      const filas = await getAdminAgenda(bId, d)
+      const [filas, excepciones] = await Promise.all([
+        getAdminAgenda(bId, d),
+        // Los bloqueos son un extra visual: si fallan, la agenda se ve igual.
+        getScheduleExceptions(bId, d).catch(() => [] as ScheduleException[]),
+      ])
       setAgenda(filas)
+      setBloqueos(excepciones.filter((x) => x.exception_date === d))
       // El estado de entrega es un extra: no frena la agenda si tarda o falla.
       void getWhatsAppDeliveries(filas.map((f) => f.id)).then(setWa)
     } catch (e) {
@@ -159,8 +169,8 @@ export default function TurnosView() {
     <div className="w-full px-4 py-8 space-y-6">
       <div className="flowi-page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-[var(--text)]">Turnos</h1>
-          <p className="text-[var(--text-muted)] text-sm mt-1">Agenda del día para todos los barberos</p>
+          <h1 className="text-2xl font-bold text-[var(--text)]">Agenda</h1>
+          <p className="text-[var(--text-muted)] text-sm mt-1">{barbers.length} {barbers.length === 1 ? 'barbero activo' : 'barberos activos'} · tocá un turno para ver el detalle</p>
         </div>
         {barbers.length > 0 && services.length > 0 && (
           <button
@@ -216,24 +226,60 @@ export default function TurnosView() {
       {/* Agenda */}
       {loadingAgenda ? (
         <p className="text-[var(--text-muted)] text-sm">Cargando...</p>
-      ) : agenda.length === 0 ? (
+      ) : barbers.length === 0 ? (
         <div className="bg-[var(--bg2)] border border-[var(--border)] rounded-xl px-5 py-10 text-center">
-          <p className="text-[var(--text-muted)] text-sm">No hay turnos este día.</p>
+          <p className="text-[var(--text-muted)] text-sm">No hay barberos activos en esta sucursal.</p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {agenda.map((appt) => (
-            <AppointmentCard
-              key={appt.id}
-              appt={appt}
-              wa={wa.get(appt.id)}
-              onStatus={handleStatus}
-              onCancel={handleCancel}
-              onMove={() => setMoving(appt)}
-            />
-          ))}
-        </div>
+        <>
+          <AgendaGrid barbers={barbers} appointments={agenda} date={date} bloqueos={bloqueos} onSelect={setSelected} />
+          {agenda.every((a) => a.status === 'cancelado') && (
+            <p className="text-[var(--text-muted)] text-sm text-center">No hay turnos este día.</p>
+          )}
+          {agenda.some((a) => a.status === 'cancelado') && (
+            <details className="bg-[var(--bg2)] border border-[var(--border)] rounded-xl px-4 py-3">
+              <summary className="cursor-pointer text-sm text-[var(--text-muted)]">
+                Turnos cancelados ({agenda.filter((a) => a.status === 'cancelado').length})
+              </summary>
+              <div className="space-y-2 mt-3">
+                {agenda.filter((a) => a.status === 'cancelado').map((appt) => (
+                  <AppointmentCard
+                    key={appt.id}
+                    appt={appt}
+                    wa={wa.get(appt.id)}
+                    onStatus={handleStatus}
+                    onCancel={handleCancel}
+                    onMove={() => setMoving(appt)}
+                  />
+                ))}
+              </div>
+            </details>
+          )}
+        </>
       )}
+
+      {selected && (() => {
+        // Siempre se muestra la versión fresca del turno (tras cambiar el estado se recarga la agenda).
+        const appt = agenda.find((a) => a.id === selected.id)
+        if (!appt) return null
+        return (
+          <div className="modal-overlay" onClick={() => setSelected(null)}>
+            <div className="modal-box p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between">
+                <h3 className="text-[var(--text)] font-bold text-base">Detalle del turno</h3>
+                <button onClick={() => setSelected(null)} className="text-[var(--text-muted)] hover:text-[var(--text)]">✕</button>
+              </div>
+              <AppointmentCard
+                appt={appt}
+                wa={wa.get(appt.id)}
+                onStatus={async (a, s) => { await handleStatus(a, s) }}
+                onCancel={async (a) => { await handleCancel(a); setSelected(null) }}
+                onMove={() => { setSelected(null); setMoving(appt) }}
+              />
+            </div>
+          </div>
+        )
+      })()}
 
       {showNew && (
         <NewAppointmentModal

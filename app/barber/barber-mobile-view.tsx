@@ -39,6 +39,9 @@ import {
 import { settlementCompensation, isBoxRentalSettlement } from '@/lib/settlement-model'
 import { useServices, useActiveBenefits } from '@/lib/hooks/use-catalogs'
 import { BarberSideDrawer } from '@/app/components/barber-side-drawer'
+import BarberAgendaView from './barber-agenda-view'
+import { linkAppointmentTransaction, type BarberAgendaAppointment } from '@/lib/supabase/appointments'
+import { canUseTurnero } from '@/lib/turnero-access'
 import { FlowyReviewBarberPrompt } from '@/app/components/flowy-review-barber-prompt'
 import './barber.css'
 
@@ -135,7 +138,7 @@ const DEFAULT_SERVICES: ServiceOption[] = [
   { name: 'Otro', base_price: 0, is_active: true },
 ]
 
-type View = 'home' | 'register' | 'success' | 'settlements' | 'maintenance'
+type View = 'home' | 'register' | 'success' | 'settlements' | 'maintenance' | 'agenda'
 
 // ─────────────────────────────────────────────────────────────────────────
 // COMPONENTE PRINCIPAL
@@ -154,6 +157,9 @@ export default function BarberMobileView() {
   const servicesQuery = useServices(profile?.branch_id)
   const activeServices = (servicesQuery.data ?? []).filter((s) => s.is_active)
   const services: ServiceOption[] = activeServices.length > 0 ? activeServices : DEFAULT_SERVICES
+  // Agenda del turnero (en prueba): solo para el usuario desarrollador. Servicios reservables y con duración.
+  const turneroOn = canUseTurnero(profile?.id)
+  const bookableServices = activeServices.filter((s) => s.is_bookable && s.duration_min != null)
   const [settlements, setSettlements] = useState<SettlementWithBarber[]>([])
   const [settlementsLoaded, setSettlementsLoaded] = useState(false)
   const [settlementsLoading, setSettlementsLoading] = useState(false)
@@ -219,11 +225,13 @@ export default function BarberMobileView() {
 
   // Edit transaction — reusa el formulario completo del alta (view 'register').
   // editingTx != null ⇒ el form está en modo edición (vs alta).
+  // Precarga del corte desde un turno atendido: al guardar se vincula con linkAppointmentTransaction.
+  const [precargaAppointmentId, setPrecargaAppointmentId] = useState<string | null>(null)
   const [editingTx, setEditingTx] = useState<Transaction | null>(null)
   // week_ids liquidados (confirmed/paid) dentro del filtro por rango → bloquean edición.
   const [closedWeekIds, setClosedWeekIds] = useState<Set<string>>(new Set())
 
-  // Popup de opinión para Flowy: se ofrece hasta que el barbero la haga una
+  // Popup de opinión para Flowi: se ofrece hasta que el barbero la haga una
   // vez, o mientras no esté "posponida" (snoozed_until en el futuro).
   const [showFlowyReviewPrompt, setShowFlowyReviewPrompt] = useState(false)
 
@@ -236,7 +244,7 @@ export default function BarberMobileView() {
       if (!p) { setError(await handleMissingProfile()); return }
       setProfile(p)
 
-      // Popup de opinión Flowy (barberos y admins que también atienden).
+      // Popup de opinión Flowi (barberos y admins que también atienden).
       if (p.role === 'barber' || p.is_barber) {
         Promise.all([hasBarberFlowyReview(p.id), getFlowyReviewSnooze(p.id)])
           .then(([already, snoozedUntil]) => {
@@ -645,6 +653,15 @@ export default function BarberMobileView() {
         const tx = await registerCut(payload, profile, week.id)
         setLastRegistered(tx)
         setTransactions((prev) => [tx, ...prev])
+        if (precargaAppointmentId) {
+          // Si el vínculo falla no se pierde el corte, solo el vínculo informativo con el turno.
+          try {
+            await linkAppointmentTransaction(precargaAppointmentId, tx.id)
+          } catch (linkErr) {
+            console.warn('[precarga] no se pudo vincular el turno al corte', linkErr)
+          }
+          setPrecargaAppointmentId(null)
+        }
         setView('success')
       }
     } catch (e) {
@@ -789,6 +806,7 @@ export default function BarberMobileView() {
     setDiscountAmount('')
     setDiscountReason('')
     setEditingTx(null)
+    setPrecargaAppointmentId(null)
     setFormSubmitError(null)
   }
 
@@ -796,6 +814,22 @@ export default function BarberMobileView() {
     clearFormFields()
     setLastRegistered(null)
     setView('home')
+  }
+
+  // Precarga del corte desde la agenda: abre el formulario de siempre, precargado; el barbero confirma.
+  function handlePrecarga(appt: BarberAgendaAppointment) {
+    if (weekClosed) return
+    clearFormFields()
+    const primary = appt.services[0]
+    const matched = services.find((s) => s.id === primary?.service_id)
+    setSelectedService(matched?.name ?? primary?.name ?? '')
+    setCustomAmount(String(Math.round(appt.total_price)))
+    const [first, ...rest] = appt.client_name.trim().split(/s+/)
+    setClientName(first ?? '')
+    setClientSurname(rest.join(' '))
+    setObservations(`Turno ${appt.reference}`)
+    setPrecargaAppointmentId(appt.id)
+    setView('register')
   }
 
   function goToRegister() {
@@ -1301,6 +1335,17 @@ export default function BarberMobileView() {
   }
 
   // ── SETTLEMENTS ──────────────────────────────────────────────────────────
+  if (view === 'agenda' && turneroOn) {
+    return (
+      <BarberAgendaView
+        services={bookableServices}
+        locked={false}
+        onBack={() => setView('home')}
+        onPrecarga={handlePrecarga}
+      />
+    )
+  }
+
   if (view === 'maintenance') {
     const pct = maintenance && maintenance.total > 0
       ? Math.round((maintenance.done / maintenance.total) * 100)
@@ -1753,6 +1798,7 @@ export default function BarberMobileView() {
       onRegisterCut={() => { setIsDrawerOpen(false); goToRegister() }}
       onViewLiquidations={() => { setIsDrawerOpen(false); goToSettlements() }}
       onViewMaintenance={() => { setIsDrawerOpen(false); goToMaintenance() }}
+      onViewAgenda={turneroOn ? () => { setIsDrawerOpen(false); setView('agenda') } : undefined}
       onRequestAdvance={() => { setIsDrawerOpen(false); setShowAdvanceModal(true); setAdvanceDone(false) }}
       advanceEnabled={advancesAllowed}
       barberName={profile?.full_name || 'Barbero'}

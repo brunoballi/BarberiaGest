@@ -33,6 +33,7 @@ La protección de los **datos** no depende de esto: está en la base (RLS y func
 | `WHATSAPP_WEBHOOK_VERIFY_TOKEN` | verificación del webhook | falta (lo inventás vos, el mismo en Meta) |
 | `WHATSAPP_BUSINESS_ACCOUNT_ID` | para crear plantillas por API | falta |
 | `WHATSAPP_PHONE_NUMBER_ID` | número por defecto (cada sucursal puede tener el suyo desde `/admin/marca`) | opcional; con 4 números conviene NO definirla |
+| `TURNERO_AVISOS_BARBERO` | `real` hace que el botón "Avisar al cliente" del barbero mande de verdad; sin definir (o cualquier otro valor) hace todos los controles pero NO envía | dejar sin definir hasta tener Meta |
 | `CRON_SECRET` | protege la ruta de recordatorios; igual al secreto `cron_secret` del Vault | falta |
 | `NEXT_PUBLIC_APP_URL` | links de los avisos | falta |
 | `RESEND_API_KEY`, `EMAIL_FROM` | mail de confirmación (opcional; sin clave no se manda) | opcional |
@@ -44,6 +45,13 @@ La protección de los **datos** no depende de esto: está en la base (RLS y func
 3. Orden sugerido: `/admin/servicios` → *Editar* un servicio, cargar duración y marcar "Reservable online" (hoy ninguno está
    habilitado: nacen con `is_bookable = false`); `/admin/horarios` → franjas de cada barbero; después `/reservar`.
 4. Las pruebas que hagas crean turnos reales en las tablas nuevas (están vacías hoy); se pueden borrar desde `/admin/turnos`.
+
+## El barbero no ve el teléfono del cliente (migración 095)
+
+- Los clientes de turnos y la agenda del admin solo los leen admins; la agenda del barbero devuelve el nombre, sin teléfono.
+- Para escribirle al cliente, el barbero toca "Avisar al cliente" en su turno (pasados 10 min de la hora, solo turnos "reservado"): el servidor (`/api/turnos/mensaje`) busca el número y manda una plantilla fija desde el WhatsApp de la sucursal. Un aviso por turno.
+- Plantillas nuevas a aprobar en Meta (están en `lib/whatsapp-templates.ts`): `aviso_espera_turno_v1` y `aviso_demora_turno_v1`.
+- Reversión de la 095: `supabase/pendientes/REVERTIR_095.sql`.
 
 ## Pendiente
 

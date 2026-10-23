@@ -62,7 +62,6 @@ export interface AgendaAppointment {
 export interface BarberAgendaAppointment {
   id: string
   client_name: string
-  client_phone: string
   starts_at: string
   ends_at: string
   status: AppointmentStatus

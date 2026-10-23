@@ -9,7 +9,7 @@
 import { supabase } from './supabase.client'
 
 export type WhatsAppDeliveryStatus = 'accepted' | 'sent' | 'delivered' | 'read' | 'failed'
-export type WhatsAppMessageKind = 'confirmacion' | 'recordatorio' | 'cancelacion' | 'difusion'
+export type WhatsAppMessageKind = 'confirmacion' | 'recordatorio' | 'cancelacion' | 'difusion' | 'aviso_barbero'
 
 export interface WhatsAppDelivery {
   appointment_id: string
@@ -24,6 +24,7 @@ export const WHATSAPP_KIND_LABELS: Record<WhatsAppMessageKind, string> = {
   recordatorio: 'Recordatorio',
   cancelacion: 'Cancelación',
   difusion: 'Difusión',
+  aviso_barbero: 'Aviso del barbero',
 }
 
 export const WHATSAPP_STATUS_LABELS: Record<WhatsAppDeliveryStatus, string> = {

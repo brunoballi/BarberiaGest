@@ -93,5 +93,35 @@ export function plantillasTurnero(origin: string): TemplateDef[] {
         boton('Reservar de nuevo', `${origin}/reservar`, false),
       ],
     },
+    {
+      name: 'aviso_espera_turno_v1',
+      language: 'es_AR',
+      category: 'UTILITY',
+      components: [
+        {
+          type: 'BODY',
+          text:
+            'Hola {{1}}, te escribimos de {{2}}: tu turno de las {{3}} hs ya empezó y te estamos esperando ⏳\n\n' +
+            'Si no vas a llegar, cancelalo desde el botón de abajo así otra persona puede usar el horario.',
+          example: { body_text: [['Juan', 'Barbería Central', '18:40']] },
+        },
+        boton('Gestionar mi turno', `${origin}/reservar/gestionar?ref={{1}}`, true),
+      ],
+    },
+    {
+      name: 'aviso_demora_turno_v1',
+      language: 'es_AR',
+      category: 'UTILITY',
+      components: [
+        {
+          type: 'BODY',
+          text:
+            'Hola {{1}}, en {{2}} tuvimos un imprevisto y tu turno de las {{3}} hs puede demorarse unos minutos. Gracias por la paciencia 🙏\n\n' +
+            'Si preferís no esperar, podés cancelarlo desde el botón de abajo.',
+          example: { body_text: [['Juan', 'Barbería Central', '18:40']] },
+        },
+        boton('Gestionar mi turno', `${origin}/reservar/gestionar?ref={{1}}`, true),
+      ],
+    },
   ]
 }

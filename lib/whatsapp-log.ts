@@ -12,7 +12,7 @@
 
 import { serviceRoleClient } from '@/lib/api-admin'
 
-export type WhatsAppKind = 'confirmacion' | 'recordatorio' | 'cancelacion' | 'difusion'
+export type WhatsAppKind = 'confirmacion' | 'recordatorio' | 'cancelacion' | 'difusion' | 'aviso_barbero'
 
 export async function registerWhatsAppMessage(params: {
   wamid: string

@@ -71,7 +71,7 @@ export function FlowyReviewAdminModal({ branchId, adminName, onClose, onDone }: 
           <div className="modal-body" style={{ textAlign: 'center', padding: '1.5rem 0' }}>
             <p style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>⭐</p>
             <p style={{ color: '#e4e4e7', marginBottom: '1.5rem' }}>
-              Tu opinión ya quedó registrada. ¡Gracias por confiar en Flowy!
+              Tu opinión ya quedó registrada. ¡Gracias por confiar en Flowi!
             </p>
             <button onClick={onClose} className="admin-btn admin-btn--primary">Cerrar</button>
           </div>
@@ -80,7 +80,7 @@ export function FlowyReviewAdminModal({ branchId, adminName, onClose, onDone }: 
             <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
               <p style={{ fontSize: '0.85rem', color: '#a1a1aa' }}>
                 ¿Cómo te está yendo con el sistema? Tu opinión nos ayuda muchísimo y aparece
-                en la sección de reseñas de la web de Flowy.
+                en la sección de reseñas de la web de Flowi.
               </p>
 
               {error && <p className="form-error">{error}</p>}

@@ -232,7 +232,7 @@ export function AdminSideDrawer({
                   onClick={onClose}
                   className="drawer-submenu-item flex items-center gap-2 px-3 py-2 rounded text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors text-sm"
                 >
-                  ⭐ Reseñas Flowy
+                  ⭐ Reseñas Flowi
                 </Link>
               </div>
             )}

@@ -1,6 +1,6 @@
 // ============================================================
-// Envío de reseñas a la web de Flowy (sección Reseñas).
-// La URL todavía no está definida del lado de Flowy: mientras
+// Envío de reseñas a la web de Flowi (sección Reseñas).
+// La URL todavía no está definida del lado de Flowi: mientras
 // FLOWY_REVIEWS_WEBHOOK_URL no esté configurada, esto simplemente no
 // intenta nada y la reseña queda 'pending' en flowy_reviews — no se
 // pierde, se puede reintentar después desde /admin/resenas.
@@ -23,7 +23,7 @@ export interface FlowyWebhookResult {
   error?: string
 }
 
-/** Contrato JSON esperado por Flowy. Único lugar para ajustar cuando se defina el real. */
+/** Contrato JSON esperado por Flowi. Único lugar para ajustar cuando se defina el real. */
 function buildPayload(review: FlowyWebhookReview) {
   return {
     id: review.id,
@@ -60,11 +60,11 @@ export async function sendFlowyReviewWebhook(review: FlowyWebhookReview): Promis
 
     if (!res.ok) {
       const text = await res.text().catch(() => '')
-      return { synced: false, error: `Flowy respondió ${res.status}${text ? `: ${text.slice(0, 200)}` : ''}` }
+      return { synced: false, error: `Flowi respondió ${res.status}${text ? `: ${text.slice(0, 200)}` : ''}` }
     }
     return { synced: true }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : 'Error de red enviando a Flowy'
+    const msg = e instanceof Error ? e.message : 'Error de red enviando a Flowi'
     return { synced: false, error: msg }
   } finally {
     clearTimeout(timeout)

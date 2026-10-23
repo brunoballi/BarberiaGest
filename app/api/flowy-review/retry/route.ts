@@ -4,7 +4,7 @@ import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { sendFlowyReviewWebhook } from '@/lib/flowy-webhook'
 
-/** Reintenta el envío a Flowy de una reseña 'pending'/'failed'. Solo admin. */
+/** Reintenta el envío a Flowi de una reseña 'pending'/'failed'. Solo admin. */
 export async function POST(request: NextRequest) {
   const cookieStore = await cookies()
   const serverClient = createServerClient(

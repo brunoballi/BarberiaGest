@@ -9,6 +9,8 @@ interface BarberSideDrawerProps {
   onRegisterCut: () => void
   onViewLiquidations: () => void
   onViewMaintenance: () => void
+  /** Turnero en prueba: si viene, se muestra "Turnos" (solo para el usuario desarrollador). */
+  onViewAgenda?: () => void
   onRequestAdvance: () => void
   /** Igual que el botón principal: solo muestra "Pedir adelanto" si está habilitado. */
   advanceEnabled?: boolean
@@ -25,6 +27,7 @@ export function BarberSideDrawer({
   onRegisterCut,
   onViewLiquidations,
   onViewMaintenance,
+  onViewAgenda,
   onRequestAdvance,
   advanceEnabled = false,
   barberName = 'Barbero',
@@ -97,6 +100,19 @@ export function BarberSideDrawer({
             <span className="text-xl">🧹</span>
             <span className="font-medium">Mantenimiento</span>
           </button>
+
+          {onViewAgenda && (
+            <button
+              onClick={() => {
+                onViewAgenda()
+                onClose()
+              }}
+              className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
+            >
+              <span className="text-xl">📆</span>
+              <span className="font-medium">Turnos (en prueba)</span>
+            </button>
+          )}
 
           {advanceEnabled && (
             <button

@@ -3072,7 +3072,7 @@ export async function getMaintenanceWeeksWithSheet(branchId: string): Promise<st
 // RESEÑAS FLOWY
 // ============================================================
 
-/** true si CUALQUIER admin de esta instalación ya dejó su reseña a Flowy. */
+/** true si CUALQUIER admin de esta instalación ya dejó su reseña a Flowi. */
 export async function hasClientFlowyReview(): Promise<boolean> {
   const { count, error } = await supabase
     .from('flowy_reviews')
@@ -3135,7 +3135,7 @@ export interface SubmitFlowyReviewInput {
   photoUrl?: string | null
 }
 
-/** Guarda la reseña (siempre) y, si hay webhook configurado, intenta mandarla a Flowy ya mismo. */
+/** Guarda la reseña (siempre) y, si hay webhook configurado, intenta mandarla a Flowi ya mismo. */
 export async function submitFlowyReview(
   input: SubmitFlowyReviewInput
 ): Promise<{ ok: boolean; synced: boolean; error?: string }> {
@@ -3159,7 +3159,7 @@ export async function listFlowyReviews(): Promise<FlowyReviewWithBranch[]> {
   return (data ?? []) as unknown as FlowyReviewWithBranch[]
 }
 
-/** Reintenta el envío a Flowy de una reseña 'pending'/'failed'. Admin only (lo valida la API route). */
+/** Reintenta el envío a Flowi de una reseña 'pending'/'failed'. Admin only (lo valida la API route). */
 export async function retryFlowyReviewSync(id: string): Promise<{ ok: boolean; synced: boolean; error?: string }> {
   const res = await fetch('/api/flowy-review/retry', {
     method: 'POST',
