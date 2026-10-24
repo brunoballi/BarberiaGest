@@ -11,46 +11,26 @@ import BookingView from './booking-view'
 // La única pantalla que se comparte por WhatsApp e Instagram: el título y la
 // descripción son lo que ve el cliente en la tarjeta del link, y sin las de
 // Open Graph la tarjeta sale vacía.
-// El logo de la marca vive en la base (no en el repo): se lee con la misma RPC
-// pública que usa la pantalla (get_booking_header) para ponerlo como imagen de
-// la tarjeta. Si falla, la tarjeta sale sin imagen en vez de romper la página.
-async function logoDeLaMarca(): Promise<string | null> {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  if (!url || !key) return null
-  try {
-    const res = await fetch(`${url}/rest/v1/rpc/get_booking_header`, {
-      method: 'POST',
-      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
-      body: '{}',
-      next: { revalidate: 3600 },
-    })
-    if (!res.ok) return null
-    const data = (await res.json()) as { logo_url: string | null }[] | { logo_url: string | null } | null
-    const row = Array.isArray(data) ? data[0] : data
-    return row?.logo_url ?? null
-  } catch {
-    return null
-  }
-}
-
-export async function generateMetadata(): Promise<Metadata> {
-  const logo = await logoDeLaMarca()
-  return {
-    title: 'Reservar turno online',
+// La imagen de la tarjeta la arma opengraph-image.tsx (con el logo de la marca
+// leído de la base). metadataBase hace absolutas las URLs, que es lo que piden
+// WhatsApp e Instagram.
+export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : 'https://sistemagestionbarberias.vercel.app',
+  ),
+  title: 'Reservar turno online',
+  description:
+    'Sacá tu turno en segundos: elegí sucursal, servicio, barbero y horario. Sin llamar, sin esperar, y con confirmación al instante.',
+  alternates: { canonical: '/reservar' },
+  openGraph: {
+    type: 'website',
+    title: 'Reservá tu turno online',
     description:
-      'Sacá tu turno en segundos: elegí sucursal, servicio, barbero y horario. Sin llamar, sin esperar, y con confirmación al instante.',
-    alternates: { canonical: '/reservar' },
-    openGraph: {
-      type: 'website',
-      title: 'Reservá tu turno online',
-      description:
-        'Elegí sucursal, servicio, barbero y horario. Sin llamar y sin esperar.',
-      url: '/reservar',
-      ...(logo ? { images: [{ url: logo }] } : {}),
-    },
-    twitter: { card: logo ? 'summary_large_image' : 'summary', ...(logo ? { images: [logo] } : {}) },
-  }
+      'Elegí sucursal, servicio, barbero y horario. Sin llamar y sin esperar.',
+    url: '/reservar',
+  },
 }
 
 // Los datos los pide el cliente vía RPC con la clave anónima; no hay nada que

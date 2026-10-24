@@ -478,16 +478,12 @@ export default function BookingView() {
           <BranchesMap branches={branchChoices} />
 
           <div className="bk-footer">
-            {/* El © es de la barbería (dueña del contenido de esta
-                página) -- sin sucursal marcada para el encabezado no hay
-                de dónde sacar "la marca general", así que no se muestra
-                nada (mismo criterio que el resto de esta sección:
-                opcional, sin configurar no aparece). */}
-            {bookingHeader?.title && (
-              <p className="bk-copyright">
-                © {new Date().getFullYear()} {bookingHeader.title}. Todos los derechos reservados.
-              </p>
-            )}
+            {/* El © es de la marca, no de una sucursal: bookingHeader.title
+                es el nombre de UNA sucursal (la fuente del logo), y mostraba
+                "San Juan" como dueña de los derechos. */}
+            <p className="bk-copyright">
+              © {new Date().getFullYear()} Valhalla. Todos los derechos reservados.
+            </p>
             {/* "Desarrollado por" es un crédito al proveedor, no una
                 afirmación de propiedad -- por eso no depende de si la
                 barbería configuró su propia marca arriba. */}
