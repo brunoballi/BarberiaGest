@@ -13,6 +13,28 @@
   --grid-row-border: #2a2a2a;    /* separador de filas */
 }
 
+/* ── Turnero: variables de tema con la paleta de Valhalla ─────────────
+   Las pantallas portadas del turnero (/admin/turnos, horarios, clientes, marca,
+   /reservar y la agenda del barbero) están escritas con estas variables.
+   Acá apuntan a los colores de Valhalla (fondo casi negro, grafito y ámbar), así
+   el turnero se ve igual que el resto del sistema. --green es el color de acento
+   (en Valhalla, ámbar). */
+:root {
+  --bg: #0a0a0a;
+  --bg2: #18181b;
+  --bg3: #1f1f23;
+  --surface-alt: #27272a;
+  --text: #ededed;
+  --text-muted: #a1a1aa;
+  --border: #2a2a2a;
+  --border-mid: #3f3f46;
+  --green: #f59e0b;
+  --green-text: #fbbf24;
+  --border-strong: rgba(245, 158, 11, 0.35);
+  --font-dm-sans: Arial, Helvetica, sans-serif;
+  --font-syne: Arial, Helvetica, sans-serif;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

@@ -24,6 +24,18 @@ export interface Branch {
   address: string | null
   is_active: boolean
   created_at: string
+  // Turnero (migraciones 072-088). Opcionales: las consultas que no piden estas columnas no las traen.
+  logo_url?: string | null
+  welcome_title?: string | null
+  welcome_description?: string | null
+  whatsapp_phone?: string | null
+  default_area_code?: string | null
+  whatsapp_phone_number_id?: string | null
+  booking_header_enabled?: boolean
+  booking_header_logo_url?: string | null
+  latitude?: number | null
+  longitude?: number | null
+  business_hours?: unknown
 }
 
 export interface Profile {
@@ -44,6 +56,8 @@ export interface Profile {
   is_active: boolean
   // Capacidad dual: admin (dueño) que además atiende como barbero
   is_barber: boolean
+  // Turnero (migracion 078): foto que ve el cliente en la reserva publica.
+  avatar_url?: string | null
   // Barbero recién ingresado: en la liquidación su reparto usa el esquema de
   // tramos (2 cortes clásicos) sobre el total facturado, en vez del % convencional.
   is_new_barber: boolean
@@ -106,6 +120,11 @@ export interface ServiceCatalog {
   /** Se intento eliminar pero tenia historial: queda fuera de la grilla principal.
    *  Distinto de is_active = false, que es una pausa deliberada y sigue visible. */
   archived_at: string | null
+  // Turnero (migracion 066): duracion y visibilidad en la reserva publica.
+  duration_min?: number | null
+  description?: string | null
+  image_url?: string | null
+  is_bookable?: boolean
 }
 
 export interface Month {
@@ -679,4 +698,41 @@ export interface MaintenanceTemplateDraftBlock {
   barber_id: string
   zone_label: string
   tasks: { item_number: number; description: string }[]
+}
+
+// ============================================================
+// RESEÑAS FLOWY
+// ============================================================
+export type FlowyReviewKind = 'admin' | 'barber'
+export type FlowyReviewSyncStatus = 'pending' | 'sent' | 'failed'
+
+export interface FlowyReview {
+  id: string
+  branch_id: string
+  kind: FlowyReviewKind
+  submitted_by: string | null
+  reviewer_name: string
+  rating: number
+  comment: string | null
+  photo_url: string | null
+  sync_status: FlowyReviewSyncStatus
+  sync_error: string | null
+  sent_at: string | null
+  created_at: string
+}
+
+export type FlowyReviewInsert = Omit<
+  FlowyReview,
+  'id' | 'sync_status' | 'sync_error' | 'sent_at' | 'created_at'
+>
+
+/** Reseña con datos de la sucursal, para el panel /admin/resenas. */
+export interface FlowyReviewWithBranch extends FlowyReview {
+  branch: Pick<Branch, 'id' | 'name'> | null
+}
+
+export interface FlowyReviewPrompt {
+  profile_id: string
+  snoozed_until: string | null
+  updated_at: string
 }

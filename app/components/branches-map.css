@@ -1,0 +1,17 @@
+/* Mapa de sucursales (Leaflet + OpenStreetMap). Altura fija: Leaflet la
+   necesita explícita, no se arregla solo con el flujo del documento. */
+.bk-map {
+  height: 15rem;
+  width: 100%;
+  border-radius: 0.9rem;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  margin-top: 1.25rem;
+}
+
+/* z-index bajo a propósito: los controles propios de Leaflet (zoom, popups)
+   no tienen por qué taparse con el header sticky de la reserva. */
+.bk-map .leaflet-pane,
+.bk-map .leaflet-control {
+  z-index: 0;
+}

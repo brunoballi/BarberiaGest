@@ -60,10 +60,12 @@ import {
   getAdvancesPendingForBarber,
   todayLocal,
   supabase,
+  hasClientFlowyReview,
 } from '@/lib/supabase/supabase.client'
 import './admin-dashboard.css'
 import ManualCutModal from './manual-cut-modal'
 import { DebtPaymentModal } from '@/app/components/debt-payment-modal'
+import { FlowyReviewAdminModal } from '@/app/components/flowy-review-admin-modal'
 import AdvancesTab from './advances-tab'
 import { PaginationControls } from '@/app/components/pagination-controls'
 import { CurrencyInput } from '@/app/components/currency-input'
@@ -287,6 +289,10 @@ export default function AdminDashboard() {
   // no haya cargado nada, para chequear si viene trabajando.
   const [branchBarbers, setBranchBarbers] = useState<Profile[]>([])
 
+  // Popup de reseña a Flowi: se ofrece una vez por sesión si el cliente
+  // (esta instalación) todavía no dejó ninguna reseña de admin.
+  const [showFlowyReviewModal, setShowFlowyReviewModal] = useState(false)
+
   // Filtros tab transacciones
   const [filterDateFrom, setFilterDateFrom] = useState('')
   const [filterDateTo, setFilterDateTo] = useState('')
@@ -327,6 +333,14 @@ export default function AdminDashboard() {
         setAdminName(profile.full_name ?? '')
         setAdminIsBarber(profile.is_barber ?? false)
         setBranches(branchList)
+
+        // Reseña a Flowi: se ofrece una sola vez por sesión de navegador, y
+        // solo si ningún admin de esta instalación la dejó todavía.
+        if (typeof window !== 'undefined' && !sessionStorage.getItem('flowy_admin_review_prompted')) {
+          hasClientFlowyReview()
+            .then((already) => { if (!already) setShowFlowyReviewModal(true) })
+            .catch(() => {})
+        }
 
         // Validar sucursal almacenada contra las sucursales asignadas
         const stored = getStoredBranch()
@@ -1871,6 +1885,19 @@ export default function AdminDashboard() {
           }}
           onClose={() => setDebtModal(null)}
           onSuccess={() => { setDebtModal(null); loadTabData() }}
+        />
+      )}
+
+      {/* Popup: reseña a Flowi (una vez por sesión, hasta que el cliente ya haya dejado una) */}
+      {showFlowyReviewModal && selectedBranch && (
+        <FlowyReviewAdminModal
+          branchId={selectedBranch}
+          adminName={adminName}
+          onClose={() => {
+            sessionStorage.setItem('flowy_admin_review_prompted', '1')
+            setShowFlowyReviewModal(false)
+          }}
+          onDone={() => sessionStorage.setItem('flowy_admin_review_prompted', '1')}
         />
       )}
 

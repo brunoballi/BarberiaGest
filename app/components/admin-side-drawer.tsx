@@ -2,6 +2,8 @@
 
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { supabase } from '@/lib/supabase/supabase.client'
+import { canUseTurnero, isDeveloper } from '@/lib/turnero-access'
 
 interface AdminSideDrawerProps {
   isOpen: boolean
@@ -24,6 +26,20 @@ export function AdminSideDrawer({
   showBarberView = false,
 }: AdminSideDrawerProps) {
   const [showConfigSubmenu, setShowConfigSubmenu] = useState(false)
+
+  // Turnero en prueba: la entrada del menu aparece SOLO para el usuario desarrollador
+  // (lib/turnero-access.ts). La proteccion real esta en las paginas y rutas /api.
+  const [showTurnero, setShowTurnero] = useState(false)
+  const [showDev, setShowDev] = useState(false)
+  useEffect(() => {
+    let activo = true
+    supabase.auth.getUser().then(({ data }) => {
+      if (!activo) return
+      setShowTurnero(canUseTurnero(data.user?.id))
+      setShowDev(isDeveloper(data.user?.id))
+    })
+    return () => { activo = false }
+  }, [])
 
   // Marca el body cuando el drawer está abierto, para que el FAB de ayuda
   // se desplace junto con el panel y no quede tapando "Cerrar sesión".
@@ -130,6 +146,27 @@ export function AdminSideDrawer({
             <span className="font-medium">Reportes</span>
           </Link>
 
+          {showTurnero && (
+            <div className="mt-2 pt-2 border-t border-zinc-800">
+              <p className="px-4 py-1 text-[11px] uppercase tracking-wide text-zinc-500">Turnero</p>
+              {[
+                { href: '/admin/turnos', icon: '📆', label: 'Turnos' },
+                { href: '/admin/horarios', icon: '🕘', label: 'Horarios' },
+                { href: '/admin/clientes', icon: '🧑‍🤝‍🧑', label: 'Clientes' },
+                { href: '/admin/marca', icon: '🎨', label: 'Marca y WhatsApp' },
+              ].map((it) => (
+                <Link
+                  key={it.href}
+                  href={it.href}
+                  onClick={onClose}
+                  className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
+                >
+                  <span className="text-xl">{it.icon}</span>
+                  <span className="font-medium">{it.label}</span>
+                </Link>
+              ))}
+            </div>
+          )}
           {/* Configuración con submenu */}
           <div>
             <button
@@ -193,6 +230,15 @@ export function AdminSideDrawer({
                 >
                   🔐 Administradores
                 </Link>
+                {showDev && (
+                  <Link
+                    href="/admin/resenas"
+                    onClick={onClose}
+                    className="drawer-submenu-item flex items-center gap-2 px-3 py-2 rounded text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors text-sm"
+                  >
+                    ⭐ Reseñas Flowi
+                  </Link>
+                )}
               </div>
             )}
           </div>
