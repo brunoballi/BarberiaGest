@@ -10,7 +10,8 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-function statusBadge(status: FlowyReviewWithBranch['sync_status']) {
+function statusBadge(status: FlowyReviewWithBranch['sync_status'], syncError: string | null) {
+  if (status === 'pending' && syncError === 'interna') return <span className="badge badge--gray">Interna (no se envía)</span>
   if (status === 'sent') return <span className="badge badge--green">Enviada a Flowi</span>
   if (status === 'failed') return <span className="badge badge--red">Falló el envío</span>
   return <span className="badge badge--gray">Pendiente de enviar</span>
@@ -146,7 +147,7 @@ export default function FlowyReviewsView() {
                         </a>
                       ) : <span className="td-na">—</span>}
                     </td>
-                    <td>{statusBadge(r.sync_status)}</td>
+                    <td>{statusBadge(r.sync_status, r.sync_error)}</td>
                     <td style={{ textAlign: 'right' }}>
                       {r.sync_status !== 'sent' && (
                         <button

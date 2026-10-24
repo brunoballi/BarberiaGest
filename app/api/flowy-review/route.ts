@@ -101,7 +101,18 @@ export async function POST(request: NextRequest) {
       .eq('sync_status', 'sent')
       .gte('created_at', desde.toISOString())
       .neq('id', inserted.id)
-    if ((count ?? 0) > 0) return NextResponse.json({ ok: true, synced: false, internal: true })
+    if ((count ?? 0) > 0) {
+      // sync_error = 'interna' la distingue de una pendiente por falta de configuración.
+      await createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        { auth: { autoRefreshToken: false, persistSession: false } }
+      )
+        .from('flowy_reviews')
+        .update({ sync_error: 'interna' })
+        .eq('id', inserted.id)
+      return NextResponse.json({ ok: true, synced: false, internal: true })
+    }
   }
 
   const result = await sendFlowyReviewWebhook({
