@@ -7,8 +7,8 @@ import './agenda-grid.css'
 
 const TZ = 'America/Argentina/Buenos_Aires'
 const PX_PER_MIN = 1.6          // 30 min = 48 px
-const MIN_HOUR = 9              // la grilla muestra como mínimo 9:00 a 21:00
-const MAX_HOUR = 21
+const MIN_HOUR = 0              // la grilla muestra el día completo, de 00:00 a 00:00
+const MAX_HOUR = 24
 
 const fmtMinutes = new Intl.DateTimeFormat('en-GB', {
   hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ,
