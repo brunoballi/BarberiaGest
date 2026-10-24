@@ -28,7 +28,9 @@ function buildPayload(review: FlowyWebhookReview) {
   return {
     id: review.id,
     tipo: review.kind, // 'admin' (dueño/administrador del negocio) | 'barber' (barbero)
-    negocio: review.branchName ?? 'Valhalla',
+    // Nombre del negocio (lo que se muestra en la web); la sucursal va aparte.
+    negocio: process.env.FLOWY_BUSINESS_NAME || 'Valhalla',
+    sucursal: review.branchName,
     nombre_cliente: review.reviewerName,
     estrellas: review.rating,
     comentario: review.comment ?? '',

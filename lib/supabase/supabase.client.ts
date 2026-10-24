@@ -3072,12 +3072,18 @@ export async function getMaintenanceWeeksWithSheet(branchId: string): Promise<st
 // RESEÑAS FLOWY
 // ============================================================
 
-/** true si CUALQUIER admin de esta instalación ya dejó su reseña a Flowi. */
+/** Cada cuánto se vuelve a pedir una reseña de admin, para que se vayan renovando. */
+const FLOWY_ADMIN_REVIEW_MONTHS = 6
+
+/** true si CUALQUIER admin de esta instalación dejó su reseña a Flowi en los últimos 6 meses. */
 export async function hasClientFlowyReview(): Promise<boolean> {
+  const desde = new Date()
+  desde.setMonth(desde.getMonth() - FLOWY_ADMIN_REVIEW_MONTHS)
   const { count, error } = await supabase
     .from('flowy_reviews')
     .select('id', { count: 'exact', head: true })
     .eq('kind', 'admin')
+    .gte('created_at', desde.toISOString())
   if (error) throw new Error(`[hasClientFlowyReview] ${error.message}`)
   return (count ?? 0) > 0
 }

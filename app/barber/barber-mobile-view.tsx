@@ -33,8 +33,6 @@ import {
   createAdvance,
   todayLocal,
   supabase,
-  hasBarberFlowyReview,
-  getFlowyReviewSnooze,
 } from '@/lib/supabase/supabase.client'
 import { settlementCompensation, isBoxRentalSettlement } from '@/lib/settlement-model'
 import { useServices, useActiveBenefits } from '@/lib/hooks/use-catalogs'
@@ -244,15 +242,8 @@ export default function BarberMobileView() {
       if (!p) { setError(await handleMissingProfile()); return }
       setProfile(p)
 
-      // Popup de opinión Flowi (barberos y admins que también atienden).
-      if (p.role === 'barber' || p.is_barber) {
-        Promise.all([hasBarberFlowyReview(p.id), getFlowyReviewSnooze(p.id)])
-          .then(([already, snoozedUntil]) => {
-            if (already) return
-            if (!snoozedUntil || new Date(snoozedUntil) <= new Date()) setShowFlowyReviewPrompt(true)
-          })
-          .catch(() => {})
-      }
+      // El popup de opinión a Flowi queda apagado para los barberos: las reseñas las dejan
+      // los administradores. Para reactivarlo, ver hasBarberFlowyReview / getFlowyReviewSnooze.
 
       // Servicios y beneficios ahora vienen de React Query (useServices/useActiveBenefits).
       const w = await getOpenWeek(p.branch_id)
