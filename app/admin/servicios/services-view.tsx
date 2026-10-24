@@ -461,7 +461,7 @@ function ServiceRow({
           </div>
           {turnero && (
             <div className="rounded-lg border border-dashed border-zinc-700 p-3 space-y-2">
-              <p className="text-[11px] uppercase tracking-wide text-zinc-500">Turnero (en prueba)</p>
+              <p className="text-[11px] uppercase tracking-wide text-zinc-500">Turnero</p>
               <div className="flex items-center gap-3 flex-wrap">
                 <label className="text-xs text-zinc-400">Duración (min)
                   <input

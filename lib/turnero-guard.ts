@@ -2,7 +2,7 @@
 import { notFound, redirect } from 'next/navigation'
 import { NextResponse } from 'next/server'
 import { createSupabaseServerClient, getServerProfile } from '@/lib/supabase/server'
-import { canUseTurnero, TURNERO_PUBLIC_OPEN } from '@/lib/turnero-access'
+import { canUseTurnero, isDeveloper, TURNERO_PUBLIC_OPEN } from '@/lib/turnero-access'
 import type { Profile } from '@/lib/supabase/database.types'
 
 /** Pantallas de administracion del turnero: admin logueado Y en la lista de prueba. */
@@ -11,6 +11,15 @@ export async function requireTurneroAdminPage(): Promise<Profile> {
   if (!profile) redirect('/login')
   if (profile.role !== 'admin') redirect('/barber')
   if (!canUseTurnero(profile.id)) notFound()
+  return profile
+}
+
+/** Pantallas internas del desarrollador (nunca se abren al cliente): admin logueado Y en la lista. */
+export async function requireDeveloperAdminPage(): Promise<Profile> {
+  const profile = await getServerProfile()
+  if (!profile) redirect('/login')
+  if (profile.role !== 'admin') redirect('/barber')
+  if (!isDeveloper(profile.id)) notFound()
   return profile
 }
 

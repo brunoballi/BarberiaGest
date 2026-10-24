@@ -110,7 +110,7 @@ export function BarberSideDrawer({
               className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
             >
               <span className="text-xl">📆</span>
-              <span className="font-medium">Turnos (en prueba)</span>
+              <span className="font-medium">Turnos</span>
             </button>
           )}
 

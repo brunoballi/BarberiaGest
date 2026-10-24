@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/supabase.client'
-import { canUseTurnero } from '@/lib/turnero-access'
+import { canUseTurnero, isDeveloper } from '@/lib/turnero-access'
 
 interface AdminSideDrawerProps {
   isOpen: boolean
@@ -30,10 +30,13 @@ export function AdminSideDrawer({
   // Turnero en prueba: la entrada del menu aparece SOLO para el usuario desarrollador
   // (lib/turnero-access.ts). La proteccion real esta en las paginas y rutas /api.
   const [showTurnero, setShowTurnero] = useState(false)
+  const [showDev, setShowDev] = useState(false)
   useEffect(() => {
     let activo = true
     supabase.auth.getUser().then(({ data }) => {
-      if (activo) setShowTurnero(canUseTurnero(data.user?.id))
+      if (!activo) return
+      setShowTurnero(canUseTurnero(data.user?.id))
+      setShowDev(isDeveloper(data.user?.id))
     })
     return () => { activo = false }
   }, [])
@@ -145,7 +148,7 @@ export function AdminSideDrawer({
 
           {showTurnero && (
             <div className="mt-2 pt-2 border-t border-zinc-800">
-              <p className="px-4 py-1 text-[11px] uppercase tracking-wide text-zinc-500">Turnero (en prueba)</p>
+              <p className="px-4 py-1 text-[11px] uppercase tracking-wide text-zinc-500">Turnero</p>
               {[
                 { href: '/admin/turnos', icon: '📆', label: 'Turnos' },
                 { href: '/admin/horarios', icon: '🕘', label: 'Horarios' },
@@ -227,7 +230,7 @@ export function AdminSideDrawer({
                 >
                   🔐 Administradores
                 </Link>
-                {showTurnero && (
+                {showDev && (
                   <Link
                     href="/admin/resenas"
                     onClick={onClose}

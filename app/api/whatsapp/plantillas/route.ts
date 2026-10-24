@@ -18,7 +18,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/api-admin'
 import { isWhatsAppConfigured } from '@/lib/whatsapp'
 import { plantillasTurnero } from '@/lib/whatsapp-templates'
-import { canUseTurnero } from '@/lib/turnero-access'
+import { isDeveloper } from '@/lib/turnero-access'
 
 const WA_API = 'https://graph.facebook.com/v21.0'
 
@@ -44,7 +44,7 @@ export async function GET(request: NextRequest) {
   if (caller instanceof NextResponse) return caller
 
   // Turnero en prueba: solo el usuario desarrollador (lib/turnero-access.ts).
-  if (!canUseTurnero(caller.user.id)) return NextResponse.json({ error: 'No encontrado' }, { status: 404 })
+  if (!isDeveloper(caller.user.id)) return NextResponse.json({ error: 'No encontrado' }, { status: 404 })
   if (!isWhatsAppConfigured()) {
     return NextResponse.json({ error: 'WhatsApp no está configurado en esta instancia.' }, { status: 503 })
   }
