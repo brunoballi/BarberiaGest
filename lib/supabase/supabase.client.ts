@@ -606,9 +606,19 @@ export async function getAuditLog(filters: AuditFilters = {}): Promise<AuditLogW
   if (filters.from)   query = query.gte('changed_at', filters.from)
   if (filters.to)     query = query.lte('changed_at', filters.to + 'T23:59:59')
 
-  const { data: rows, error } = await query
+  const { data: allRows, error } = await query
   if (error) throw new Error(`[getAuditLog] ${error.message}`)
-  if (!rows || rows.length === 0) return []
+
+  // Los registros de prueba del usuario desarrollador (cortes y liquidaciones de su barbero
+  // de prueba) no se muestran a los demás admins. Lo que el desarrollador cambió sobre los
+  // datos de otros barberos NO se oculta: es parte del historial real del negocio.
+  const hidden = await hiddenBarberIds()
+  const rows = (allRows ?? []).filter((r) => {
+    const barberId = (r.new_data as Record<string, unknown> | null)?.barber_id
+      ?? (r.old_data as Record<string, unknown> | null)?.barber_id
+    return !(typeof barberId === 'string' && hidden.includes(barberId))
+  })
+  if (rows.length === 0) return []
 
   // Cargar perfiles para mostrar nombres
   const userIds = [...new Set(rows.map((r) => r.changed_by).filter((id): id is string => !!id))]
