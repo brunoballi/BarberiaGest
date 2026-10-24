@@ -89,6 +89,21 @@ export async function POST(request: NextRequest) {
 
   const branch = Array.isArray(inserted.branch) ? inserted.branch[0] : inserted.branch
 
+  // A la web va una sola reseña de admin por período de 6 meses. Si ya salió una, esta queda
+  // guardada (interna, 'pending') y no se envía; se puede mandar a mano desde /admin/resenas.
+  if (kind === 'admin') {
+    const desde = new Date()
+    desde.setMonth(desde.getMonth() - 6)
+    const { count } = await serverClient
+      .from('flowy_reviews')
+      .select('id', { count: 'exact', head: true })
+      .eq('kind', 'admin')
+      .eq('sync_status', 'sent')
+      .gte('created_at', desde.toISOString())
+      .neq('id', inserted.id)
+    if ((count ?? 0) > 0) return NextResponse.json({ ok: true, synced: false, internal: true })
+  }
+
   const result = await sendFlowyReviewWebhook({
     id: inserted.id,
     kind: inserted.kind,
