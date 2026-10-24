@@ -5,6 +5,7 @@
 // ============================================================
 
 import { createBrowserClient } from '@supabase/ssr'
+import { isDeveloper, TURNERO_USER_IDS } from '@/lib/turnero-access'
 import { isAuthRetryableFetchError } from '@supabase/supabase-js'
 import type {
   Branch,
@@ -2389,26 +2390,43 @@ export async function getReportByPeriod(
 // de la sucursal. La capacidad de barbero se define por branch_id + (role o flag).
 const BARBER_OR_DUAL = 'role.eq.barber,is_barber.eq.true'
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/**
+ * El usuario desarrollador figura como barbero para poder probar la vista de barbero, pero
+ * los demás administradores no lo tienen que ver en las listas (barberos, horarios, semanas...).
+ * Devuelve los ids a ocultar: ninguno si quien mira es el propio desarrollador.
+ */
+async function hiddenBarberIds(): Promise<string[]> {
+  const { data: { session } } = await supabase.auth.getSession()
+  if (isDeveloper(session?.user?.id)) return []
+  return [...TURNERO_USER_IDS].filter((id) => UUID_RE.test(id))
+}
+
 export async function getBarbersByBranch(branchId: string): Promise<Profile[]> {
-  const { data, error } = await supabase
+  const hidden = await hiddenBarberIds()
+  let query = supabase
     .from('profiles')
     .select('*')
     .eq('branch_id', branchId)
     .or(BARBER_OR_DUAL)
     .eq('is_active', true)
-    .order('full_name')
+  if (hidden.length) query = query.not('id', 'in', `(${hidden.join(',')})`)
+  const { data, error } = await query.order('full_name')
 
   if (error) throw new Error(`[getBarbersByBranch] ${error.message}`)
   return data
 }
 
 export async function getAllBarbersByBranch(branchId: string): Promise<Profile[]> {
-  const { data, error } = await supabase
+  const hidden = await hiddenBarberIds()
+  let query = supabase
     .from('profiles')
     .select('*')
     .eq('branch_id', branchId)
     .or(BARBER_OR_DUAL)
-    .order('full_name')
+  if (hidden.length) query = query.not('id', 'in', `(${hidden.join(',')})`)
+  const { data, error } = await query.order('full_name')
 
   if (error) throw new Error(`[getAllBarbersByBranch] ${error.message}`)
   return data
