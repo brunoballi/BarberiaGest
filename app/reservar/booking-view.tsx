@@ -775,9 +775,14 @@ export default function BookingView() {
             <div className="bk-walkin">
               <span className="bk-walkin__icon">ℹ️</span>
               <span>
-                De {walkins[0].start_time.slice(0, 5)} a {walkins[0].end_time.slice(0, 5)} se
-                atiende <strong>por orden de llegada</strong>, sin turno. Los horarios de abajo
-                son los que sí se reservan.
+                {[...walkins]
+                  .sort((a, b) => a.start_time.localeCompare(b.start_time))
+                  .map((w) => `de ${w.start_time.slice(0, 5)} a ${w.end_time.slice(0, 5)}`)
+                  .filter((t, i, arr) => arr.indexOf(t) === i)
+                  .join(' y ')
+                  .replace(/^d/, 'D')}{' '}
+                se atiende <strong>por orden de llegada</strong>, sin turno.{' '}
+                {slots.length > 0 ? 'Los horarios de abajo son los que sí se reservan.' : 'Ese día no se toman turnos.'}
               </span>
             </div>
           )}

@@ -148,6 +148,20 @@ export default function TurnosView() {
 
   useEffect(() => { cargarInicial() }, [cargarInicial])
 
+  // Al volver a esta pestaña se vuelve a leer el horario (de la sucursal y semanal de cada barbero) y
+  // la agenda: si se cambió en Horarios o en Marca mientras tanto, la grilla lo refleja sin recargar a mano.
+  useEffect(() => {
+    if (!branchId) return
+    function alVolver() {
+      if (document.visibilityState !== 'visible') return
+      void getBranchSchedules(branchId).then(setHorarios).catch(() => {})
+      void getPublicBranch(branchId).then((b) => setBusinessHours(b?.business_hours)).catch(() => {})
+      void cargarAgenda(branchId, date)
+    }
+    document.addEventListener('visibilitychange', alVolver)
+    return () => document.removeEventListener('visibilitychange', alVolver)
+  }, [branchId, date, cargarAgenda])
+
   function cambiarDia(nuevaFecha: string) {
     setDate(nuevaFecha)
     if (branchId) cargarAgenda(branchId, nuevaFecha)

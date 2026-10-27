@@ -110,8 +110,8 @@ export default function AgendaGrid<T extends GridAppointment>({
   bloqueos?: ScheduleException[]
   /** Horario de atención de la sucursal (los 7 días): define el rango de horas que se dibuja. */
   businessHours?: DayHours[]
-  /** Horario semanal de los barberos (módulo Horarios): lo que queda fuera de las franjas de cada
-   * uno se marca como "No atiende". Un barbero sin ninguna franja cargada no se marca (sin configurar). */
+  /** Horario semanal de los barberos (módulo Horarios): lo que queda fuera de las franjas con turno de cada
+   * uno se marca como "No atiende", y las franjas de orden de llegada como "Orden de llegada". Un barbero sin ninguna franja cargada no se marca (sin configurar). */
   horarios?: BarberSchedule[]
   onSelect: (a: T) => void
 }) {
@@ -162,28 +162,52 @@ export default function AgendaGrid<T extends GridAppointment>({
     }
   }
 
-  // Tramos en que un barbero NO atiende ese día (fuera de sus franjas del módulo Horarios),
-  // dentro del horario de la sucursal (lo de afuera ya está marcado como cerrado).
+  // Tramos de un barbero en que NO se toman turnos ese día, dentro del horario de la sucursal (lo de
+  // afuera ya está marcado como cerrado): fuera de sus franjas del módulo Horarios ("No atiende") o en
+  // una franja de orden de llegada (se atiende sin turno, así que el turnero no la usa).
   const weekday = new Date(date + 'T12:00:00').getDay()
-  function noAtiende(barberId: string): { desde: number; hasta: number; titulo: string }[] {
+  function sinTurnos(barberId: string): { desde: number; hasta: number; etiqueta: string; titulo: string }[] {
     if (!horarios || atencion.cerradoTodoElDia) return []
     const suyos = horarios.filter((h) => h.barber_id === barberId)
-    if (suyos.length === 0) return []
+    if (suyos.length === 0) return []   // sin ninguna franja en toda la semana: sin configurar, no se marca
     const lo = Math.max(startMin, atencion.abreMin ?? startMin)
     const hi = Math.min(finMin, atencion.cierraMin ?? finMin)
-    const franjas = suyos
-      .filter((h) => h.weekday === weekday)
-      .map((h) => [hhmm(h.start_time), hhmm(h.end_time)] as const)
-      .sort((a, b) => a[0] - b[0])
-    if (franjas.length === 0) return hi > lo ? [{ desde: lo, hasta: hi, titulo: 'No atiende este día' }] : []
-    const huecos: { desde: number; hasta: number; titulo: string }[] = []
+    if (hi <= lo) return []
+    const delDia = suyos.filter((h) => h.weekday === weekday)
+    const rango = (h: BarberSchedule) => [hhmm(h.start_time), hhmm(h.end_time)] as const
+    const conTurno = delDia.filter((h) => h.mode === 'turno').map(rango).sort((a, b) => a[0] - b[0])
+    const porLlegada = delDia.filter((h) => h.mode === 'orden_llegada').map(rango).sort((a, b) => a[0] - b[0])
+
+    // 1) Huecos: lo que no cubre ninguna franja con turno.
+    const huecos: [number, number][] = []
     let cursor = lo
-    for (const [a, b] of franjas) {
-      if (a > cursor) huecos.push({ desde: cursor, hasta: Math.min(a, hi), titulo: `No atiende de ${hm(cursor)} a ${hm(Math.min(a, hi))}` })
+    for (const [a, b] of conTurno) {
+      if (a > cursor) huecos.push([cursor, Math.min(a, hi)])
       cursor = Math.max(cursor, b)
     }
-    if (cursor < hi) huecos.push({ desde: cursor, hasta: hi, titulo: `No atiende de ${hm(cursor)} a ${hm(hi)}` })
-    return huecos.filter((x) => x.hasta > x.desde)
+    if (cursor < hi) huecos.push([cursor, hi])
+
+    // 2) Cada hueco se parte entre "orden de llegada" y "no atiende".
+    const out: { desde: number; hasta: number; etiqueta: string; titulo: string }[] = []
+    const push = (desde: number, hasta: number, llegada: boolean) => {
+      if (hasta <= desde) return
+      out.push(llegada
+        ? { desde, hasta, etiqueta: 'Orden de llegada', titulo: `Orden de llegada de ${hm(desde)} a ${hm(hasta)}: sin turnos` }
+        : { desde, hasta, etiqueta: 'No atiende', titulo: `No atiende de ${hm(desde)} a ${hm(hasta)}` })
+    }
+    for (const [h0, h1] of huecos) {
+      let c = h0
+      for (const [w0, w1] of porLlegada) {
+        const a = Math.max(w0, c)
+        const b = Math.min(w1, h1)
+        if (b <= a) continue
+        push(c, a, false)
+        push(a, b, true)
+        c = b
+      }
+      push(c, h1, false)
+    }
+    return out
   }
 
   const porBarbero = new Map<string, T[]>()
@@ -244,14 +268,14 @@ export default function AgendaGrid<T extends GridAppointment>({
                 <span className="ag-bloqueo__label">🔒 {c.etiqueta}</span>
               </div>
             ))}
-            {noAtiende(b.id).map((x) => (
+            {sinTurnos(b.id).map((x) => (
               <div
-                key={`na-${x.desde}`}
+                key={`st-${x.desde}`}
                 className="ag-bloqueo"
                 style={{ top: (x.desde - startMin) * PX_PER_MIN, height: (x.hasta - x.desde) * PX_PER_MIN }}
                 title={x.titulo}
               >
-                <span className="ag-bloqueo__label">No atiende</span>
+                <span className="ag-bloqueo__label">{x.etiqueta}</span>
               </div>
             ))}
             {bloqueos

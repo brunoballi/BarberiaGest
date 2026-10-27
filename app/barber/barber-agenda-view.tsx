@@ -99,6 +99,14 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
     if (locked || !branchId) return
     getPublicBranch(branchId).then((b) => setBusinessHours(b?.business_hours)).catch(() => {})
     getBarberSchedules(barber.id).then(setHorarios).catch(() => {})
+    // Al volver a la pestaña se vuelve a leer: si el admin cambió el horario mientras tanto, se refleja solo.
+    function alVolver() {
+      if (document.visibilityState !== 'visible') return
+      getPublicBranch(branchId).then((b) => setBusinessHours(b?.business_hours)).catch(() => {})
+      getBarberSchedules(barber.id).then(setHorarios).catch(() => {})
+    }
+    document.addEventListener('visibilitychange', alVolver)
+    return () => document.removeEventListener('visibilitychange', alVolver)
   }, [locked, branchId, barber.id])
 
   const cargar = useCallback(async (d: string) => {
