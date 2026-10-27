@@ -8,6 +8,7 @@ import {
   getBarberAgenda,
   createAppointmentBarber,
   createScheduleExceptionBarber,
+  editAppointmentBarber,
   setAppointmentStatus,
   APPOINTMENT_STATUS_LABELS,
   type BarberAgendaAppointment,
@@ -80,6 +81,7 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
   const [showNew, setShowNew] = useState(false)
   const [showBlock, setShowBlock] = useState(false)
   const [selected, setSelected] = useState<(BarberAgendaAppointment & { barber_id: string }) | null>(null)
+  const [editing, setEditing] = useState<BarberAgendaAppointment | null>(null)
   const [businessHours, setBusinessHours] = useState<DayHours[] | undefined>(undefined)
 
   // Horario de la sucursal: extra visual, si falla la grilla usa el rango de siempre (9 a 21).
@@ -223,6 +225,7 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
               appt={selected}
               onStatus={handleStatus}
               onPrecarga={(a) => { setSelected(null); onPrecarga(a) }}
+              onEdit={(a) => { setSelected(null); setEditing(a) }}
             />
             <button onClick={() => setSelected(null)}
               className="w-full text-sm text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg py-2.5">
@@ -230,6 +233,15 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
             </button>
           </div>
         </div>
+      )}
+
+      {editing && (
+        <EditAppointmentModal
+          appt={editing}
+          services={services}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); cargar(date) }}
+        />
       )}
 
       {showNew && (
@@ -257,10 +269,12 @@ function AppointmentCard({
   appt,
   onStatus,
   onPrecarga,
+  onEdit,
 }: {
   appt: BarberAgendaAppointment
   onStatus: (a: BarberAgendaAppointment, s: Exclude<AppointmentStatus, 'reservado'>) => void
   onPrecarga: (a: BarberAgendaAppointment) => void
+  onEdit: (a: BarberAgendaAppointment) => void
 }) {
   const activo = appt.status === 'reservado' || appt.status === 'llego'
   const puedeAvisar = motivoNoAvisable(appt) === null
@@ -347,6 +361,11 @@ function AppointmentCard({
               <button onClick={() => onStatus(appt, 'no_vino')} className="text-xs text-red-400 hover:text-red-300 border border-red-500/30 rounded-lg px-2.5 py-1">
                 No vino
               </button>
+              {!appt.transaction_id && (
+                <button onClick={() => onEdit(appt)} className="text-xs text-zinc-200 hover:text-white border border-zinc-600 rounded-lg px-2.5 py-1">
+                  Editar
+                </button>
+              )}
             </>
           )}
           {appt.status === 'atendido' && !appt.transaction_id && (
@@ -356,6 +375,121 @@ function AppointmentCard({
           )}
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Editar turno (fecha, hora y servicios) ───────────────────────────────
+function EditAppointmentModal({
+  appt,
+  services,
+  onClose,
+  onSaved,
+}: {
+  appt: BarberAgendaAppointment
+  /** Servicios reservables de la sucursal (activos y con duración). */
+  services: ServiceCatalog[]
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const inicio = new Date(appt.starts_at)
+  const [date, setDate] = useState(inicio.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' }))
+  const [time, setTime] = useState(
+    inicio.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })
+  )
+  const originalIds = appt.services.map((s) => s.service_id)
+  const [serviceIds, setServiceIds] = useState<string[]>(originalIds)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  // Los servicios del turno que hoy no son reservables se muestran igual, para no perderlos al editar.
+  const opciones = [
+    ...services,
+    ...appt.services
+      .filter((s) => !services.some((x) => x.id === s.service_id))
+      .map((s) => ({ id: s.service_id, name: s.name, duration_min: s.duration_min }) as ServiceCatalog),
+  ]
+  const totalMin = opciones.filter((s) => serviceIds.includes(s.id)).reduce((acc, s) => acc + (s.duration_min ?? 0), 0)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (serviceIds.length === 0) {
+      setErr('Elegí al menos un servicio')
+      return
+    }
+    setSaving(true)
+    setErr(null)
+    try {
+      const cambiaronServicios =
+        serviceIds.length !== originalIds.length || serviceIds.some((id) => !originalIds.includes(id))
+      await editAppointmentBarber({
+        appointmentId: appt.id,
+        newStartsAt: `${date}T${time}:00-03:00`,
+        serviceIds: cambiaronServicios ? serviceIds : null,
+      })
+      onSaved()
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error al guardar el turno'
+      setErr(msg)
+      void errorDialog(msg)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 overflow-y-auto">
+      <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg p-6 space-y-4 animate-fadein max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between">
+          <h3 className="text-white font-bold text-base">Editar turno</h3>
+          <button onClick={onClose} className="icon-btn"><span className="text-lg leading-none">✕</span></button>
+        </div>
+        <p className="text-zinc-500 text-xs">{appt.client_name} — {horaLocal(appt.starts_at)}</p>
+
+        <form onSubmit={handleSubmit} className="space-y-3">
+          <div>
+            <p className="section-label mb-1">
+              Servicios {totalMin > 0 && <span className="normal-case text-zinc-600">— {totalMin} min</span>}
+            </p>
+            <div className="space-y-1.5 max-h-40 overflow-y-auto border border-zinc-800 rounded-lg p-2">
+              {opciones.map((s) => (
+                <label key={s.id} className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={serviceIds.includes(s.id)}
+                    onChange={() => setServiceIds((prev) => prev.includes(s.id) ? prev.filter((x) => x !== s.id) : [...prev, s.id])}
+                    className="accent-amber-500"
+                  />
+                  <span className="flex-1">{s.name}</span>
+                  <span className="text-zinc-500 text-xs">{s.duration_min} min</span>
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="section-label mb-1">Fecha</p>
+              <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+                className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500" />
+            </div>
+            <div>
+              <p className="section-label mb-1">Hora</p>
+              <input type="time" value={time} onChange={(e) => setTime(e.target.value)}
+                className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500" />
+            </div>
+          </div>
+
+          {err && <p className="text-red-400 text-sm">{err}</p>}
+
+          <div className="flex gap-2 pt-1">
+            <button type="submit" disabled={saving} className="btn-primary flex-1 disabled:opacity-40">
+              {saving ? 'Guardando...' : 'Guardar'}
+            </button>
+            <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }

@@ -1,4 +1,7 @@
--- 098 — Editar los servicios de un turno (además de mover fecha/hora/barbero)
+-- 098 — Editar un turno: servicios, fecha y hora (admin y barbero)
+--
+-- edit_appointment es la del admin (también puede cambiar de barbero).
+-- edit_appointment_barber es la del barbero: solo sobre SUS turnos.
 --
 -- El admin puede cambiar los servicios de un turno desde "Editar turno". La
 -- función nueva hace TODO junto (servicios + horario + barbero) en una sola
@@ -109,6 +112,108 @@ begin
 end;
 $function$;
 
+-- ------------------------------------------------------------
+-- Barbero: editar uno de SUS turnos (fecha/hora y servicios), sin cambiar de
+-- barbero (para eso está el admin).
+-- ------------------------------------------------------------
+create or replace function public.edit_appointment_barber(
+  p_appointment_id uuid,
+  p_new_starts_at  timestamptz,
+  p_service_ids    uuid[] default null
+)
+ returns void
+ language plpgsql
+ security definer
+ set search_path to 'public'
+as $function$
+declare
+  v_me        uuid := auth.uid();
+  v_branch    uuid;
+  v_barber    uuid;
+  v_status    appointment_status;
+  v_tx        uuid;
+  v_total_min integer;
+  v_new_ends  timestamptz;
+  v_bloqueo   text;
+  v_svc_count integer;
+begin
+  if not exists (
+    select 1 from profiles
+     where profiles.id = v_me and (profiles.role = 'barber' or profiles.is_barber)
+  ) then
+    raise exception 'Solo barberos pueden editar sus turnos';
+  end if;
+
+  select branch_id, barber_id, status, transaction_id
+    into v_branch, v_barber, v_status, v_tx
+    from appointments where id = p_appointment_id;
+
+  if v_branch is null then
+    raise exception 'El turno no existe';
+  end if;
+  if v_barber is distinct from v_me then
+    raise exception 'Solo podés editar tus propios turnos';
+  end if;
+  if v_status = 'cancelado' then
+    raise exception 'Un turno cancelado no se puede editar';
+  end if;
+
+  if p_service_ids is not null then
+    if v_tx is not null then
+      raise exception 'Este turno ya tiene el corte cargado: no se pueden cambiar sus servicios';
+    end if;
+    if array_length(p_service_ids, 1) is null then
+      raise exception 'Elegí al menos un servicio';
+    end if;
+
+    select count(*) into v_svc_count
+      from service_catalog sc
+     where sc.id = any(p_service_ids)
+       and sc.branch_id = v_branch
+       and sc.duration_min is not null
+       and (sc.is_active
+            or exists (select 1 from appointment_services x
+                        where x.appointment_id = p_appointment_id and x.service_id = sc.id));
+    if v_svc_count <> (select count(distinct s) from unnest(p_service_ids) s) then
+      raise exception 'Algún servicio elegido no existe, está inactivo o no tiene duración configurada';
+    end if;
+
+    delete from appointment_services
+     where appointment_id = p_appointment_id
+       and not (service_id = any(p_service_ids));
+
+    insert into appointment_services (appointment_id, service_id, service_name, price, duration_min)
+    select p_appointment_id, sc.id, sc.name, sc.base_price, sc.duration_min
+      from service_catalog sc
+     where sc.id = any(p_service_ids)
+       and not exists (select 1 from appointment_services x
+                        where x.appointment_id = p_appointment_id and x.service_id = sc.id);
+  end if;
+
+  select coalesce(sum(duration_min), 0) into v_total_min
+    from appointment_services where appointment_id = p_appointment_id;
+
+  v_new_ends := p_new_starts_at + make_interval(mins => v_total_min);
+
+  v_bloqueo := public._bloqueo_en_horario(v_branch, v_barber, p_new_starts_at, v_new_ends);
+  if v_bloqueo is not null then
+    raise exception 'Ese horario está bloqueado (%). Borrá el bloqueo si querés dejar el turno ahí.', v_bloqueo;
+  end if;
+
+  begin
+    update appointments
+       set starts_at = p_new_starts_at,
+           ends_at   = v_new_ends
+     where id = p_appointment_id;
+  exception
+    when exclusion_violation then
+      raise exception 'Ese horario ya no está libre';
+  end;
+end;
+$function$;
+
 -- Misma superficie que move_appointment: solo usuarios con sesión.
 revoke execute on function public.edit_appointment(uuid, timestamptz, uuid, uuid[]) from public, anon;
 grant execute on function public.edit_appointment(uuid, timestamptz, uuid, uuid[]) to authenticated, service_role;
+revoke execute on function public.edit_appointment_barber(uuid, timestamptz, uuid[]) from public, anon;
+grant execute on function public.edit_appointment_barber(uuid, timestamptz, uuid[]) to authenticated, service_role;

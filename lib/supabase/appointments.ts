@@ -274,6 +274,21 @@ export async function editAppointment(params: {
   if (error) throw new Error(error.message)
 }
 
+/** Lo mismo que editAppointment pero para el barbero, sobre sus propios turnos
+ * (no cambia de barbero). Requiere la migración 098. */
+export async function editAppointmentBarber(params: {
+  appointmentId: string
+  newStartsAt: string
+  serviceIds?: string[] | null
+}): Promise<void> {
+  const { error } = await supabase.rpc('edit_appointment_barber', {
+    p_appointment_id: params.appointmentId,
+    p_new_starts_at: params.newStartsAt,
+    p_service_ids: params.serviceIds ?? null,
+  })
+  if (error) throw new Error(error.message)
+}
+
 export async function cancelAppointment(appointmentId: string, reason?: string): Promise<void> {
   const { error } = await supabase.rpc('cancel_appointment', {
     p_appointment_id: appointmentId,
