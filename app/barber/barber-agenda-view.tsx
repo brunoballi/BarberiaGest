@@ -6,6 +6,7 @@ import { PhoneInput } from '@/app/components/phone-input'
 import type { ServiceCatalog } from '@/lib/supabase/database.types'
 import {
   getBarberAgenda,
+  getScheduleExceptions,
   createAppointmentBarber,
   createScheduleExceptionBarber,
   editAppointmentBarber,
@@ -14,6 +15,7 @@ import {
   APPOINTMENT_STATUS_LABELS,
   type BarberAgendaAppointment,
   type AppointmentStatus,
+  type ScheduleException,
 } from '@/lib/supabase/appointments'
 import { errorDialog, confirmDialog } from '@/lib/confirm-dialog'
 import AgendaGrid from '@/app/admin/turnos/agenda-grid'
@@ -83,6 +85,7 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
   const [showBlock, setShowBlock] = useState(false)
   const [selected, setSelected] = useState<(BarberAgendaAppointment & { barber_id: string }) | null>(null)
   const [editing, setEditing] = useState<BarberAgendaAppointment | null>(null)
+  const [bloqueos, setBloqueos] = useState<ScheduleException[]>([])
   const [businessHours, setBusinessHours] = useState<DayHours[] | undefined>(undefined)
 
   // Horario de la sucursal: extra visual, si falla la grilla usa el rango de siempre (9 a 21).
@@ -95,7 +98,15 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
     setLoading(true)
     setError(null)
     try {
-      setAgenda(await getBarberAgenda(d))
+      const [filas, excepciones] = await Promise.all([
+        getBarberAgenda(d),
+        // Los bloqueos (propios y de toda la sucursal) son un extra visual: si fallan, la agenda se ve igual.
+        branchId ? getScheduleExceptions(branchId, d).catch(() => [] as ScheduleException[]) : Promise.resolve([] as ScheduleException[]),
+      ])
+      setAgenda(filas)
+      // La lectura trae todo lo que viene de esa fecha en adelante: acá solo importa el día. La
+      // grilla muestra los de toda la sucursal y los de este barbero; los de otros barberos no.
+      setBloqueos(excepciones.filter((x) => x.exception_date === d && (x.barber_id === null || x.barber_id === barber.id)))
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Error cargando tu agenda'
       setError(msg)
@@ -103,7 +114,7 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [branchId, barber.id])
 
   useEffect(() => {
     if (!locked) cargar(date)
@@ -226,6 +237,7 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
               barbers={[barber]}
               appointments={agenda.map((a) => ({ ...a, barber_id: barber.id }))}
               date={date}
+              bloqueos={bloqueos}
               businessHours={businessHours}
               onSelect={setSelected}
             />

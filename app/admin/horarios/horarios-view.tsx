@@ -784,7 +784,7 @@ function ExceptionsPanel({
           {!closedAllDay && (
             <div className="grid grid-cols-2 gap-3 [&>*]:min-w-0">
               <div>
-                <label className="block text-[0.65rem] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-1">Atiende desde</label>
+                <label className="block text-[0.65rem] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-1">No atiende desde</label>
                 <input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)}
                   className="w-full min-w-0 max-w-[8.5rem] tabular-nums bg-[var(--bg3)] border border-[var(--border-mid)] text-[var(--text)] rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:border-amber-500" />
               </div>
