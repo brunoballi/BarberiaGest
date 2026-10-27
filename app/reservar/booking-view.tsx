@@ -577,15 +577,10 @@ export default function BookingView() {
   }
 
   // ── Bienvenida: al elegir la sucursal, antes del primer paso ──────────
-  const claveBienvenida = branch ? `valhalla-bienvenida-${branch.id}` : ''
-  const yaVista = (() => {
-    try { return !!claveBienvenida && sessionStorage.getItem(claveBienvenida) === '1' } catch { return false }
-  })()
-  const mostrarBienvenida =
-    !!branch && !bienvenidaCerrada && !yaVista && !!(branch.welcome_title || branch.welcome_description)
+  // Sale siempre que se entra o se recarga: es la novedad de la sucursal (ej. un descuento), no un aviso de una sola vez.
+  const mostrarBienvenida = !!branch && !bienvenidaCerrada && !!(branch.welcome_title || branch.welcome_description)
   function cerrarBienvenida() {
     setBienvenidaCerrada(true)
-    try { sessionStorage.setItem(claveBienvenida, '1') } catch { /* sin storage: se vuelve a mostrar */ }
   }
   const bienvenida = mostrarBienvenida && branch ? (
     <div className="bk-welcome-overlay" role="dialog" aria-modal="true" aria-label="Bienvenida">
