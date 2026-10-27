@@ -22,6 +22,7 @@ import { mensajeDeArchivado, unarchive } from '@/lib/supabase/supabase.client'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import { CurrencyInput } from '@/app/components/currency-input'
 import { TextInput } from '@/app/components/text-input'
+import { uploadBarberPhoto } from '@/lib/supabase/barber-photos'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
 const COMP_LABELS: Record<CompensationType, string> = {
@@ -220,6 +221,7 @@ export default function BarbersAbm() {
 
   // Edit
   const [editingBarber, setEditingBarber] = useState<Profile | null>(null)
+  const [photoUploading, setPhotoUploading] = useState(false)
   const [editForm, setEditForm] = useState<EditForm | null>(null)
   const [editEmail, setEditEmail] = useState('')
   const [editEmailOriginal, setEditEmailOriginal] = useState('')
@@ -384,6 +386,38 @@ export default function BarbersAbm() {
 
   function patchEditForm(field: string, value: string) {
     setEditForm((f) => f ? { ...f, [field]: value } : f)
+  }
+
+  async function guardarFoto(barber: Profile, url: string | null) {
+    await updateBarberProfile(barber.id, { avatar_url: url })
+    setBarbers((prev) => prev.map((b) => (b.id === barber.id ? { ...b, avatar_url: url } : b)))
+    setEditingBarber((cur) => (cur && cur.id === barber.id ? { ...cur, avatar_url: url } : cur))
+  }
+
+  async function handlePhoto(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (!file || !editingBarber) return
+    setPhotoUploading(true)
+    setEditError(null)
+    try {
+      const url = await uploadBarberPhoto(editingBarber.id, file)
+      await guardarFoto(editingBarber, url)
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'No se pudo subir la foto')
+    } finally {
+      setPhotoUploading(false)
+    }
+  }
+
+  async function handleRemovePhoto() {
+    if (!editingBarber) return
+    setEditError(null)
+    try {
+      await guardarFoto(editingBarber, null)
+    } catch (err) {
+      setEditError(err instanceof Error ? err.message : 'No se pudo quitar la foto')
+    }
   }
 
   async function handleSaveEdit(e: React.FormEvent) {
@@ -854,6 +888,33 @@ export default function BarbersAbm() {
             </div>
 
             <form onSubmit={handleSaveEdit} className="space-y-4">
+              {/* Foto: se guarda al elegirla (no espera al botón Guardar), igual que el logo en /admin/marca. */}
+              <div className="flex items-center gap-4">
+                <div className="w-20 h-20 rounded-full border border-zinc-700 bg-zinc-800 flex items-center justify-center overflow-hidden flex-shrink-0">
+                  {editingBarber.avatar_url
+                    // eslint-disable-next-line @next/next/no-img-element
+                    ? <img src={editingBarber.avatar_url} alt="" className="w-full h-full object-cover" />
+                    : <span className="text-zinc-500 text-xs text-center px-1">Sin foto</span>}
+                </div>
+                <div className="space-y-2 min-w-0">
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/webp"
+                    onChange={handlePhoto}
+                    disabled={photoUploading}
+                    className="block w-full max-w-full text-sm text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-amber-500 file:text-zinc-950 file:cursor-pointer disabled:opacity-40"
+                  />
+                  <p className="text-zinc-500 text-xs">PNG, JPG o WEBP. Hasta 3 MB. La ve el cliente al reservar.</p>
+                  {photoUploading && <p className="text-amber-400 text-xs">Subiendo...</p>}
+                  {editingBarber.avatar_url && !photoUploading && (
+                    <button type="button" onClick={handleRemovePhoto}
+                      className="text-xs text-zinc-500 hover:text-red-400 underline">
+                      Quitar foto
+                    </button>
+                  )}
+                </div>
+              </div>
+
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
                   Nombre completo
@@ -1332,6 +1393,10 @@ function BarberRow({
 
   return (
     <div className={`bg-zinc-900 border rounded-xl px-5 py-4 flex items-center justify-between gap-4 ${barber.is_active ? 'border-zinc-800' : 'border-zinc-800/50 opacity-60'}`}>
+      {barber.avatar_url && (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={barber.avatar_url} alt="" className="w-10 h-10 rounded-full object-cover flex-shrink-0 border border-zinc-700" />
+      )}
       <div className="flex-1 min-w-0">
         <p className="text-white font-semibold text-sm truncate">
           {barber.full_name}

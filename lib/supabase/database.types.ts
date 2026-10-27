@@ -445,6 +445,7 @@ export type ProfileUpdate = Partial<
     | 'advance_limit'
     | 'is_new_barber'
     | 'classic_service_id'
+    | 'avatar_url'
   >
 >
 
