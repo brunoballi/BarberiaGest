@@ -14,6 +14,8 @@ import {
   setAppointmentStatus,
   APPOINTMENT_STATUS_LABELS,
   getScheduleExceptions,
+  getBranchSchedules,
+  type BarberSchedule,
   type AgendaAppointment,
   type AppointmentStatus,
   type ScheduleException,
@@ -75,6 +77,8 @@ export default function TurnosView() {
   const [agenda, setAgenda] = useState<AgendaAppointment[]>([])
   const [bloqueos, setBloqueos] = useState<ScheduleException[]>([])
   // Todos los bloqueos desde el día visto en adelante (para la lista escrita).
+  // Horario semanal de los barberos: la grilla marca lo que cada uno no atiende.
+  const [horarios, setHorarios] = useState<BarberSchedule[] | undefined>(undefined)
   const [bloqueosProximos, setBloqueosProximos] = useState<ScheduleException[]>([])
   // Horario de atención de la sucursal: define el rango de horas de la grilla.
   const [businessHours, setBusinessHours] = useState<DayHours[] | undefined>(undefined)
@@ -122,6 +126,7 @@ export default function TurnosView() {
       setBranchId(stored)
       void getRecentWhatsAppFailures(stored).then(setWaFailures)
       // Extra visual: si falla, la grilla usa el rango de siempre (9 a 21).
+      void getBranchSchedules(stored).then(setHorarios).catch(() => {})
       void getPublicBranch(stored).then((b) => setBusinessHours(b?.business_hours)).catch(() => {})
 
       const [bs, svcs] = await Promise.all([
@@ -247,7 +252,7 @@ export default function TurnosView() {
             date={date}
             quien={(x) => x.barber_id === null ? 'Toda la sucursal' : (barberById.get(x.barber_id)?.full_name ?? 'Un barbero')}
           />
-          <AgendaGrid barbers={barbers} appointments={agenda} date={date} bloqueos={bloqueos} businessHours={businessHours} onSelect={setSelected} />
+          <AgendaGrid barbers={barbers} appointments={agenda} date={date} bloqueos={bloqueos} businessHours={businessHours} horarios={horarios} onSelect={setSelected} />
           {agenda.every((a) => a.status === 'cancelado') && (
             <p className="text-[var(--text-muted)] text-sm text-center">No hay turnos este día.</p>
           )}

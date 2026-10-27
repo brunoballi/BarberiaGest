@@ -77,6 +77,18 @@ export interface BarberAgendaAppointment {
 // Horarios
 // ============================================================
 
+/** Horario semanal de TODOS los barberos de la sucursal (para marcar en la agenda lo que no atienden). */
+export async function getBranchSchedules(branchId: string): Promise<BarberSchedule[]> {
+  const { data, error } = await supabase
+    .from('barber_schedules')
+    .select('id, barber_id, branch_id, weekday, start_time, end_time, mode, slot_minutes')
+    .eq('branch_id', branchId)
+    .order('weekday')
+    .order('start_time')
+  if (error) throw new Error(`[getBranchSchedules] ${error.message}`)
+  return data as BarberSchedule[]
+}
+
 export async function getBarberSchedules(barberId: string): Promise<BarberSchedule[]> {
   const { data, error } = await supabase
     .from('barber_schedules')

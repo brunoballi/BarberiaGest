@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import type { Profile } from '@/lib/supabase/database.types'
-import type { AppointmentStatus, ScheduleException } from '@/lib/supabase/appointments'
+import type { AppointmentStatus, BarberSchedule, ScheduleException } from '@/lib/supabase/appointments'
 import type { DayHours } from '@/lib/supabase/booking'
 import './agenda-grid.css'
 
@@ -100,6 +100,7 @@ export default function AgendaGrid<T extends GridAppointment>({
   date,
   bloqueos = [],
   businessHours,
+  horarios,
   onSelect,
 }: {
   barbers: Pick<Profile, 'id' | 'full_name' | 'avatar_url'>[]
@@ -109,6 +110,9 @@ export default function AgendaGrid<T extends GridAppointment>({
   bloqueos?: ScheduleException[]
   /** Horario de atención de la sucursal (los 7 días): define el rango de horas que se dibuja. */
   businessHours?: DayHours[]
+  /** Horario semanal de los barberos (módulo Horarios): lo que queda fuera de las franjas de cada
+   * uno se marca como "No atiende". Un barbero sin ninguna franja cargada no se marca (sin configurar). */
+  horarios?: BarberSchedule[]
   onSelect: (a: T) => void
 }) {
   const activos = appointments.filter((a) => a.status !== 'cancelado')
@@ -156,6 +160,30 @@ export default function AgendaGrid<T extends GridAppointment>({
     if (atencion.cierraMin !== null && atencion.cierraMin < finMin) {
       cerrados.push({ desde: atencion.cierraMin, hasta: finMin, etiqueta: 'Cerrado', titulo: `La sucursal cierra a las ${hm(atencion.cierraMin)}` })
     }
+  }
+
+  // Tramos en que un barbero NO atiende ese día (fuera de sus franjas del módulo Horarios),
+  // dentro del horario de la sucursal (lo de afuera ya está marcado como cerrado).
+  const weekday = new Date(date + 'T12:00:00').getDay()
+  function noAtiende(barberId: string): { desde: number; hasta: number; titulo: string }[] {
+    if (!horarios || atencion.cerradoTodoElDia) return []
+    const suyos = horarios.filter((h) => h.barber_id === barberId)
+    if (suyos.length === 0) return []
+    const lo = Math.max(startMin, atencion.abreMin ?? startMin)
+    const hi = Math.min(finMin, atencion.cierraMin ?? finMin)
+    const franjas = suyos
+      .filter((h) => h.weekday === weekday)
+      .map((h) => [hhmm(h.start_time), hhmm(h.end_time)] as const)
+      .sort((a, b) => a[0] - b[0])
+    if (franjas.length === 0) return hi > lo ? [{ desde: lo, hasta: hi, titulo: 'No atiende este día' }] : []
+    const huecos: { desde: number; hasta: number; titulo: string }[] = []
+    let cursor = lo
+    for (const [a, b] of franjas) {
+      if (a > cursor) huecos.push({ desde: cursor, hasta: Math.min(a, hi), titulo: `No atiende de ${hm(cursor)} a ${hm(Math.min(a, hi))}` })
+      cursor = Math.max(cursor, b)
+    }
+    if (cursor < hi) huecos.push({ desde: cursor, hasta: hi, titulo: `No atiende de ${hm(cursor)} a ${hm(hi)}` })
+    return huecos.filter((x) => x.hasta > x.desde)
   }
 
   const porBarbero = new Map<string, T[]>()
@@ -214,6 +242,16 @@ export default function AgendaGrid<T extends GridAppointment>({
                 title={c.titulo}
               >
                 <span className="ag-bloqueo__label">🔒 {c.etiqueta}</span>
+              </div>
+            ))}
+            {noAtiende(b.id).map((x) => (
+              <div
+                key={`na-${x.desde}`}
+                className="ag-bloqueo"
+                style={{ top: (x.desde - startMin) * PX_PER_MIN, height: (x.hasta - x.desde) * PX_PER_MIN }}
+                title={x.titulo}
+              >
+                <span className="ag-bloqueo__label">No atiende</span>
               </div>
             ))}
             {bloqueos

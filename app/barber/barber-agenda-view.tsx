@@ -7,6 +7,8 @@ import type { ServiceCatalog } from '@/lib/supabase/database.types'
 import {
   getBarberAgenda,
   getScheduleExceptions,
+  getBarberSchedules,
+  type BarberSchedule,
   createAppointmentBarber,
   createScheduleExceptionBarber,
   editAppointmentBarber,
@@ -88,6 +90,7 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
   const [editing, setEditing] = useState<BarberAgendaAppointment | null>(null)
   const [bloqueos, setBloqueos] = useState<ScheduleException[]>([])
   // Los del día visto y los que vienen (propios y de toda la sucursal), para la lista escrita.
+  const [horarios, setHorarios] = useState<BarberSchedule[] | undefined>(undefined)
   const [bloqueosProximos, setBloqueosProximos] = useState<ScheduleException[]>([])
   const [businessHours, setBusinessHours] = useState<DayHours[] | undefined>(undefined)
 
@@ -95,7 +98,8 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
   useEffect(() => {
     if (locked || !branchId) return
     getPublicBranch(branchId).then((b) => setBusinessHours(b?.business_hours)).catch(() => {})
-  }, [locked, branchId])
+    getBarberSchedules(barber.id).then(setHorarios).catch(() => {})
+  }, [locked, branchId, barber.id])
 
   const cargar = useCallback(async (d: string) => {
     setLoading(true)
@@ -249,6 +253,7 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
               date={date}
               bloqueos={bloqueos}
               businessHours={businessHours}
+              horarios={horarios}
               onSelect={setSelected}
             />
           </>
