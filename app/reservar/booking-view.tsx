@@ -74,6 +74,8 @@ export default function BookingView() {
   // cualquier paso no necesita pedirlas de nuevo. Con 1 sola, se usa nomás
   // para decidir que no hay a dónde volver (sin botón de volver).
   const [allBranches, setAllBranches] = useState<PublicBranch[]>([])
+  // Ventana de bienvenida de la sucursal (mensaje + descripción de /admin/marca): se muestra al elegirla.
+  const [bienvenidaCerrada, setBienvenidaCerrada] = useState(false)
   // Encabezado general del selector (logo + nombre de LA sucursal marcada
   // en /admin/marca). Solo tiene sentido cuando se muestra branchChoices;
   // con una sola sucursal activa, ni se pide.
@@ -184,6 +186,7 @@ export default function BookingView() {
     setWalkins([])
     setDate(todayInBusinessTz())
     setStep('barbero')
+    setBienvenidaCerrada(false)
     setName(''); setPhone(''); setEmail('')
     setFormError(null)
     router.replace('/reservar', { scroll: false })
@@ -573,10 +576,39 @@ export default function BookingView() {
     )
   }
 
+  // ── Bienvenida: al elegir la sucursal, antes del primer paso ──────────
+  const claveBienvenida = branch ? `valhalla-bienvenida-${branch.id}` : ''
+  const yaVista = (() => {
+    try { return !!claveBienvenida && sessionStorage.getItem(claveBienvenida) === '1' } catch { return false }
+  })()
+  const mostrarBienvenida =
+    !!branch && !bienvenidaCerrada && !yaVista && !!(branch.welcome_title || branch.welcome_description)
+  function cerrarBienvenida() {
+    setBienvenidaCerrada(true)
+    try { sessionStorage.setItem(claveBienvenida, '1') } catch { /* sin storage: se vuelve a mostrar */ }
+  }
+  const bienvenida = mostrarBienvenida && branch ? (
+    <div className="bk-welcome-overlay" role="dialog" aria-modal="true" aria-label="Bienvenida">
+      <div className="bk-welcome-card">
+        {branch.logo_url && (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={branch.logo_url} alt="" className="bk-welcome-card__logo" />
+        )}
+        <h2 className="bk-welcome-card__title">{branch.welcome_title || branch.name}</h2>
+        {branch.welcome_title && <p className="bk-welcome-card__branch">{branch.name}</p>}
+        {branch.welcome_description && <p className="bk-welcome-card__desc">{branch.welcome_description}</p>}
+        <button type="button" className="bk-btn bk-welcome-card__btn" onClick={cerrarBienvenida} autoFocus>
+          Reservar turno
+        </button>
+      </div>
+    </div>
+  ) : null
+
   // ── Paso "barbero": solo aparece con más de uno ────────────────────
   if (step === 'barbero') {
     return (
       <div className="bk-screen">
+        {bienvenida}
         <header className="bk-header">
           {/* Solo con 2+ sucursales hay a dónde volver -- con una sola,
               este paso ES el punto de entrada de /reservar. */}
@@ -587,21 +619,13 @@ export default function BookingView() {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={branch.logo_url} alt="" className="bk-logo" />
           )}
-          {/* Es el primer paso de la sucursal: acá va el mensaje de bienvenida de /admin/marca. */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p className="bk-header__title">{branch?.welcome_title || branch?.name || '¿Con quién te querés atender?'}</p>
-            {branch?.welcome_title && branch?.name && (
-              <p className="bk-header__sub">{branch.name}</p>
-            )}
-            {branch?.address && <p className="bk-header__sub">{branch.address}</p>}
+            <p className="bk-header__title">¿Con quién te querés atender?</p>
+            <p className="bk-header__sub">Paso {stepIndex('barbero')} de {totalSteps}</p>
           </div>
         </header>
 
         <div className="bk-body">
-          {branch?.welcome_description && (
-            <p className="bk-welcome-desc">{branch.welcome_description}</p>
-          )}
-          <p className="bk-section">¿Con quién te querés atender?</p>
           <div className="bk-barber-grid">
             {/* Para quien no conoce a nadie: la base asigna un barbero libre
                 al confirmar (113). Va primero y ocupa todo el ancho. */}
@@ -645,6 +669,7 @@ export default function BookingView() {
     const esPrimerPaso = activeSteps[0] === 'servicio'
     return (
       <div className="bk-screen">
+        {esPrimerPaso && bienvenida}
         <header className="bk-header">
           {esPrimerPaso ? (
             <>
@@ -656,10 +681,7 @@ export default function BookingView() {
                 <img src={branch.logo_url} alt="" className="bk-logo" />
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <p className="bk-header__title">{branch?.welcome_title || branch?.name}</p>
-                {branch?.welcome_title && branch?.name && (
-                  <p className="bk-header__sub">{branch.name}</p>
-                )}
+                <p className="bk-header__title">{branch?.name}</p>
                 {branch?.address && <p className="bk-header__sub">{branch.address}</p>}
               </div>
             </>
@@ -675,9 +697,6 @@ export default function BookingView() {
         </header>
 
         <div className="bk-body">
-          {esPrimerPaso && branch?.welcome_description && (
-            <p className="bk-welcome-desc">{branch.welcome_description}</p>
-          )}
           {esPrimerPaso && <p className="bk-section">¿Qué te vas a hacer?</p>}
 
           <div className="bk-services">
