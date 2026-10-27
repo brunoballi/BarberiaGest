@@ -587,13 +587,21 @@ export default function BookingView() {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={branch.logo_url} alt="" className="bk-logo" />
           )}
+          {/* Es el primer paso de la sucursal: acá va el mensaje de bienvenida de /admin/marca. */}
           <div style={{ flex: 1, minWidth: 0 }}>
-            <p className="bk-header__title">¿Con quién te querés atender?</p>
-            <p className="bk-header__sub">Paso {stepIndex('barbero')} de {totalSteps}</p>
+            <p className="bk-header__title">{branch?.welcome_title || branch?.name || '¿Con quién te querés atender?'}</p>
+            {branch?.welcome_title && branch?.name && (
+              <p className="bk-header__sub">{branch.name}</p>
+            )}
+            {branch?.address && <p className="bk-header__sub">{branch.address}</p>}
           </div>
         </header>
 
         <div className="bk-body">
+          {branch?.welcome_description && (
+            <p className="bk-welcome-desc">{branch.welcome_description}</p>
+          )}
+          <p className="bk-section">¿Con quién te querés atender?</p>
           <div className="bk-barber-grid">
             {/* Para quien no conoce a nadie: la base asigna un barbero libre
                 al confirmar (113). Va primero y ocupa todo el ancho. */}

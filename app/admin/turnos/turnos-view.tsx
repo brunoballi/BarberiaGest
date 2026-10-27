@@ -34,6 +34,7 @@ import { PhoneInput } from '@/app/components/phone-input'
 import { confirmDialog, alertDialog, errorDialog } from '@/lib/confirm-dialog'
 import { useRealtimeRefresh } from '@/lib/hooks/use-realtime-refresh'
 import AgendaGrid from './agenda-grid'
+import AgendaRango, { diasDelRango, limitesDelRango, moverRango, tituloDelRango, type Rango } from './agenda-rango'
 import BloqueosResumen from './bloqueos-resumen'
 import '../admin-dashboard.css'
 
@@ -85,6 +86,11 @@ export default function TurnosView() {
   const [businessHours, setBusinessHours] = useState<DayHours[] | undefined>(undefined)
   const [loading, setLoading] = useState(true)
   const [loadingAgenda, setLoadingAgenda] = useState(false)
+  // Filtros de la agenda: un barbero ('' = todos) y el período (día en grilla, semana o mes en lista).
+  const [filtroBarbero, setFiltroBarbero] = useState('')
+  const [rango, setRango] = useState<Rango>('dia')
+  const [turnosRango, setTurnosRango] = useState<AgendaAppointment[]>([])
+  const [bloqueosRango, setBloqueosRango] = useState<ScheduleException[]>([])
   const [error, setError] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
   const [moving, setMoving] = useState<AgendaAppointment | null>(null)
@@ -105,6 +111,27 @@ export default function TurnosView() {
       setBloqueosProximos(excepciones)
       // El estado de entrega es un extra: no frena la agenda si tarda o falla.
       void getWhatsAppDeliveries(filas.map((f) => f.id)).then(setWa)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error cargando la agenda'
+      setError(msg)
+      void errorDialog(msg)
+    } finally {
+      setLoadingAgenda(false)
+    }
+  }, [])
+
+  // Semana o mes: un pedido por día (la base entrega la agenda de a un día) y los bloqueos del período.
+  const cargarRango = useCallback(async (bId: string, d: string, r: Rango) => {
+    if (r === 'dia') return
+    setLoadingAgenda(true)
+    try {
+      const { desde, hasta } = limitesDelRango(d, r)
+      const [porDia, excepciones] = await Promise.all([
+        Promise.all(diasDelRango(desde, hasta).map((dia) => getAdminAgenda(bId, dia))),
+        getScheduleExceptions(bId, desde).catch(() => [] as ScheduleException[]),
+      ])
+      setTurnosRango(porDia.flat())
+      setBloqueosRango(excepciones.filter((x) => x.exception_date <= hasta))
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Error cargando la agenda'
       setError(msg)
@@ -157,11 +184,11 @@ export default function TurnosView() {
       if (document.visibilityState !== 'visible') return
       void getBranchSchedules(branchId).then(setHorarios).catch(() => {})
       void getPublicBranch(branchId).then((b) => setBusinessHours(b?.business_hours)).catch(() => {})
-      void cargarAgenda(branchId, date)
+      void (rango === 'dia' ? cargarAgenda(branchId, date) : cargarRango(branchId, date, rango))
     }
     document.addEventListener('visibilitychange', alVolver)
     return () => document.removeEventListener('visibilitychange', alVolver)
-  }, [branchId, date, cargarAgenda])
+  }, [branchId, date, rango, cargarAgenda, cargarRango])
 
   // En vivo: si el barbero, otro admin o un cliente (reserva publica) crea, mueve o cancela un turno, o
   // se cambia un bloqueo u horario, la grilla se actualiza sola sin recargar.
@@ -176,19 +203,32 @@ export default function TurnosView() {
     () => {
       if (!branchId) return
       void getBranchSchedules(branchId).then(setHorarios).catch(() => {})
-      void cargarAgenda(branchId, date)
+      void recargar()
     },
   )
 
-  function cambiarDia(nuevaFecha: string) {
+  // Vuelve a leer lo que se está mostrando: la grilla del día o la lista de la semana o el mes.
+  function recargar() {
+    if (!branchId) return Promise.resolve()
+    return rango === 'dia' ? cargarAgenda(branchId, date) : cargarRango(branchId, date, rango)
+  }
+
+  function cambiarDia(nuevaFecha: string, r: Rango = rango) {
     setDate(nuevaFecha)
-    if (branchId) cargarAgenda(branchId, nuevaFecha)
+    if (!branchId) return
+    if (r === 'dia') void cargarAgenda(branchId, nuevaFecha)
+    else void cargarRango(branchId, nuevaFecha, r)
+  }
+
+  function cambiarRango(r: Rango) {
+    setRango(r)
+    cambiarDia(date, r)
   }
 
   async function handleStatus(appt: AgendaAppointment, status: Exclude<AppointmentStatus, 'reservado'>) {
     try {
       await setAppointmentStatus(appt.id, status)
-      await cargarAgenda(branchId, date)
+      await recargar()
     } catch (e) {
       await alertDialog(e instanceof Error ? e.message : 'Error al cambiar el estado')
     }
@@ -201,7 +241,7 @@ export default function TurnosView() {
     }))) return
     try {
       await cancelAppointment(appt.id)
-      await cargarAgenda(branchId, date)
+      await recargar()
     } catch (e) {
       await alertDialog(e instanceof Error ? e.message : 'Error al cancelar')
     }
@@ -211,6 +251,11 @@ export default function TurnosView() {
   if (error) return <div className="p-6 text-red-400">{error}</div>
 
   const barberById = new Map(barbers.map((b) => [b.id, b]))
+  // El filtro de barbero deja su columna y, de los bloqueos, los suyos y los de toda la sucursal.
+  const barberosVisibles = filtroBarbero ? barbers.filter((b) => b.id === filtroBarbero) : barbers
+  const delFiltro = (x: ScheduleException) => !filtroBarbero || x.barber_id === null || x.barber_id === filtroBarbero
+  const quienBloquea = (x: ScheduleException) =>
+    x.barber_id === null ? 'Toda la sucursal' : (barberById.get(x.barber_id)?.full_name ?? 'Un barbero')
 
   return (
     <div className="w-full px-4 py-8 space-y-6">
@@ -247,23 +292,57 @@ export default function TurnosView() {
         </div>
       )}
 
-      {/* Navegación de día */}
+      {/* Período y filtros */}
+      <div className="flex flex-wrap items-center gap-3">
+        <div role="tablist" className="inline-flex rounded-lg border border-[var(--border-mid)] bg-[var(--bg2)] p-1 gap-1">
+          {([['dia', 'Día'], ['semana', 'Semana'], ['mes', 'Mes']] as const).map(([k, label]) => (
+            <button
+              key={k}
+              role="tab"
+              aria-selected={rango === k}
+              onClick={() => cambiarRango(k)}
+              className={`px-3 py-1.5 rounded-md text-sm font-semibold transition-colors ${
+                rango === k ? 'bg-amber-500 text-zinc-950' : 'text-[var(--text-muted)] hover:text-[var(--text)]'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <select
+          value={filtroBarbero}
+          onChange={(e) => setFiltroBarbero(e.target.value)}
+          aria-label="Filtrar por barbero"
+          className="bg-[var(--bg3)] border border-[var(--border-mid)] text-[var(--text)] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
+        >
+          <option value="">Todos los barberos</option>
+          {barbers.map((b) => (
+            <option key={b.id} value={b.id}>{b.full_name}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Navegación */}
       <div className="flex items-center gap-2">
-        <button onClick={() => cambiarDia(addDaysISO(date, -1))}
+        <button onClick={() => cambiarDia(moverRango(date, rango, -1))}
           className="w-9 h-9 flex items-center justify-center rounded-lg border border-[var(--border-mid)] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--border-mid)]">
           ‹
         </button>
-        <input
-          type="date"
-          value={date}
-          onChange={(e) => cambiarDia(e.target.value)}
-          className="bg-[var(--bg3)] border border-[var(--border-mid)] text-[var(--text)] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
-        />
-        <button onClick={() => cambiarDia(addDaysISO(date, 1))}
+        {rango === 'dia' ? (
+          <input
+            type="date"
+            value={date}
+            onChange={(e) => cambiarDia(e.target.value)}
+            className="bg-[var(--bg3)] border border-[var(--border-mid)] text-[var(--text)] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
+          />
+        ) : (
+          <span className="px-3 text-sm font-semibold capitalize text-[var(--text)]">{tituloDelRango(date, rango)}</span>
+        )}
+        <button onClick={() => cambiarDia(moverRango(date, rango, 1))}
           className="w-9 h-9 flex items-center justify-center rounded-lg border border-[var(--border-mid)] text-[var(--text-muted)] hover:text-[var(--text)] hover:border-[var(--border-mid)]">
           ›
         </button>
-        {date !== todayISO() && (
+        {(rango === 'dia' ? date !== todayISO() : true) && (
           <button onClick={() => cambiarDia(todayISO())} className="text-xs text-amber-400 hover:text-amber-300 ml-1">
             Hoy
           </button>
@@ -278,14 +357,24 @@ export default function TurnosView() {
           <p className="text-[var(--text-muted)] text-sm">No hay barberos activos en esta sucursal.</p>
         </div>
       ) : (
+        rango !== 'dia' ? (
+          <AgendaRango
+            dias={diasDelRango(limitesDelRango(date, rango).desde, limitesDelRango(date, rango).hasta)}
+            turnos={turnosRango.filter((a) => !filtroBarbero || a.barber_id === filtroBarbero)}
+            bloqueos={bloqueosRango.filter(delFiltro)}
+            quien={quienBloquea}
+            onSelect={setSelected}
+            onIrAlDia={(d) => { setRango('dia'); cambiarDia(d, 'dia') }}
+          />
+        ) : (
         <>
           <BloqueosResumen
-            bloqueos={bloqueosProximos}
+            bloqueos={bloqueosProximos.filter(delFiltro)}
             date={date}
-            quien={(x) => x.barber_id === null ? 'Toda la sucursal' : (barberById.get(x.barber_id)?.full_name ?? 'Un barbero')}
+            quien={quienBloquea}
           />
-          <AgendaGrid barbers={barbers} appointments={agenda} date={date} bloqueos={bloqueos} businessHours={businessHours} horarios={horarios} onSelect={setSelected} />
-          {agenda.every((a) => a.status === 'cancelado') && (
+          <AgendaGrid barbers={barberosVisibles} appointments={agenda} date={date} bloqueos={bloqueos.filter(delFiltro)} businessHours={businessHours} horarios={horarios} onSelect={setSelected} />
+          {agenda.filter((a) => !filtroBarbero || a.barber_id === filtroBarbero).every((a) => a.status === 'cancelado') && (
             <p className="text-[var(--text-muted)] text-sm text-center">No hay turnos este día.</p>
           )}
           {agenda.some((a) => a.status === 'cancelado') && (
@@ -308,11 +397,12 @@ export default function TurnosView() {
             </details>
           )}
         </>
+        )
       )}
 
       {selected && (() => {
         // Siempre se muestra la versión fresca del turno (tras cambiar el estado se recarga la agenda).
-        const appt = agenda.find((a) => a.id === selected.id)
+        const appt = [...agenda, ...turnosRango].find((a) => a.id === selected.id)
         if (!appt) return null
         return (
           <div className="modal-overlay" onClick={() => setSelected(null)}>
@@ -340,7 +430,7 @@ export default function TurnosView() {
           services={services}
           defaultDate={date}
           onClose={() => setShowNew(false)}
-          onCreated={() => { setShowNew(false); cargarAgenda(branchId, date) }}
+          onCreated={() => { setShowNew(false); void recargar() }}
         />
       )}
 
@@ -351,7 +441,7 @@ export default function TurnosView() {
           services={services}
           barberName={barberById.get(moving.barber_id)?.full_name ?? moving.barber_name}
           onClose={() => setMoving(null)}
-          onMoved={() => { setMoving(null); cargarAgenda(branchId, date) }}
+          onMoved={() => { setMoving(null); void recargar() }}
         />
       )}
     </div>

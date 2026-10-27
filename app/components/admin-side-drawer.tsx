@@ -151,7 +151,7 @@ export function AdminSideDrawer({
               <p className="px-4 py-1 text-[11px] uppercase tracking-wide text-zinc-500">Turnero</p>
               {[
                 { href: '/admin/turnos', icon: '📆', label: 'Turnos' },
-                { href: '/admin/horarios', icon: '🕘', label: 'Horarios' },
+                { href: '/admin/bloqueos', icon: '🔒', label: 'Bloqueos' },
                 { href: '/admin/clientes', icon: '🧑‍🤝‍🧑', label: 'Clientes' },
                 { href: '/admin/marca', icon: '🎨', label: 'Marca y WhatsApp' },
               ].map((it) => (
