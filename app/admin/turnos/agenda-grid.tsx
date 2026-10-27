@@ -28,15 +28,29 @@ function hora(iso: string): string {
   return fmtMinutes.format(new Date(iso))
 }
 
-/** Rango (en horas enteras) en que atiende la sucursal el día `date` (YYYY-MM-DD). */
-function horasDeAtencion(date: string, businessHours?: DayHours[]): { start: number; end: number } {
-  const dia = businessHours?.find((h) => h.weekday === new Date(date + 'T12:00:00').getDay())
-  if (!dia || dia.open === dia.close) return { start: DEFAULT_START_HOUR, end: DEFAULT_END_HOUR }
+/** Rango de horas que dibuja la grilla ese día, y los minutos exactos de apertura y cierre
+ * de la sucursal (para marcar como cerrado lo que queda afuera, ej. 9:00 a 9:30 si abre 9:30). */
+interface Atencion {
+  start: number
+  end: number
+  /** Minutos desde las 00:00. Sin horario cargado (o sin ningún día cargado): null y no se marca nada. */
+  abreMin: number | null
+  cierraMin: number | null
+  /** Hay horario en otros días pero este está marcado cerrado. */
+  cerradoTodoElDia: boolean
+}
+
+function horasDeAtencion(date: string, businessHours?: DayHours[]): Atencion {
+  const porDefecto: Atencion = { start: DEFAULT_START_HOUR, end: DEFAULT_END_HOUR, abreMin: null, cierraMin: null, cerradoTodoElDia: false }
+  // Misma regla que la base (_sucursal_cerrada_en): sin ningún día cargado no se restringe nada.
+  if (!businessHours?.some((h) => h.open !== h.close)) return porDefecto
+  const dia = businessHours.find((h) => h.weekday === new Date(date + 'T12:00:00').getDay())
+  if (!dia || dia.open === dia.close) return { ...porDefecto, cerradoTodoElDia: true }
   const abre = hhmm(dia.open)
   const cierra = hhmm(dia.close)
   // Cierre "00:00" (o antes de abrir) = pasa la medianoche: la grilla llega hasta las 24.
   const fin = cierra <= abre ? 24 * 60 : cierra
-  return { start: Math.floor(abre / 60), end: Math.ceil(fin / 60) }
+  return { start: Math.floor(abre / 60), end: Math.ceil(fin / 60), abreMin: abre, cierraMin: fin, cerradoTodoElDia: false }
 }
 
 /** "15:30:00" -> minutos desde las 00:00 */
@@ -129,6 +143,21 @@ export default function AgendaGrid<T extends GridAppointment>({
     return () => clearInterval(id)
   }, [date])
 
+  // Tramos cerrados dentro de lo que se dibuja (en minutos desde las 00:00).
+  const cerrados: { desde: number; hasta: number; etiqueta: string; titulo: string }[] = []
+  const finMin = endHour * 60
+  const hm = (m: number) => `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`
+  if (atencion.cerradoTodoElDia) {
+    cerrados.push({ desde: startMin, hasta: finMin, etiqueta: 'Sucursal cerrada', titulo: 'La sucursal no atiende este día' })
+  } else {
+    if (atencion.abreMin !== null && atencion.abreMin > startMin) {
+      cerrados.push({ desde: startMin, hasta: atencion.abreMin, etiqueta: 'Cerrado', titulo: `La sucursal abre a las ${hm(atencion.abreMin)}` })
+    }
+    if (atencion.cierraMin !== null && atencion.cierraMin < finMin) {
+      cerrados.push({ desde: atencion.cierraMin, hasta: finMin, etiqueta: 'Cerrado', titulo: `La sucursal cierra a las ${hm(atencion.cierraMin)}` })
+    }
+  }
+
   const porBarbero = new Map<string, T[]>()
   for (const a of activos) {
     const lista = porBarbero.get(a.barber_id) ?? []
@@ -175,6 +204,18 @@ export default function AgendaGrid<T extends GridAppointment>({
             {nowMin !== null && nowMin >= startMin && nowMin <= endHour * 60 && (
               <div className="ag-now" style={{ top: (nowMin - startMin) * PX_PER_MIN }} />
             )}
+            {/* Lo que queda fuera del horario de la sucursal (antes de abrir / después de cerrar) se marca
+                como un bloqueo más, y la base tampoco deja cargar turnos ahí. */}
+            {cerrados.map((c) => (
+              <div
+                key={c.desde}
+                className="ag-bloqueo"
+                style={{ top: (c.desde - startMin) * PX_PER_MIN, height: (c.hasta - c.desde) * PX_PER_MIN }}
+                title={c.titulo}
+              >
+                <span className="ag-bloqueo__label">🔒 {c.etiqueta}</span>
+              </div>
+            ))}
             {bloqueos
               .filter((x) => x.barber_id === null || x.barber_id === b.id)
               .map((x) => {
