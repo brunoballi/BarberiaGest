@@ -15,11 +15,7 @@ import BookingView from './booking-view'
 // leído de la base). metadataBase hace absolutas las URLs, que es lo que piden
 // WhatsApp e Instagram.
 export const metadata: Metadata = {
-  metadataBase: new URL(
-    process.env.VERCEL_PROJECT_PRODUCTION_URL
-      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
-      : 'https://sistemagestionbarberias.vercel.app',
-  ),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? 'https://www.salonvalhalla.com'),
   title: 'Reservar turno online',
   description:
     'Sacá tu turno en segundos: elegí sucursal, servicio, barbero y horario. Sin llamar, sin esperar, y con confirmación al instante.',
