@@ -1326,10 +1326,12 @@ export default function BarberMobileView() {
   }
 
   // ── SETTLEMENTS ──────────────────────────────────────────────────────────
-  if (view === 'agenda' && turneroOn) {
+  if (view === 'agenda' && turneroOn && profile) {
     return (
       <BarberAgendaView
         services={bookableServices}
+        branchId={profile.branch_id}
+        barber={{ id: profile.id, full_name: profile.full_name, avatar_url: profile.avatar_url }}
         locked={false}
         onBack={() => setView('home')}
         onPrecarga={handlePrecarga}

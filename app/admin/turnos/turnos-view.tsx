@@ -26,6 +26,7 @@ import {
   type WhatsAppDelivery,
   type WhatsAppFailureSummary,
 } from '@/lib/supabase/whatsapp-status'
+import { getPublicBranch, type DayHours } from '@/lib/supabase/booking'
 import { PhoneInput } from '@/app/components/phone-input'
 import { confirmDialog, alertDialog, errorDialog } from '@/lib/confirm-dialog'
 import AgendaGrid from './agenda-grid'
@@ -71,6 +72,8 @@ export default function TurnosView() {
   const [date, setDate] = useState(todayISO())
   const [agenda, setAgenda] = useState<AgendaAppointment[]>([])
   const [bloqueos, setBloqueos] = useState<ScheduleException[]>([])
+  // Horario de atención de la sucursal: define el rango de horas de la grilla.
+  const [businessHours, setBusinessHours] = useState<DayHours[] | undefined>(undefined)
   const [loading, setLoading] = useState(true)
   const [loadingAgenda, setLoadingAgenda] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -113,6 +116,8 @@ export default function TurnosView() {
       setSelectedBranch(stored)
       setBranchId(stored)
       void getRecentWhatsAppFailures(stored).then(setWaFailures)
+      // Extra visual: si falla, la grilla usa el rango de siempre (9 a 21).
+      void getPublicBranch(stored).then((b) => setBusinessHours(b?.business_hours)).catch(() => {})
 
       const [bs, svcs] = await Promise.all([
         getAllBarbersByBranch(stored),
@@ -232,7 +237,7 @@ export default function TurnosView() {
         </div>
       ) : (
         <>
-          <AgendaGrid barbers={barbers} appointments={agenda} date={date} bloqueos={bloqueos} onSelect={setSelected} />
+          <AgendaGrid barbers={barbers} appointments={agenda} date={date} bloqueos={bloqueos} businessHours={businessHours} onSelect={setSelected} />
           {agenda.every((a) => a.status === 'cancelado') && (
             <p className="text-[var(--text-muted)] text-sm text-center">No hay turnos este día.</p>
           )}

@@ -100,6 +100,7 @@
   padding: 0 0.15rem;
 }
 .ag-hours__label:first-child { transform: translateY(0.1rem); }
+.ag-hours__label:last-child { transform: translateY(-100%); }
 
 /* ─── Columnas de barbero: líneas de hora y de media hora ──── */
 .ag-col {

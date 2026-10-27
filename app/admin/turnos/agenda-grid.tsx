@@ -2,13 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import type { Profile } from '@/lib/supabase/database.types'
-import type { AgendaAppointment, AppointmentStatus, ScheduleException } from '@/lib/supabase/appointments'
+import type { AppointmentStatus, ScheduleException } from '@/lib/supabase/appointments'
+import type { DayHours } from '@/lib/supabase/booking'
 import './agenda-grid.css'
 
 const TZ = 'America/Argentina/Buenos_Aires'
 const PX_PER_MIN = 1.6          // 30 min = 48 px
-const MIN_HOUR = 0              // la grilla muestra el día completo, de 00:00 a 00:00
-const MAX_HOUR = 24
+// Sin horario de la sucursal cargado (o cerrada ese día) la grilla muestra
+// 9:00 a 21:00; con horario, el de ese día. En los dos casos se amplía si hay
+// turnos o bloqueos fuera de ese rango, para que nunca queden ocultos.
+const DEFAULT_START_HOUR = 9
+const DEFAULT_END_HOUR = 21
 
 const fmtMinutes = new Intl.DateTimeFormat('en-GB', {
   hour: '2-digit', minute: '2-digit', hour12: false, timeZone: TZ,
@@ -22,6 +26,17 @@ function minutesOfDay(iso: string): number {
 
 function hora(iso: string): string {
   return fmtMinutes.format(new Date(iso))
+}
+
+/** Rango (en horas enteras) en que atiende la sucursal el día `date` (YYYY-MM-DD). */
+function horasDeAtencion(date: string, businessHours?: DayHours[]): { start: number; end: number } {
+  const dia = businessHours?.find((h) => h.weekday === new Date(date + 'T12:00:00').getDay())
+  if (!dia || dia.open === dia.close) return { start: DEFAULT_START_HOUR, end: DEFAULT_END_HOUR }
+  const abre = hhmm(dia.open)
+  const cierra = hhmm(dia.close)
+  // Cierre "00:00" (o antes de abrir) = pasa la medianoche: la grilla llega hasta las 24.
+  const fin = cierra <= abre ? 24 * 60 : cierra
+  return { start: Math.floor(abre / 60), end: Math.ceil(fin / 60) }
 }
 
 /** "15:30:00" -> minutos desde las 00:00 */
@@ -47,31 +62,47 @@ const STATUS_CLASS: Record<AppointmentStatus, string> = {
   cancelado: 'ag-block--cancelado',
 }
 
+/** Lo mínimo que la grilla necesita de un turno: sirve tanto para la agenda del
+ * admin como para la del barbero (que arma `barber_id` con su propio id). */
+export interface GridAppointment {
+  id: string
+  barber_id: string
+  client_name: string
+  starts_at: string
+  ends_at: string
+  status: AppointmentStatus
+  services: { name: string }[]
+}
+
 /**
  * Agenda del día en columnas, una por barbero, con las horas a la izquierda.
  * Solo dibuja: las acciones (llegó, atendido, mover, cancelar) las maneja el
  * padre al tocar un turno. Los turnos cancelados no se dibujan acá (no ocupan
  * horario); el padre los lista aparte.
  */
-export default function AgendaGrid({
+export default function AgendaGrid<T extends GridAppointment>({
   barbers,
   appointments,
   date,
   bloqueos = [],
+  businessHours,
   onSelect,
 }: {
-  barbers: Profile[]
-  appointments: AgendaAppointment[]
+  barbers: Pick<Profile, 'id' | 'full_name' | 'avatar_url'>[]
+  appointments: T[]
   date: string
   /** Bloqueos (franco, médico, comida, feriado) de este día. barber_id nulo = toda la sucursal. */
   bloqueos?: ScheduleException[]
-  onSelect: (a: AgendaAppointment) => void
+  /** Horario de atención de la sucursal (los 7 días): define el rango de horas que se dibuja. */
+  businessHours?: DayHours[]
+  onSelect: (a: T) => void
 }) {
   const activos = appointments.filter((a) => a.status !== 'cancelado')
 
   // Rango de horas: lo de siempre, ampliado si hay turnos fuera de ese rango.
-  let startHour = MIN_HOUR
-  let endHour = MAX_HOUR
+  const atencion = horasDeAtencion(date, businessHours)
+  let startHour = atencion.start
+  let endHour = atencion.end
   for (const a of activos) {
     startHour = Math.min(startHour, Math.floor(minutesOfDay(a.starts_at) / 60))
     endHour = Math.max(endHour, Math.ceil(minutesOfDay(a.ends_at) / 60))
@@ -84,7 +115,8 @@ export default function AgendaGrid({
   endHour = Math.min(Math.max(endHour, startHour + 1), 24)
   const startMin = startHour * 60
   const totalHeight = (endHour - startHour) * 60 * PX_PER_MIN
-  const hours = Array.from({ length: endHour - startHour }, (_, i) => startHour + i)
+  // Una etiqueta por hora más la del cierre (ej. 09:00 ... 21:00).
+  const hours = Array.from({ length: endHour - startHour + 1 }, (_, i) => startHour + i)
 
   // Línea de "ahora": solo si se está viendo hoy. Se refresca cada minuto.
   const [nowMin, setNowMin] = useState<number | null>(null)
@@ -97,7 +129,7 @@ export default function AgendaGrid({
     return () => clearInterval(id)
   }, [date])
 
-  const porBarbero = new Map<string, AgendaAppointment[]>()
+  const porBarbero = new Map<string, T[]>()
   for (const a of activos) {
     const lista = porBarbero.get(a.barber_id) ?? []
     lista.push(a)
@@ -132,7 +164,7 @@ export default function AgendaGrid({
         <div className="ag-hours" style={{ height: totalHeight }}>
           {hours.map((h, i) => (
             <span key={h} className="ag-hours__label" style={{ top: i * 60 * PX_PER_MIN }}>
-              {String(h).padStart(2, '0')}:00
+              {String(h % 24).padStart(2, '0')}:00
             </span>
           ))}
         </div>

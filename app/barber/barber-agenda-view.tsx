@@ -14,6 +14,8 @@ import {
   type AppointmentStatus,
 } from '@/lib/supabase/appointments'
 import { errorDialog } from '@/lib/confirm-dialog'
+import AgendaGrid from '@/app/admin/turnos/agenda-grid'
+import { getPublicBranch, type DayHours } from '@/lib/supabase/booking'
 import { AVISOS_BARBERO, motivoNoAvisable, type TipoAvisoBarbero } from '@/lib/aviso-barbero'
 
 // ─── Utilidades (mismo criterio que admin/turnos/turnos-view.tsx) ─────────
@@ -49,6 +51,10 @@ const STATUS_STYLE: Record<AppointmentStatus, string> = {
 interface BarberAgendaViewProps {
   /** Ya filtrados por el padre: activos, reservables y con duración cargada. */
   services: ServiceCatalog[]
+  /** Sucursal y datos del barbero logueado: la grilla muestra su columna y se
+   * ata al horario de atención de esa sucursal. */
+  branchId: string
+  barber: { id: string; full_name: string; avatar_url?: string | null }
   /** El plan no incluye turnero -- se muestra el aviso, nunca se esconde la
    * pestaña (mismo criterio que Mantenimiento). */
   locked: boolean
@@ -66,13 +72,21 @@ interface BarberAgendaViewProps {
  * horario. La garantía de que dos turnos no se pisan sigue viviendo en la
  * base, no acá.
  */
-export default function BarberAgendaView({ services, locked, onBack, onPrecarga }: BarberAgendaViewProps) {
+export default function BarberAgendaView({ services, branchId, barber, locked, onBack, onPrecarga }: BarberAgendaViewProps) {
   const [date, setDate] = useState(todayISO())
   const [agenda, setAgenda] = useState<BarberAgendaAppointment[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
   const [showBlock, setShowBlock] = useState(false)
+  const [selected, setSelected] = useState<(BarberAgendaAppointment & { barber_id: string }) | null>(null)
+  const [businessHours, setBusinessHours] = useState<DayHours[] | undefined>(undefined)
+
+  // Horario de la sucursal: extra visual, si falla la grilla usa el rango de siempre (9 a 21).
+  useEffect(() => {
+    if (locked || !branchId) return
+    getPublicBranch(branchId).then((b) => setBusinessHours(b?.business_hours)).catch(() => {})
+  }, [locked, branchId])
 
   const cargar = useCallback(async (d: string) => {
     setLoading(true)
@@ -101,6 +115,7 @@ export default function BarberAgendaView({ services, locked, onBack, onPrecarga 
   async function handleStatus(appt: BarberAgendaAppointment, status: Exclude<AppointmentStatus, 'reservado'>) {
     try {
       await setAppointmentStatus(appt.id, status)
+      setSelected(null)
       await cargar(date)
     } catch (e) {
       await errorDialog(e instanceof Error ? e.message : 'Error al cambiar el estado')
@@ -185,23 +200,37 @@ export default function BarberAgendaView({ services, locked, onBack, onPrecarga 
           <p className="text-red-400 text-sm text-center py-6">{error}</p>
         ) : loading ? (
           <p className="text-zinc-500 text-sm text-center py-6">Cargando...</p>
-        ) : agenda.length === 0 ? (
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-5 py-10 text-center">
-            <p className="text-zinc-500 text-sm">No tenés turnos este día.</p>
-          </div>
         ) : (
-          <div className="space-y-2">
-            {agenda.map((appt) => (
-              <AppointmentCard
-                key={appt.id}
-                appt={appt}
-                onStatus={handleStatus}
-                onPrecarga={onPrecarga}
-              />
-            ))}
-          </div>
+          <>
+            <p className="text-zinc-500 text-xs">
+              {agenda.length === 0 ? 'No tenés turnos este día.' : 'Tocá un turno para ver el detalle y marcar su estado.'}
+            </p>
+            <AgendaGrid
+              barbers={[barber]}
+              appointments={agenda.map((a) => ({ ...a, barber_id: barber.id }))}
+              date={date}
+              businessHours={businessHours}
+              onSelect={setSelected}
+            />
+          </>
         )}
       </div>
+
+      {selected && (
+        <div className="fixed inset-0 z-50 bg-black/70 flex items-end sm:items-center justify-center p-4" onClick={() => setSelected(null)}>
+          <div className="w-full max-w-md space-y-2" onClick={(e) => e.stopPropagation()}>
+            <AppointmentCard
+              appt={selected}
+              onStatus={handleStatus}
+              onPrecarga={(a) => { setSelected(null); onPrecarga(a) }}
+            />
+            <button onClick={() => setSelected(null)}
+              className="w-full text-sm text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg py-2.5">
+              Cerrar
+            </button>
+          </div>
+        </div>
+      )}
 
       {showNew && (
         <NewAppointmentModal
