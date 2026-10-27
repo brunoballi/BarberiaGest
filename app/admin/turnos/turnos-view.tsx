@@ -9,6 +9,7 @@ import {
   getAdminAgenda,
   createAppointmentAdmin,
   moveAppointment,
+  editAppointment,
   cancelAppointment,
   setAppointmentStatus,
   APPOINTMENT_STATUS_LABELS,
@@ -301,6 +302,7 @@ export default function TurnosView() {
         <MoveAppointmentModal
           appt={moving}
           barbers={barbers}
+          services={services}
           barberName={barberById.get(moving.barber_id)?.full_name ?? moving.barber_name}
           onClose={() => setMoving(null)}
           onMoved={() => { setMoving(null); cargarAgenda(branchId, date) }}
@@ -373,11 +375,6 @@ function AppointmentCard({
 
         {activo && (
           <div className="flex flex-wrap gap-1.5 flex-shrink-0">
-            {appt.status === 'reservado' && (
-              <button onClick={() => onStatus(appt, 'llego')} className="text-xs text-amber-400 hover:text-amber-300 border border-amber-500/30 rounded-lg px-2.5 py-1">
-                Llegó
-              </button>
-            )}
             <button onClick={() => onStatus(appt, 'atendido')} className="text-xs text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-lg px-2.5 py-1">
               Atendido
             </button>
@@ -385,7 +382,7 @@ function AppointmentCard({
               No vino
             </button>
             <button onClick={onMove} className="text-xs text-[var(--text)] hover:text-[var(--text)] border border-[var(--border-mid)] rounded-lg px-2.5 py-1">
-              Mover
+              Editar
             </button>
             <button onClick={() => onCancel(appt)} className="text-xs text-[var(--text-muted)] hover:text-red-400 border border-[var(--border-mid)] rounded-lg px-2.5 py-1">
               Cancelar
@@ -586,16 +583,19 @@ function NewAppointmentModal({
   )
 }
 
-// ─── Mover turno ───────────────────────────────────────────────────────
+// ─── Editar turno (horario, barbero y servicios) ───────────────────────────────────────────────────────
 function MoveAppointmentModal({
   appt,
   barbers,
+  services,
   barberName,
   onClose,
   onMoved,
 }: {
   appt: AgendaAppointment
   barbers: Profile[]
+  /** Servicios reservables de la sucursal (activos y con duración). */
+  services: ServiceCatalog[]
   barberName: string
   onClose: () => void
   onMoved: () => void
@@ -608,6 +608,8 @@ function MoveAppointmentModal({
     original.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })
   )
   const [barberId, setBarberId] = useState(appt.barber_id)
+  const originalIds = appt.services.map((s) => s.service_id)
+  const [serviceIds, setServiceIds] = useState<string[]>(originalIds)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -615,15 +617,24 @@ function MoveAppointmentModal({
     e.preventDefault()
     setSaving(true)
     setErr(null)
+    if (serviceIds.length === 0) {
+      setSaving(false)
+      setErr('Elegí al menos un servicio')
+      return
+    }
     try {
-      await moveAppointment({
-        appointmentId: appt.id,
-        newStartsAt: `${date}T${time}:00-03:00`,
-        newBarberId: barberId !== appt.barber_id ? barberId : null,
-      })
+      const newStartsAt = `${date}T${time}:00-03:00`
+      const newBarberId = barberId !== appt.barber_id ? barberId : null
+      const cambiaronServicios =
+        serviceIds.length !== originalIds.length || serviceIds.some((id) => !originalIds.includes(id))
+      if (cambiaronServicios) {
+        await editAppointment({ appointmentId: appt.id, newStartsAt, newBarberId, serviceIds })
+      } else {
+        await moveAppointment({ appointmentId: appt.id, newStartsAt, newBarberId })
+      }
       onMoved()
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Error al mover el turno'
+      const msg = e instanceof Error ? e.message : 'Error al guardar el turno'
       setErr(msg)
       void errorDialog(msg)
     } finally {
@@ -636,7 +647,7 @@ function MoveAppointmentModal({
     <div className="modal-overlay">
       <div className="modal-box p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-[var(--text)] font-bold text-base">Mover turno</h3>
+          <h3 className="text-[var(--text)] font-bold text-base">Editar turno</h3>
           <button onClick={onClose} className="text-[var(--text-muted)] hover:text-[var(--text)]">✕</button>
         </div>
         <p className="text-[var(--text-muted)] text-xs">
@@ -664,12 +675,36 @@ function MoveAppointmentModal({
             </div>
           </div>
 
+          <div>
+            <label className="block text-[0.65rem] font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-1">Servicios</label>
+            <div className="max-h-44 overflow-y-auto space-y-1 border border-[var(--border-mid)] rounded-lg p-2 bg-[var(--bg3)]">
+              {/* Los servicios del turno que hoy no son reservables se muestran igual, para no perderlos al editar. */}
+              {[
+                ...services,
+                ...appt.services
+                  .filter((s) => !services.some((x) => x.id === s.service_id))
+                  .map((s) => ({ id: s.service_id, name: s.name, duration_min: s.duration_min, base_price: s.price }) as ServiceCatalog),
+              ].map((s) => (
+                <label key={s.id} className="flex items-center gap-2 text-sm text-[var(--text)] cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={serviceIds.includes(s.id)}
+                    onChange={() => setServiceIds((prev) => prev.includes(s.id) ? prev.filter((x) => x !== s.id) : [...prev, s.id])}
+                  />
+                  <span className="flex-1 min-w-0 truncate">{s.name}</span>
+                  <span className="text-xs text-[var(--text-muted)]">{s.duration_min} min</span>
+                </label>
+              ))}
+            </div>
+            <p className="text-xs text-[var(--text-muted)] mt-1">La duración del turno se ajusta a los servicios elegidos.</p>
+          </div>
+
           {err && <p className="text-red-400 text-sm">{err}</p>}
 
           <div className="flex gap-2 pt-1">
             <button type="submit" disabled={saving}
               className="bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-zinc-950 font-bold px-5 py-2 rounded-lg text-sm">
-              {saving ? 'Moviendo...' : 'Mover'}
+              {saving ? 'Guardando...' : 'Guardar'}
             </button>
             <button type="button" onClick={onClose}
               className="text-[var(--text-muted)] hover:text-[var(--text)] px-5 py-2 rounded-lg text-sm border border-[var(--border-mid)]">

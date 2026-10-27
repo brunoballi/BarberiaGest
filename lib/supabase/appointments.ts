@@ -253,6 +253,27 @@ export async function moveAppointment(params: {
   if (error) throw new Error(error.message)
 }
 
+/**
+ * Edita un turno: horario, barbero y (opcional) servicios, todo junto. Si no se
+ * pasan `serviceIds` los servicios quedan como están. Requiere la migración
+ * 098; la pantalla solo la llama cuando cambiaron los servicios -- para mover
+ * horario o barbero sigue usando moveAppointment.
+ */
+export async function editAppointment(params: {
+  appointmentId: string
+  newStartsAt: string
+  newBarberId?: string | null
+  serviceIds?: string[] | null
+}): Promise<void> {
+  const { error } = await supabase.rpc('edit_appointment', {
+    p_appointment_id: params.appointmentId,
+    p_new_starts_at: params.newStartsAt,
+    p_new_barber_id: params.newBarberId ?? null,
+    p_service_ids: params.serviceIds ?? null,
+  })
+  if (error) throw new Error(error.message)
+}
+
 export async function cancelAppointment(appointmentId: string, reason?: string): Promise<void> {
   const { error } = await supabase.rpc('cancel_appointment', {
     p_appointment_id: appointmentId,

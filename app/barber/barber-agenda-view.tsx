@@ -339,11 +339,6 @@ function AppointmentCard({
 
       {(activo || (appt.status === 'atendido' && !appt.transaction_id)) && (
         <div className="flex flex-wrap gap-1.5 mt-2.5">
-          {appt.status === 'reservado' && (
-            <button onClick={() => onStatus(appt, 'llego')} className="text-xs text-amber-400 hover:text-amber-300 border border-amber-500/30 rounded-lg px-2.5 py-1">
-              Llegó
-            </button>
-          )}
           {activo && (
             <>
               <button onClick={() => onStatus(appt, 'atendido')} className="text-xs text-emerald-400 hover:text-emerald-300 border border-emerald-500/30 rounded-lg px-2.5 py-1">
