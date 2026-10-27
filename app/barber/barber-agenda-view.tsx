@@ -19,6 +19,7 @@ import {
   type AppointmentStatus,
   type ScheduleException,
 } from '@/lib/supabase/appointments'
+import { useRealtimeRefresh } from '@/lib/hooks/use-realtime-refresh'
 import { errorDialog, confirmDialog } from '@/lib/confirm-dialog'
 import AgendaGrid from '@/app/admin/turnos/agenda-grid'
 import BloqueosResumen from '@/app/admin/turnos/bloqueos-resumen'
@@ -137,6 +138,22 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
     if (!locked) cargar(date)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locked])
+
+  // En vivo: un turno nuevo, movido o cancelado (por el admin o por un cliente) y los bloqueos u
+  // horarios que cambian aparecen solos, sin recargar.
+  useRealtimeRefresh(
+    !locked && branchId ? `agenda-barbero-${barber.id}` : null,
+    [
+      { table: 'appointments', filter: `barber_id=eq.${barber.id}` },
+      { table: 'appointment_services' },
+      { table: 'schedule_exceptions', filter: `branch_id=eq.${branchId}` },
+      { table: 'barber_schedules', filter: `barber_id=eq.${barber.id}` },
+    ],
+    () => {
+      getBarberSchedules(barber.id).then(setHorarios).catch(() => {})
+      void cargar(date)
+    },
+  )
 
   function cambiarDia(nuevaFecha: string) {
     setDate(nuevaFecha)

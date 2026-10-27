@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { getCurrentProfile } from '@/lib/supabase/supabase.client'
+import { confirmDialog } from '@/lib/confirm-dialog'
 import '../admin-dashboard.css'
 
 interface AdminUser {
@@ -164,7 +165,7 @@ export default function AdminsView() {
   }
 
   async function handleResetPassword(adminId: string, adminName: string) {
-    if (!confirm(`¿Generar nueva contraseña para "${adminName}"?\n\nLa contraseña anterior dejará de funcionar.`)) return
+    if (!(await confirmDialog(`¿Generar nueva contraseña para "${adminName}"?\n\nLa contraseña anterior dejará de funcionar.`))) return
     setResetError(null)
     setResettingId(adminId)
     try {
@@ -184,7 +185,7 @@ export default function AdminsView() {
   }
 
   async function handleDelete(adminId: string, adminName: string) {
-    if (!confirm(`¿Eliminar al administrador "${adminName}"?\n\nEsta acción es irreversible y borra su cuenta de acceso.`)) return
+    if (!(await confirmDialog(`¿Eliminar al administrador "${adminName}"?\n\nEsta acción es irreversible y borra su cuenta de acceso.`))) return
     setResetError(null)
     setDeletingId(adminId)
     try {

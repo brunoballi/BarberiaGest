@@ -30,6 +30,7 @@ import {
   todayLocal,
 } from '@/lib/supabase/supabase.client'
 import { generateMaintenanceSheet } from '@/lib/pdf/maintenance-sheet'
+import { confirmDialog } from '@/lib/confirm-dialog'
 
 // ─── Utilidades ──────────────────────────────────────────────────────────
 function fmtDM(dateStr: string): string {
@@ -305,9 +306,13 @@ export default function MantenimientoView() {
 
   /** Vacía las tareas de todos los barberos, dejando las secciones con su zona. */
   async function handleClear() {
-    const ok = window.confirm(
-      'Se van a borrar todas las tareas de todos los barberos (y el cumplimiento de esta semana). Las secciones quedan vacías para cargarlas de nuevo. ¿Continuar?'
-    )
+    const ok = await confirmDialog({
+      title: 'Vaciar planilla',
+      danger: true,
+      confirmLabel: 'Vaciar',
+      message:
+      'Se van a borrar todas las tareas de todos los barberos (y el cumplimiento de esta semana). Las secciones quedan vacías para cargarlas de nuevo. ¿Continuar?',
+    })
     if (!ok) return
     setClearing(true)
     setActionError(null)

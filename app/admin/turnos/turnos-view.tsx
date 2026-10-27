@@ -32,6 +32,7 @@ import {
 import { getPublicBranch, type DayHours } from '@/lib/supabase/booking'
 import { PhoneInput } from '@/app/components/phone-input'
 import { confirmDialog, alertDialog, errorDialog } from '@/lib/confirm-dialog'
+import { useRealtimeRefresh } from '@/lib/hooks/use-realtime-refresh'
 import AgendaGrid from './agenda-grid'
 import BloqueosResumen from './bloqueos-resumen'
 import '../admin-dashboard.css'
@@ -161,6 +162,23 @@ export default function TurnosView() {
     document.addEventListener('visibilitychange', alVolver)
     return () => document.removeEventListener('visibilitychange', alVolver)
   }, [branchId, date, cargarAgenda])
+
+  // En vivo: si el barbero, otro admin o un cliente (reserva publica) crea, mueve o cancela un turno, o
+  // se cambia un bloqueo u horario, la grilla se actualiza sola sin recargar.
+  useRealtimeRefresh(
+    branchId ? `agenda-admin-${branchId}` : null,
+    [
+      { table: 'appointments', filter: `branch_id=eq.${branchId}` },
+      { table: 'appointment_services' },
+      { table: 'schedule_exceptions', filter: `branch_id=eq.${branchId}` },
+      { table: 'barber_schedules' },
+    ],
+    () => {
+      if (!branchId) return
+      void getBranchSchedules(branchId).then(setHorarios).catch(() => {})
+      void cargarAgenda(branchId, date)
+    },
+  )
 
   function cambiarDia(nuevaFecha: string) {
     setDate(nuevaFecha)

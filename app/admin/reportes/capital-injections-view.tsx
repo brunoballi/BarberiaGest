@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { getCapitalInjections, deleteCapitalInjection, type CapitalInjection } from '@/lib/supabase/supabase.client'
 import CapitalInjectionModal from './capital-injection-modal'
+import { confirmDialog, errorDialog } from '@/lib/confirm-dialog'
 
 interface CapitalInjectionsViewProps {
   branchId: string
@@ -54,7 +55,7 @@ export default function CapitalInjectionsView({
   }, [loadInjections])
 
   const handleDeleteInjection = async (id: string) => {
-    if (!confirm('¿Eliminar esta inyección de capital?')) return
+    if (!(await confirmDialog('¿Eliminar esta inyección de capital?'))) return
     try {
       setDeleteLoading(id)
       await deleteCapitalInjection(id)
@@ -62,7 +63,7 @@ export default function CapitalInjectionsView({
       onInjectionChange?.()
     } catch (err) {
       console.error('[handleDeleteInjection]', err)
-      alert(err instanceof Error ? err.message : 'Error al eliminar')
+      void errorDialog(err instanceof Error ? err.message : 'Error al eliminar')
     } finally {
       setDeleteLoading(null)
     }

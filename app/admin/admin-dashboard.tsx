@@ -72,6 +72,7 @@ import { CurrencyInput } from '@/app/components/currency-input'
 import { CurrencyInputInline } from '@/app/components/currency-input-inline'
 import { TextInput } from '@/app/components/text-input'
 import { AdminSideDrawer } from '@/app/components/admin-side-drawer'
+import { confirmDialog } from '@/lib/confirm-dialog'
 
 // ─── Utilidades ────────────────────────────────────────────────────────────
 function formatARS(n: number): string {
@@ -504,7 +505,7 @@ export default function AdminDashboard() {
     if (!selectedWeek || !currentUserId) return
     const weekIdx = weeks.findIndex((w) => w.id === selectedWeek.id)
     const weekDisplayNum = weekIdx + 1
-    if (!confirm(`¿Cerrar la Semana ${weekDisplayNum}? Se calcularán todas las liquidaciones.`)) return
+    if (!(await confirmDialog(`¿Cerrar la Semana ${weekDisplayNum}? Se calcularán todas las liquidaciones.`))) return
     try {
       setActionLoading('close-week')
       const barbers = await getBarbersByBranch(selectedBranch)

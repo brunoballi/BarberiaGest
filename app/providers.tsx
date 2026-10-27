@@ -2,6 +2,7 @@
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import VersionWatcher from './version-watcher'
+import DialogHost from './components/dialog-host'
 
 /**
  * Singleton de QueryClient (solo browser). Lo comparten el provider y los
@@ -32,6 +33,7 @@ export default function Providers({ children }: { children: React.ReactNode }) {
     <QueryClientProvider client={getQueryClient()}>
       {children}
       <VersionWatcher />
+      <DialogHost />
     </QueryClientProvider>
   )
 }

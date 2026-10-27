@@ -33,6 +33,7 @@ import type {
 } from '@/lib/supabase/database.types'
 import { WEEK_STATUS_LABELS } from '@/lib/supabase/database.types'
 import MonthDetailModal, { type MonthDetailData } from './month-detail-modal'
+import { confirmDialog, errorDialog, typedConfirmDialog } from '@/lib/confirm-dialog'
 
 // ============================================================
 // HELPERS
@@ -237,13 +238,13 @@ export default function ConfiguracionView() {
   // Close week
   async function handleCloseWeek(week: Week) {
     if (!currentUserId) return
-    if (!confirm(`¿Cerrar Semana ${week.week_number} (${formatDate(week.start_date)} – ${formatDate(week.end_date)})?`))
+    if (!(await confirmDialog(`¿Cerrar Semana ${week.week_number} (${formatDate(week.start_date)} – ${formatDate(week.end_date)})?`)))
       return
     try {
       await closeWeek(week.id, currentUserId)
       if (branchId) await loadMonths(branchId)
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error cerrando semana')
+      void errorDialog(e instanceof Error ? e.message : 'Error cerrando semana')
     }
   }
 
@@ -258,20 +259,24 @@ export default function ConfiguracionView() {
   }
 
   // Requiere escribir "BORRAR" para confirmar acción destructiva
-  function confirmDestructive(message: string): boolean {
-    const input = prompt(
-      `🚨 ATENCIÓN — BORRADO DESTRUCTIVO\n\n${message}\n\nEsta acción NO se puede deshacer.\nEscribí la palabra BORRAR (en mayúsculas) para confirmar:`
-    )
-    return input?.trim() === 'BORRAR'
+  function confirmDestructive(message: string): Promise<boolean> {
+    return typedConfirmDialog({
+      title: 'Atención: borrado destructivo',
+      message: `${message}
+
+Esta acción NO se puede deshacer.`,
+      phrase: 'BORRAR',
+      confirmLabel: 'Borrar definitivamente',
+    })
   }
 
   // Delete week (safe → si bloquea ofrece force con confirm estricto)
   async function handleDeleteWeek(week: Week) {
-    if (!confirm(`¿Eliminar Semana ${week.week_number} (${formatDate(week.start_date)} – ${formatDate(week.end_date)})?`)) return
+    if (!(await confirmDialog(`¿Eliminar Semana ${week.week_number} (${formatDate(week.start_date)} – ${formatDate(week.end_date)})?`))) return
     try {
       const res = await deleteWeekSafe(week.id)
       if (!res.deleted) {
-        const ok = confirmDestructive(
+        const ok = await confirmDestructive(
           `La semana tiene datos asociados:\n${blockSummary(res)}\n\nSe van a BORRAR PERMANENTEMENTE todos estos registros.`
         )
         if (!ok) return
@@ -279,17 +284,17 @@ export default function ConfiguracionView() {
       }
       if (branchId) await loadMonths(branchId)
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error eliminando semana')
+      void errorDialog(e instanceof Error ? e.message : 'Error eliminando semana')
     }
   }
 
   // Delete month (safe → force con confirm estricto)
   async function handleDeleteMonth(m: MonthWithWeeks) {
-    if (!confirm(`¿Eliminar ${MONTH_NAMES[m.month - 1]} ${m.year} y sus ${m.weeks.length} semanas?`)) return
+    if (!(await confirmDialog(`¿Eliminar ${MONTH_NAMES[m.month - 1]} ${m.year} y sus ${m.weeks.length} semanas?`))) return
     try {
       const res = await deleteMonthSafe(m.id)
       if (!res.deleted) {
-        const ok = confirmDestructive(
+        const ok = await confirmDestructive(
           `El mes ${MONTH_NAMES[m.month - 1]} ${m.year} tiene datos asociados:\n${blockSummary(res)}\n\nSe van a BORRAR PERMANENTEMENTE todos estos registros.`
         )
         if (!ok) return
@@ -297,18 +302,18 @@ export default function ConfiguracionView() {
       }
       if (branchId) await loadMonths(branchId)
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error eliminando mes')
+      void errorDialog(e instanceof Error ? e.message : 'Error eliminando mes')
     }
   }
 
   // Delete year (safe → force con confirm estricto)
   async function handleDeleteYear(year: number) {
     if (!branchId) return
-    if (!confirm(`¿Eliminar TODO el año ${year} (12 meses + ~52 semanas)?`)) return
+    if (!(await confirmDialog(`¿Eliminar TODO el año ${year} (12 meses + ~52 semanas)?`))) return
     try {
       const res = await deleteYearSafe(branchId, year)
       if (!res.deleted) {
-        const ok = confirmDestructive(
+        const ok = await confirmDestructive(
           `El año ${year} tiene datos asociados en muchas semanas:\n${blockSummary(res)}\n\nSe van a BORRAR PERMANENTEMENTE todos estos registros del año completo.`
         )
         if (!ok) return
@@ -316,42 +321,42 @@ export default function ConfiguracionView() {
       }
       await loadMonths(branchId)
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error eliminando año')
+      void errorDialog(e instanceof Error ? e.message : 'Error eliminando año')
     }
   }
 
   // Reopen week
   async function handleReopenWeek(week: Week) {
-    if (!confirm(`¿Reabrir Semana ${week.week_number}? Volverá a estado abierto y se podrán cargar más transacciones.`))
+    if (!(await confirmDialog(`¿Reabrir Semana ${week.week_number}? Volverá a estado abierto y se podrán cargar más transacciones.`)))
       return
     try {
       await reopenWeek(week.id)
       if (branchId) await loadMonths(branchId)
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error reabriendo semana')
+      void errorDialog(e instanceof Error ? e.message : 'Error reabriendo semana')
     }
   }
 
   // Close month
   async function handleCloseMonth(month: MonthWithWeeks) {
-    if (!confirm(`¿Cerrar ${MONTH_NAMES[month.month - 1]} ${month.year}?`)) return
+    if (!(await confirmDialog(`¿Cerrar ${MONTH_NAMES[month.month - 1]} ${month.year}?`))) return
     try {
       await closeMonth(month.id)
       if (branchId) await loadMonths(branchId)
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error cerrando mes')
+      void errorDialog(e instanceof Error ? e.message : 'Error cerrando mes')
     }
   }
 
   // Reopen month
   async function handleReopenMonth(month: MonthWithWeeks) {
-    if (!confirm(`¿Reabrir ${MONTH_NAMES[month.month - 1]} ${month.year}? El mes volverá a estado activo.`))
+    if (!(await confirmDialog(`¿Reabrir ${MONTH_NAMES[month.month - 1]} ${month.year}? El mes volverá a estado activo.`)))
       return
     try {
       await reopenMonth(month.id)
       if (branchId) await loadMonths(branchId)
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error reabriendo mes')
+      void errorDialog(e instanceof Error ? e.message : 'Error reabriendo mes')
     }
   }
 
@@ -375,7 +380,7 @@ export default function ConfiguracionView() {
         settlements: perWeek.flatMap((p) => p.settlements),
       })
     } catch (e) {
-      alert(e instanceof Error ? e.message : 'Error cargando detalle mensual')
+      void errorDialog(e instanceof Error ? e.message : 'Error cargando detalle mensual')
     } finally {
       setMonthDetailLoading(false)
     }
