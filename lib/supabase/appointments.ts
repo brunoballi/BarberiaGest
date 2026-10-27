@@ -289,6 +289,15 @@ export async function editAppointmentBarber(params: {
   if (error) throw new Error(error.message)
 }
 
+/** El barbero cancela uno de SUS turnos (requiere la migración 099). */
+export async function cancelAppointmentBarber(appointmentId: string, reason?: string): Promise<void> {
+  const { error } = await supabase.rpc('cancel_appointment_barber', {
+    p_appointment_id: appointmentId,
+    p_reason: reason ?? null,
+  })
+  if (error) throw new Error(error.message)
+}
+
 export async function cancelAppointment(appointmentId: string, reason?: string): Promise<void> {
   const { error } = await supabase.rpc('cancel_appointment', {
     p_appointment_id: appointmentId,

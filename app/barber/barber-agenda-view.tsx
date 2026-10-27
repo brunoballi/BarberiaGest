@@ -9,12 +9,13 @@ import {
   createAppointmentBarber,
   createScheduleExceptionBarber,
   editAppointmentBarber,
+  cancelAppointmentBarber,
   setAppointmentStatus,
   APPOINTMENT_STATUS_LABELS,
   type BarberAgendaAppointment,
   type AppointmentStatus,
 } from '@/lib/supabase/appointments'
-import { errorDialog } from '@/lib/confirm-dialog'
+import { errorDialog, confirmDialog } from '@/lib/confirm-dialog'
 import AgendaGrid from '@/app/admin/turnos/agenda-grid'
 import { getPublicBranch, type DayHours } from '@/lib/supabase/booking'
 import { AVISOS_BARBERO, motivoNoAvisable, type TipoAvisoBarbero } from '@/lib/aviso-barbero'
@@ -112,6 +113,20 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
   function cambiarDia(nuevaFecha: string) {
     setDate(nuevaFecha)
     cargar(nuevaFecha)
+  }
+
+  async function handleCancel(appt: BarberAgendaAppointment) {
+    if (!(await confirmDialog({
+      message: `¿Cancelar el turno de ${appt.client_name} a las ${horaLocal(appt.starts_at)}? El horario queda libre.`,
+      danger: true,
+    }))) return
+    try {
+      await cancelAppointmentBarber(appt.id)
+      setSelected(null)
+      await cargar(date)
+    } catch (e) {
+      await errorDialog(e instanceof Error ? e.message : 'Error al cancelar el turno')
+    }
   }
 
   async function handleStatus(appt: BarberAgendaAppointment, status: Exclude<AppointmentStatus, 'reservado'>) {
@@ -226,6 +241,7 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
               onStatus={handleStatus}
               onPrecarga={(a) => { setSelected(null); onPrecarga(a) }}
               onEdit={(a) => { setSelected(null); setEditing(a) }}
+              onCancel={handleCancel}
             />
             <button onClick={() => setSelected(null)}
               className="w-full text-sm text-zinc-300 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-lg py-2.5">
@@ -270,11 +286,13 @@ function AppointmentCard({
   onStatus,
   onPrecarga,
   onEdit,
+  onCancel,
 }: {
   appt: BarberAgendaAppointment
   onStatus: (a: BarberAgendaAppointment, s: Exclude<AppointmentStatus, 'reservado'>) => void
   onPrecarga: (a: BarberAgendaAppointment) => void
   onEdit: (a: BarberAgendaAppointment) => void
+  onCancel: (a: BarberAgendaAppointment) => void
 }) {
   const activo = appt.status === 'reservado' || appt.status === 'llego'
   const puedeAvisar = motivoNoAvisable(appt) === null
@@ -364,6 +382,11 @@ function AppointmentCard({
               {!appt.transaction_id && (
                 <button onClick={() => onEdit(appt)} className="text-xs text-zinc-200 hover:text-white border border-zinc-600 rounded-lg px-2.5 py-1">
                   Editar
+                </button>
+              )}
+              {!appt.transaction_id && (
+                <button onClick={() => onCancel(appt)} className="text-xs text-zinc-400 hover:text-red-400 border border-zinc-600 rounded-lg px-2.5 py-1">
+                  Cancelar
                 </button>
               )}
             </>
