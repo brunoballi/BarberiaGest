@@ -40,6 +40,7 @@ export default function ServicesView() {
   const [showForm, setShowForm]     = useState(false)
   const [formName, setFormName]     = useState('')
   const [formPrice, setFormPrice]   = useState('')
+  const [formDescription, setFormDescription] = useState('')
   const [creating, setCreating]     = useState(false)
   const [formError, setFormError]   = useState<string | null>(null)
 
@@ -47,6 +48,7 @@ export default function ServicesView() {
   const [editingId, setEditingId]   = useState<string | null>(null)
   const [editName, setEditName]     = useState('')
   const [editPrice, setEditPrice]   = useState('')
+  const [editDescription, setEditDescription] = useState('')
   const [saving, setSaving]         = useState(false)
   const [editError, setEditError]   = useState<string | null>(null)
   // Turnero en prueba (lib/turnero-access.ts): solo el usuario desarrollador ve y edita estos campos.
@@ -108,12 +110,14 @@ export default function ServicesView() {
         name:       formName.trim(),
         base_price: price,
         is_active:  true,
+        description: formDescription.trim() || null,
       }
       const created = await createService(payload)
       setServices((prev) => [...prev, created].sort((a, b) => a.name.localeCompare(b.name)))
       setShowForm(false)
       setFormName('')
       setFormPrice('')
+      setFormDescription('')
     } catch (e) {
       setFormError(e instanceof Error ? e.message : 'Error al crear')
     } finally {
@@ -126,6 +130,7 @@ export default function ServicesView() {
     setEditingId(svc.id)
     setEditName(svc.name)
     setEditPrice(String(svc.base_price))
+    setEditDescription(svc.description ?? '')
     setEditDuration(svc.duration_min != null ? String(svc.duration_min) : '')
     setEditBookable(!!svc.is_bookable)
     setEditError(null)
@@ -154,10 +159,10 @@ export default function ServicesView() {
     setSaving(true)
     setEditError(null)
     try {
-      await updateService(id, { name: editName.trim(), base_price: price, ...turneroFields })
+      await updateService(id, { name: editName.trim(), base_price: price, description: editDescription.trim() || null, ...turneroFields })
       setServices((prev) =>
         prev
-          .map((s) => s.id === id ? { ...s, name: editName.trim(), base_price: price, ...turneroFields } : s)
+          .map((s) => s.id === id ? { ...s, name: editName.trim(), base_price: price, description: editDescription.trim() || null, ...turneroFields } : s)
           .sort((a, b) => a.name.localeCompare(b.name))
       )
       setEditingId(null)
@@ -273,6 +278,20 @@ export default function ServicesView() {
                 />
               </div>
             </div>
+            <div>
+              <label className="block text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-1.5">
+                Descripción <span className="normal-case tracking-normal text-zinc-600">(opcional · la ve el cliente al reservar)</span>
+              </label>
+              <input
+                type="text"
+                maxLength={DESCRIPTION_MAX}
+                placeholder="Ej: Corte a tijera, lavado y perfilado de barba"
+                value={formDescription}
+                onChange={(e) => setFormDescription(e.target.value)}
+                className="w-full bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-600 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+              />
+              <p className="text-right text-xs text-zinc-600 mt-1">{formDescription.length}/{DESCRIPTION_MAX}</p>
+            </div>
             {formError && <p className="text-red-400 text-sm">{formError}</p>}
             <div className="flex gap-3">
               <button type="submit" disabled={creating}
@@ -318,6 +337,8 @@ export default function ServicesView() {
                 turnero={turnero}
                 editDuration={editDuration}
                 editBookable={editBookable}
+                editDescription={editDescription}
+                onEditDescription={setEditDescription}
                 onEditDuration={setEditDuration}
                 onEditBookable={setEditBookable}
                 saving={saving}
@@ -356,6 +377,8 @@ export default function ServicesView() {
                 turnero={turnero}
                 editDuration={editDuration}
                 editBookable={editBookable}
+                editDescription={editDescription}
+                onEditDescription={setEditDescription}
                 onEditDuration={setEditDuration}
                 onEditBookable={setEditBookable}
                 saving={saving}
@@ -407,10 +430,13 @@ export default function ServicesView() {
   )
 }
 
+/** Tope de la descripción que ve el cliente (se corta en la UI; la columna es text). */
+const DESCRIPTION_MAX = 100
+
 // ─── ServiceRow ────────────────────────────────────────────────────────────
 function ServiceRow({
   svc, editingId, editName, editPrice, editError, saving, togglingId,
-  turnero, editDuration, editBookable, onEditDuration, onEditBookable,
+  turnero, editDuration, editBookable, onEditDuration, onEditBookable, editDescription, onEditDescription,
   onEdit, onEditName, onEditPrice, onSave, onCancelEdit, onToggle, onCancelToggle,
   deletingId, onDelete, onCancelDelete,
 }: {
@@ -422,6 +448,8 @@ function ServiceRow({
   turnero: boolean
   editDuration: string
   editBookable: boolean
+  editDescription: string
+  onEditDescription: (v: string) => void
   onEditDuration: (v: string) => void
   onEditBookable: (v: boolean) => void
   saving: boolean
@@ -458,6 +486,17 @@ function ServiceRow({
               placeholder="0,00"
               className="bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
             />
+          </div>
+          <div>
+            <input
+              type="text"
+              maxLength={DESCRIPTION_MAX}
+              value={editDescription}
+              onChange={(e) => onEditDescription(e.target.value)}
+              placeholder="Descripción (opcional, la ve el cliente)"
+              className="w-full bg-zinc-800 border border-zinc-700 text-white placeholder-zinc-600 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
+            />
+            <p className="text-right text-xs text-zinc-600 mt-1">{editDescription.length}/{DESCRIPTION_MAX}</p>
           </div>
           {turnero && (
             <div className="rounded-lg border border-dashed border-zinc-700 p-3 space-y-2">
@@ -498,6 +537,7 @@ function ServiceRow({
             <p className="text-amber-400 text-sm font-medium mt-0.5">
               {svc.base_price > 0 ? formatARS(svc.base_price) : 'Sin precio base'}
             </p>
+            {svc.description && <p className="text-xs mt-1 text-zinc-400">{svc.description}</p>}
             {turnero && (
               <p className="text-xs mt-1 text-zinc-500">
                 {svc.is_bookable ? `Reservable online · ${svc.duration_min} min` : svc.duration_min ? `No reservable · ${svc.duration_min} min` : 'No reservable'}
