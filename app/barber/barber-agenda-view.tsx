@@ -19,6 +19,7 @@ import {
 } from '@/lib/supabase/appointments'
 import { errorDialog, confirmDialog } from '@/lib/confirm-dialog'
 import AgendaGrid from '@/app/admin/turnos/agenda-grid'
+import BloqueosResumen from '@/app/admin/turnos/bloqueos-resumen'
 import { getPublicBranch, type DayHours } from '@/lib/supabase/booking'
 import { AVISOS_BARBERO, motivoNoAvisable, type TipoAvisoBarbero } from '@/lib/aviso-barbero'
 
@@ -86,6 +87,8 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
   const [selected, setSelected] = useState<(BarberAgendaAppointment & { barber_id: string }) | null>(null)
   const [editing, setEditing] = useState<BarberAgendaAppointment | null>(null)
   const [bloqueos, setBloqueos] = useState<ScheduleException[]>([])
+  // Los del día visto y los que vienen (propios y de toda la sucursal), para la lista escrita.
+  const [bloqueosProximos, setBloqueosProximos] = useState<ScheduleException[]>([])
   const [businessHours, setBusinessHours] = useState<DayHours[] | undefined>(undefined)
 
   // Horario de la sucursal: extra visual, si falla la grilla usa el rango de siempre (9 a 21).
@@ -106,7 +109,9 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
       setAgenda(filas)
       // La lectura trae todo lo que viene de esa fecha en adelante: acá solo importa el día. La
       // grilla muestra los de toda la sucursal y los de este barbero; los de otros barberos no.
-      setBloqueos(excepciones.filter((x) => x.exception_date === d && (x.barber_id === null || x.barber_id === barber.id)))
+      const mios = excepciones.filter((x) => x.barber_id === null || x.barber_id === barber.id)
+      setBloqueos(mios.filter((x) => x.exception_date === d))
+      setBloqueosProximos(mios)
     } catch (e) {
       const msg = e instanceof Error ? e.message : 'Error cargando tu agenda'
       setError(msg)
@@ -233,6 +238,11 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
             <p className="text-zinc-500 text-xs">
               {agenda.length === 0 ? 'No tenés turnos este día.' : 'Tocá un turno para ver el detalle y marcar su estado.'}
             </p>
+            <BloqueosResumen
+              bloqueos={bloqueosProximos}
+              date={date}
+              quien={(x) => x.barber_id === null ? 'Toda la sucursal' : 'Vos'}
+            />
             <AgendaGrid
               barbers={[barber]}
               appointments={agenda.map((a) => ({ ...a, barber_id: barber.id }))}

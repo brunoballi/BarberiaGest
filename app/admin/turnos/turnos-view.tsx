@@ -31,6 +31,7 @@ import { getPublicBranch, type DayHours } from '@/lib/supabase/booking'
 import { PhoneInput } from '@/app/components/phone-input'
 import { confirmDialog, alertDialog, errorDialog } from '@/lib/confirm-dialog'
 import AgendaGrid from './agenda-grid'
+import BloqueosResumen from './bloqueos-resumen'
 import '../admin-dashboard.css'
 
 function todayISO(): string {
@@ -73,6 +74,8 @@ export default function TurnosView() {
   const [date, setDate] = useState(todayISO())
   const [agenda, setAgenda] = useState<AgendaAppointment[]>([])
   const [bloqueos, setBloqueos] = useState<ScheduleException[]>([])
+  // Todos los bloqueos desde el día visto en adelante (para la lista escrita).
+  const [bloqueosProximos, setBloqueosProximos] = useState<ScheduleException[]>([])
   // Horario de atención de la sucursal: define el rango de horas de la grilla.
   const [businessHours, setBusinessHours] = useState<DayHours[] | undefined>(undefined)
   const [loading, setLoading] = useState(true)
@@ -94,6 +97,7 @@ export default function TurnosView() {
       ])
       setAgenda(filas)
       setBloqueos(excepciones.filter((x) => x.exception_date === d))
+      setBloqueosProximos(excepciones)
       // El estado de entrega es un extra: no frena la agenda si tarda o falla.
       void getWhatsAppDeliveries(filas.map((f) => f.id)).then(setWa)
     } catch (e) {
@@ -238,6 +242,11 @@ export default function TurnosView() {
         </div>
       ) : (
         <>
+          <BloqueosResumen
+            bloqueos={bloqueosProximos}
+            date={date}
+            quien={(x) => x.barber_id === null ? 'Toda la sucursal' : (barberById.get(x.barber_id)?.full_name ?? 'Un barbero')}
+          />
           <AgendaGrid barbers={barbers} appointments={agenda} date={date} bloqueos={bloqueos} businessHours={businessHours} onSelect={setSelected} />
           {agenda.every((a) => a.status === 'cancelado') && (
             <p className="text-[var(--text-muted)] text-sm text-center">No hay turnos este día.</p>
