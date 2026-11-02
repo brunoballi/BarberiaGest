@@ -176,7 +176,15 @@ export default function MantenimientoView() {
       setDraftBlocks(buildTemplateDraft(barbersData, tpl))
 
       const today = todayLocal()
-      const week = weeksData.find((w) => w.start_date <= today && today <= w.end_date) ?? weeksData[0] ?? null
+      // Las semanas son martes–sábado: domingo y lunes no caen en ninguna. En ese
+      // caso se toma la última ya empezada (weeksData viene DESC), nunca la primera
+      // de la lista, que es la más futura (fin del calendario) y no tiene sentido
+      // sincronizar ni mostrar como actual.
+      const week =
+        weeksData.find((w) => w.start_date <= today && today <= w.end_date) ??
+        weeksData.find((w) => w.start_date <= today) ??
+        weeksData[weeksData.length - 1] ??
+        null
       setWeeks(weeksData)
       setCurrentWeek(week)
       setSheetWeek(week)
@@ -389,7 +397,9 @@ export default function MantenimientoView() {
     // weeks viene DESC por start_date: las primeras ya empezadas son las más recientes.
     const recientes = weeks.filter((w) => w.start_date <= today).slice(0, WEEKS_BACK)
     if (!recientes.some((w) => w.id === currentWeek.id)) recientes.push(currentWeek)
-    return recientes.sort((a, b) => a.start_date.localeCompare(b.start_date))
+    // Sin duplicados por id (defensa: nunca debe repetirse una semana en el selector).
+    const unicas = recientes.filter((w, i, arr) => arr.findIndex((x) => x.id === w.id) === i)
+    return unicas.sort((a, b) => a.start_date.localeCompare(b.start_date))
   })()
 
   return (
@@ -514,7 +524,9 @@ export default function MantenimientoView() {
                 {weekOptions.map((w) => (
                   <option key={w.id} value={w.id}>
                     Semana {w.week_number} · {weekRangeLabel(w)}
-                    {w.id === currentWeek?.id ? ' (en curso)' : ''}
+                    {w.id === currentWeek?.id
+                      ? (w.start_date <= todayLocal() && todayLocal() <= w.end_date ? ' (en curso)' : ' (última)')
+                      : ''}
                   </option>
                 ))}
               </select>
