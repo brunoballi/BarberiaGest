@@ -653,7 +653,7 @@ function MonthRow({
         }}
         onClick={onToggle}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flex: '1 1 12rem', flexWrap: 'wrap', minWidth: 0 }}>
           <span style={{ color: '#52525b', fontSize: '0.75rem' }}>{expanded ? '▼' : '▶'}</span>
           <span style={{ fontWeight: 600, color: '#e5e5e5' }}>
             {name} {month.year}
