@@ -34,6 +34,7 @@ import { PhoneInput } from '@/app/components/phone-input'
 import { confirmDialog, alertDialog, errorDialog } from '@/lib/confirm-dialog'
 import { useRealtimeRefresh } from '@/lib/hooks/use-realtime-refresh'
 import AgendaGrid from './agenda-grid'
+import AgendaMes from './agenda-mes'
 import AgendaRango, { diasDelRango, limitesDelRango, moverRango, tituloDelRango, type Rango } from './agenda-rango'
 import BloqueosResumen from './bloqueos-resumen'
 import '../admin-dashboard.css'
@@ -357,7 +358,15 @@ export default function TurnosView() {
           <p className="text-[var(--text-muted)] text-sm">No hay barberos activos en esta sucursal.</p>
         </div>
       ) : (
-        rango !== 'dia' ? (
+        rango === 'mes' ? (
+          <AgendaMes
+            date={date}
+            turnos={turnosRango.filter((a) => !filtroBarbero || a.barber_id === filtroBarbero)}
+            bloqueos={bloqueosRango.filter(delFiltro)}
+            onSelect={setSelected}
+            onIrAlDia={(d) => { setRango('dia'); cambiarDia(d, 'dia') }}
+          />
+        ) : rango !== 'dia' ? (
           <AgendaRango
             dias={diasDelRango(limitesDelRango(date, rango).desde, limitesDelRango(date, rango).hasta)}
             turnos={turnosRango.filter((a) => !filtroBarbero || a.barber_id === filtroBarbero)}

@@ -2115,6 +2115,9 @@ async function withRegisteredByName(rows: Expense[]): Promise<ExpenseWithUser[]>
  * Socios habilitados para retirar en una sucursal: los admins con acceso a esa
  * sucursal (admin_branches). No hay tabla de socios aparte — el socio ES el
  * admin, que ya existe en el sistema.
+ *
+ * El usuario desarrollador (TURNERO_USER_IDS) es admin para poder probar, pero no es
+ * socio: no aparece para retirar ni en la participación, ni siquiera para él mismo.
  */
 export async function getPartnersByBranch(
   branchId: string
@@ -2132,7 +2135,7 @@ export async function getPartnersByBranch(
 
   return rows
     .flatMap((row) => (Array.isArray(row.admin) ? row.admin : row.admin ? [row.admin] : []))
-    .filter((a) => a.role === 'admin' && a.is_active)
+    .filter((a) => a.role === 'admin' && a.is_active && !TURNERO_USER_IDS.has(a.id))
     .map((a) => ({ id: a.id, full_name: a.full_name }))
     .sort((a, b) => a.full_name.localeCompare(b.full_name))
 }

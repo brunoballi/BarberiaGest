@@ -5,7 +5,7 @@ import { APPOINTMENT_STATUS_LABELS } from '@/lib/supabase/appointments'
 
 export type Rango = 'dia' | 'semana' | 'mes'
 
-function iso(d: Date): string {
+export function iso(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
@@ -50,16 +50,16 @@ export function tituloDelRango(date: string, rango: Rango): string {
   return fmt(date, { weekday: 'long', day: 'numeric', month: 'long' })
 }
 
-function hora(isoStr: string): string {
+export function hora(isoStr: string): string {
   return new Date(isoStr).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })
 }
 
 /** Fecha (YYYY-MM-DD) de un instante, en la hora de Argentina. */
-function fechaAR(isoStr: string): string {
+export function fechaAR(isoStr: string): string {
   return new Date(isoStr).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
 }
 
-function franja(x: ScheduleException): string {
+export function franja(x: ScheduleException): string {
   return x.closed_all_day || !x.start_time || !x.end_time ? 'todo el día' : `${x.start_time.slice(0, 5)} a ${x.end_time.slice(0, 5)}`
 }
 

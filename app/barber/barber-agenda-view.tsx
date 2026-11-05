@@ -22,6 +22,8 @@ import {
 import { useRealtimeRefresh } from '@/lib/hooks/use-realtime-refresh'
 import { errorDialog, confirmDialog } from '@/lib/confirm-dialog'
 import AgendaGrid from '@/app/admin/turnos/agenda-grid'
+import AgendaMes from '@/app/admin/turnos/agenda-mes'
+import { diasDelRango, limitesDelRango, moverRango, tituloDelRango } from '@/app/admin/turnos/agenda-rango'
 import BloqueosResumen from '@/app/admin/turnos/bloqueos-resumen'
 import { getPublicBranch, type DayHours } from '@/lib/supabase/booking'
 import { AVISOS_BARBERO, motivoNoAvisable, type TipoAvisoBarbero } from '@/lib/aviso-barbero'
@@ -94,6 +96,10 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
   const [horarios, setHorarios] = useState<BarberSchedule[] | undefined>(undefined)
   const [bloqueosProximos, setBloqueosProximos] = useState<ScheduleException[]>([])
   const [businessHours, setBusinessHours] = useState<DayHours[] | undefined>(undefined)
+  // Vista: el día en grilla horaria o el mes completo como calendario.
+  const [vista, setVista] = useState<'dia' | 'mes'>('dia')
+  const [turnosMes, setTurnosMes] = useState<BarberAgendaAppointment[]>([])
+  const [bloqueosMes, setBloqueosMes] = useState<ScheduleException[]>([])
 
   // Horario de la sucursal: extra visual, si falla la grilla usa el rango de siempre (9 a 21).
   useEffect(() => {
@@ -134,10 +140,36 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
     }
   }, [branchId, barber.id])
 
+  // Mes completo: un pedido por día (la base entrega la agenda de a un día) y los bloqueos del período.
+  const cargarMes = useCallback(async (d: string) => {
+    setLoading(true)
+    setError(null)
+    try {
+      const { desde, hasta } = limitesDelRango(d, 'mes')
+      const [porDia, excepciones] = await Promise.all([
+        Promise.all(diasDelRango(desde, hasta).map((dia) => getBarberAgenda(dia))),
+        branchId ? getScheduleExceptions(branchId, desde).catch(() => [] as ScheduleException[]) : Promise.resolve([] as ScheduleException[]),
+      ])
+      setTurnosMes(porDia.flat())
+      setBloqueosMes(excepciones.filter((x) => (x.barber_id === null || x.barber_id === barber.id) && x.exception_date <= hasta))
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'Error cargando tu agenda'
+      setError(msg)
+      void errorDialog(msg)
+    } finally {
+      setLoading(false)
+    }
+  }, [branchId, barber.id])
+
   useEffect(() => {
     if (!locked) cargar(date)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locked])
+
+  // Vuelve a leer lo que se está mostrando: el día o el mes.
+  function recargar(d: string = date, v: 'dia' | 'mes' = vista) {
+    return v === 'mes' ? cargarMes(d) : cargar(d)
+  }
 
   // En vivo: un turno nuevo, movido o cancelado (por el admin o por un cliente) y los bloqueos u
   // horarios que cambian aparecen solos, sin recargar.
@@ -151,13 +183,18 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
     ],
     () => {
       getBarberSchedules(barber.id).then(setHorarios).catch(() => {})
-      void cargar(date)
+      void recargar()
     },
   )
 
-  function cambiarDia(nuevaFecha: string) {
+  function cambiarDia(nuevaFecha: string, v: 'dia' | 'mes' = vista) {
     setDate(nuevaFecha)
-    cargar(nuevaFecha)
+    void recargar(nuevaFecha, v)
+  }
+
+  function cambiarVista(v: 'dia' | 'mes') {
+    setVista(v)
+    cambiarDia(date, v)
   }
 
   async function handleCancel(appt: BarberAgendaAppointment) {
@@ -168,7 +205,7 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
     try {
       await cancelAppointmentBarber(appt.id)
       setSelected(null)
-      await cargar(date)
+      await recargar()
     } catch (e) {
       await errorDialog(e instanceof Error ? e.message : 'Error al cancelar el turno')
     }
@@ -178,7 +215,7 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
     try {
       await setAppointmentStatus(appt.id, status)
       setSelected(null)
-      await cargar(date)
+      await recargar()
     } catch (e) {
       await errorDialog(e instanceof Error ? e.message : 'Error al cambiar el estado')
     }
@@ -212,23 +249,44 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
       </header>
 
       <div className="flex-1 overflow-y-auto px-5 pb-8 space-y-4">
-        {/* Navegación de día */}
+        {/* Día en grilla o mes completo */}
+        <div role="tablist" className="inline-flex rounded-lg border border-zinc-700 bg-zinc-900 p-1 gap-1">
+          {([['dia', 'Día'], ['mes', 'Mes']] as const).map(([k, label]) => (
+            <button
+              key={k}
+              role="tab"
+              aria-selected={vista === k}
+              onClick={() => cambiarVista(k)}
+              className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${
+                vista === k ? 'bg-amber-500 text-zinc-950' : 'text-zinc-400 hover:text-white'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Navegación (de a un día, o de a un mes en la vista Mes) */}
         <div className="flex items-center gap-2">
-          <button onClick={() => cambiarDia(addDaysISO(date, -1))}
+          <button onClick={() => cambiarDia(vista === 'mes' ? moverRango(date, 'mes', -1) : addDaysISO(date, -1))}
             className="w-9 h-9 flex items-center justify-center rounded-lg border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500">
             ‹
           </button>
-          <input
-            type="date"
-            value={date}
-            onChange={(e) => cambiarDia(e.target.value)}
-            className="bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
-          />
-          <button onClick={() => cambiarDia(addDaysISO(date, 1))}
+          {vista === 'mes' ? (
+            <span className="px-3 text-sm font-semibold capitalize text-white">{tituloDelRango(date, 'mes')}</span>
+          ) : (
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => cambiarDia(e.target.value)}
+              className="bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
+            />
+          )}
+          <button onClick={() => cambiarDia(vista === 'mes' ? moverRango(date, 'mes', 1) : addDaysISO(date, 1))}
             className="w-9 h-9 flex items-center justify-center rounded-lg border border-zinc-700 text-zinc-400 hover:text-white hover:border-zinc-500">
             ›
           </button>
-          {date !== todayISO() && (
+          {(vista === 'mes' || date !== todayISO()) && (
             <button onClick={() => cambiarDia(todayISO())} className="text-xs text-amber-400 hover:text-amber-300 ml-1">
               Hoy
             </button>
@@ -262,6 +320,19 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
           <p className="text-red-400 text-sm text-center py-6">{error}</p>
         ) : loading ? (
           <p className="text-zinc-500 text-sm text-center py-6">Cargando...</p>
+        ) : vista === 'mes' ? (
+          <>
+            <p className="text-zinc-500 text-xs">
+              Tocá un turno para ver el detalle, o el número de un día para verlo en la grilla.
+            </p>
+            <AgendaMes
+              date={date}
+              turnos={turnosMes.map((a) => ({ ...a, barber_id: barber.id }))}
+              bloqueos={bloqueosMes}
+              onSelect={setSelected}
+              onIrAlDia={(d) => { setVista('dia'); cambiarDia(d, 'dia') }}
+            />
+          </>
         ) : (
           <>
             <p className="text-zinc-500 text-xs">
@@ -308,7 +379,7 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
           appt={editing}
           services={services}
           onClose={() => setEditing(null)}
-          onSaved={() => { setEditing(null); cargar(date) }}
+          onSaved={() => { setEditing(null); void recargar() }}
         />
       )}
 
@@ -317,7 +388,7 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
           services={services}
           defaultDate={date}
           onClose={() => setShowNew(false)}
-          onCreated={() => { setShowNew(false); cargar(date) }}
+          onCreated={() => { setShowNew(false); void recargar() }}
         />
       )}
 
@@ -325,7 +396,7 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
         <BlockScheduleModal
           defaultDate={date}
           onClose={() => setShowBlock(false)}
-          onBlocked={() => { setShowBlock(false); cargar(date) }}
+          onBlocked={() => { setShowBlock(false); void recargar() }}
         />
       )}
     </div>
