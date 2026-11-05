@@ -646,13 +646,14 @@ function MonthRow({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          flexWrap: 'wrap',
           padding: '0.75rem 1rem',
           cursor: 'pointer',
           gap: '0.75rem',
         }}
         onClick={onToggle}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flex: 1 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.625rem', flex: 1, flexWrap: 'wrap', minWidth: 0 }}>
           <span style={{ color: '#52525b', fontSize: '0.75rem' }}>{expanded ? '▼' : '▶'}</span>
           <span style={{ fontWeight: 600, color: '#e5e5e5' }}>
             {name} {month.year}
@@ -668,7 +669,7 @@ function MonthRow({
           </span>
         </div>
 
-        <div style={{ display: 'flex', gap: '0.5rem' }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }} onClick={(e) => e.stopPropagation()}>
           <button
             className="admin-btn admin-btn--ghost"
             style={{ fontSize: '0.75rem', padding: '0.25rem 0.75rem', borderColor: '#6366f1', color: '#818cf8' }}

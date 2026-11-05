@@ -193,7 +193,7 @@ export default function GastosView() {
             Gastos de la sucursal, mes por mes.
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-3 sm:gap-4">
           <div className="flex items-center gap-3">
             <button
               onClick={prevMonth}
