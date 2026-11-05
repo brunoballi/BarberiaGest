@@ -593,12 +593,12 @@ export default function BarberMobileView() {
           lifetimeMemberId = editingTx.lifetime_member_id
         } else {
           if (!memberDocument.trim()) {
-            setFormSubmitError('Ingresá el DNI del socio vitalicio')
+            setFormSubmitError('Ingresá el DNI de la persona')
             return
           }
-          const member = await findLifetimeMemberByDocument(memberDocument)
+          const member = await findLifetimeMemberByDocument(memberDocument, selectedBenefit.member_list_id)
           if (!member) {
-            setFormSubmitError('El DNI no está en la lista de socios vitalicios. Por favor, comunicate con el administrador.')
+            setFormSubmitError('El DNI no está habilitado para este beneficio. Por favor, comunicate con el administrador.')
             return
           }
           lifetimeMemberId = member.id
@@ -1113,10 +1113,10 @@ export default function BarberMobileView() {
                   </option>
                 ))}
               </select>
-              {/* Socio vitalicio: DNI obligatorio, se valida contra la lista al guardar */}
+              {/* Beneficio con lista: DNI obligatorio, se valida contra la lista del beneficio al guardar */}
               {selectedBenefit?.requires_member_document && (
                 <div style={{ marginTop: 10 }}>
-                  <label className="section-label">Número de documento del socio *</label>
+                  <label className="section-label">Número de documento *</label>
                   <TextInput
                     className="client-name-input"
                     value={memberDocument}
@@ -1131,7 +1131,7 @@ export default function BarberMobileView() {
                     maxLength={12}
                   />
                   <p className="text-xs text-zinc-500" style={{ marginTop: 6 }}>
-                    Se valida contra la lista de socios vitalicios al guardar.
+                    Se valida contra la lista de personas habilitadas de este beneficio al guardar.
                   </p>
                 </div>
               )}

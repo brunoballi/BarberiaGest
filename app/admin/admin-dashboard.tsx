@@ -101,6 +101,26 @@ function txBarberSide(t: { amount: number; branch_share: number; barber_share: n
   return barberGetsFull ? t.amount : t.barber_already_collected
 }
 
+// Grilla de Transacciones: parte en efectivo / transferencia de un corte. En un
+// pago simple es el monto entero; en uno mixto, lo que se cargó en cada medio.
+type TxPayParts = { payment_method: string; amount: number; cash_amount?: number | null; transfer_amount?: number | null }
+function txCashPart(t: TxPayParts): number {
+  if (t.payment_method === 'cash') return t.amount
+  return t.payment_method === 'mixed' ? Number(t.cash_amount ?? 0) : 0
+}
+function txTransferPart(t: TxPayParts): number {
+  if (t.payment_method === 'transfer') return t.amount
+  return t.payment_method === 'mixed' ? Number(t.transfer_amount ?? 0) : 0
+}
+// El filtro Efectivo/Transferencia incluye los mixtos que tienen algo en ese medio.
+function txMatchesMethod(t: TxPayParts, method: string): boolean {
+  if (t.payment_method === method) return true
+  if (t.payment_method !== 'mixed') return false
+  if (method === 'cash') return txCashPart(t) > 0
+  if (method === 'transfer') return txTransferPart(t) > 0
+  return false
+}
+
 // Liquidaciones — desglose del beneficio VIP (comisión %).
 // El barbero se lleva el 100% de esos cortes y ya se los llevó en el momento, así
 // que no se liquidan: se muestran aparte en "Ingresos por benef. VIP" y se restan
@@ -1581,10 +1601,26 @@ export default function AdminDashboard() {
             if (filterDateFrom && tx.transaction_date < filterDateFrom) return false
             if (filterDateTo && tx.transaction_date > filterDateTo) return false
             if (filterBarber && tx.barber_id !== filterBarber) return false
-            if (filterMethod && tx.payment_method !== filterMethod) return false
+            if (filterMethod && !txMatchesMethod(tx, filterMethod)) return false
             if (filterService && (txServiceName(tx) ?? '') !== filterService) return false
             return true
           })
+          // Totales del período filtrado. Un pago mixto aporta su parte a efectivo
+          // y a transferencia, y además se suma aparte en "Pagos mixtos".
+          const mixedTxs = filtered.filter((t) => t.payment_method === 'mixed')
+          const sumCash = filtered.reduce((s, t) => s + txCashPart(t), 0)
+          const sumTransfer = filtered.reduce((s, t) => s + txTransferPart(t), 0)
+          const sumMixed = mixedTxs.reduce((s, t) => s + t.amount, 0)
+          // Con el filtro en Efectivo o Transferencia, cada corte muestra SOLO lo que se
+          // pagó por ese medio (en un pago mixto, su parte), y la parte de barbería y
+          // barbero se reparte en la misma proporción. Sin filtro de medio, el corte entero.
+          const partOf = (t: (typeof transactions)[number]) =>
+            filterMethod === 'cash' ? txCashPart(t)
+              : filterMethod === 'transfer' ? txTransferPart(t)
+              : t.amount
+          const ratioOf = (t: (typeof transactions)[number]) => (t.amount > 0 ? partOf(t) / t.amount : 1)
+          const barberOf = (t: (typeof transactions)[number]) => Math.round(txBarberSide(t) * ratioOf(t))
+          const shopOf = (t: (typeof transactions)[number]) => partOf(t) - barberOf(t)
           const txTotalPages = Math.max(1, Math.ceil(filtered.length / txPageSize))
           const txCurrent = Math.min(txPage, txTotalPages)
           const txPaged = filtered.slice((txCurrent - 1) * txPageSize, txCurrent * txPageSize)
@@ -1631,6 +1667,17 @@ export default function AdminDashboard() {
               <span className="filter-count">{filtered.length} resultado{filtered.length !== 1 ? 's' : ''}</span>
             </div>
 
+            {filtered.length > 0 && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem 1.5rem', padding: '0.5rem 0.25rem 0.75rem', fontSize: '0.85rem', color: '#a1a1aa' }}>
+                <span>Efectivo <strong style={{ color: '#fff' }}>{formatARS(sumCash)}</strong></span>
+                <span>Transferencia <strong style={{ color: '#fff' }}>{formatARS(sumTransfer)}</strong></span>
+                <span>
+                  Pagos mixtos <strong style={{ color: '#fff' }}>{formatARS(sumMixed)}</strong>
+                  {mixedTxs.length > 0 && ` (${mixedTxs.length})`}
+                </span>
+              </div>
+            )}
+
             <div className="admin-table-wrap">
             {filtered.length === 0 ? (
               <EmptyState message="Sin resultados para los filtros aplicados." />
@@ -1656,7 +1703,8 @@ export default function AdminDashboard() {
                 </thead>
                 <tbody>
                   {txPaged.map((tx) => {
-                    const barberSide = txBarberSide(tx)
+                    const barberSide = barberOf(tx)
+                    const rowPart = partOf(tx)
                     return (
                     <tr key={tx.id} className={tx.is_manual_override ? 'tr-override' : ''}>
                       <td className="td-date td-left">{formatDate(tx.transaction_date)}</td>
@@ -1689,8 +1737,15 @@ export default function AdminDashboard() {
                           </div>
                         )}
                       </td>
-                      <td className="td-bold">{formatARS(tx.amount)}</td>
-                      <td>{formatARS(tx.amount - barberSide)}</td>
+                      <td className="td-bold">
+                        {formatARS(rowPart)}
+                        {rowPart !== tx.amount && (
+                          <div style={{ fontSize: '0.7rem', fontWeight: 400, color: '#a1a1aa', marginTop: '0.2rem', whiteSpace: 'nowrap' }}>
+                            de {formatARS(tx.amount)}
+                          </div>
+                        )}
+                      </td>
+                      <td>{formatARS(rowPart - barberSide)}</td>
                       <td>
                         {barberSide > 0
                           ? <span className="td-collected">{formatARS(barberSide)}</span>
@@ -1743,9 +1798,9 @@ export default function AdminDashboard() {
                 <tfoot>
                   <tr className="tfoot-row">
                     <td colSpan={6}><strong>{filtered.length} transacción{filtered.length !== 1 ? 'es' : ''}</strong></td>
-                    <td><strong>{formatARS(filtered.reduce((s, t) => s + t.amount, 0))}</strong></td>
-                    <td><strong>{formatARS(filtered.reduce((s, t) => s + (t.amount - txBarberSide(t)), 0))}</strong></td>
-                    <td><strong>{formatARS(filtered.reduce((s, t) => s + txBarberSide(t), 0))}</strong></td>
+                    <td><strong>{formatARS(filtered.reduce((s, t) => s + partOf(t), 0))}</strong></td>
+                    <td><strong>{formatARS(filtered.reduce((s, t) => s + shopOf(t), 0))}</strong></td>
+                    <td><strong>{formatARS(filtered.reduce((s, t) => s + barberOf(t), 0))}</strong></td>
                     <td colSpan={2}></td>
                   </tr>
                 </tfoot>

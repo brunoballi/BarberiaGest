@@ -17,6 +17,7 @@ import {
 import type { BranchReport } from '@/lib/supabase/database.types'
 import {
   getReportByPeriod,
+  prepareUnsettledWeeksForReport,
   getMonthsWithWeeks,
   getMonthFinancials,
   getBarberDebtSummary,
@@ -99,6 +100,9 @@ export default function ReportesView() {
   type DebtRow = BarberDebtSummary & { branchId: string; branchName: string }
   const [debtRows, setDebtRows] = useState<DebtRow[]>([])
   const [multiBranch, setMultiBranch] = useState(false)
+  // Ver el mes antes de liquidar: suma también las liquidaciones sin pagar (estimado).
+  const [includeUnsettled, setIncludeUnsettled] = useState(true)
+  const [estimateFailed, setEstimateFailed] = useState(false)
 
   const startDate = `${year}-${String(month).padStart(2, '0')}-01`
   const lastDay   = new Date(year, month, 0).getDate()
@@ -115,7 +119,20 @@ export default function ReportesView() {
       // Antes iban en cascada (reporte → deudas → detalle mensual) y la pantalla
       // esperaba la suma de los tres tiempos en vez del más lento.
       const [data, debtLists, fins] = await Promise.all([
-        getReportByPeriod(myBranches, startDate, endDate),
+        (async () => {
+          if (!includeUnsettled) { setEstimateFailed(false); return getReportByPeriod(myBranches, startDate, endDate) }
+          try {
+            // Deja calculadas las semanas abiertas y cuenta también lo sin pagar.
+            await prepareUnsettledWeeksForReport(myBranches, year, month)
+            const r = await getReportByPeriod(myBranches, startDate, endDate, true)
+            setEstimateFailed(false)
+            return r
+          } catch {
+            // Si el estimado falla, se muestra el reporte de siempre (solo lo pagado).
+            setEstimateFailed(true)
+            return getReportByPeriod(myBranches, startDate, endDate)
+          }
+        })(),
         // Saldo deudor: liquidaciones confirmadas con deuda por sucursal
         Promise.all(
           myBranches.map(async (b) => {
@@ -142,7 +159,7 @@ export default function ReportesView() {
     } finally {
       setLoading(false)
     }
-  }, [startDate, endDate, year, month])
+  }, [startDate, endDate, year, month, includeUnsettled])
 
   useEffect(() => { load() }, [load])
 
@@ -252,6 +269,28 @@ export default function ReportesView() {
             disabled={isCurrentMonth}
           >›</button>
         </div>
+      </div>
+
+      {/* ── Ver el mes antes de liquidar ── */}
+      <div style={{ background: '#18181b', border: '1px solid #27272a', borderRadius: 14, padding: '0.75rem 1rem', margin: '0 0 1rem' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.75rem' }}>
+          <span style={{ color: '#e4e4e7', fontSize: '0.85rem', fontWeight: 600 }}>Liquidaciones a mostrar</span>
+          <select
+            value={includeUnsettled ? 'acumulado' : 'pagadas'}
+            onChange={(e) => setIncludeUnsettled(e.target.value === 'acumulado')}
+            style={{ background: '#27272a', border: '1px solid #3f3f46', color: '#fff', borderRadius: 8, padding: '0.4rem 0.6rem', fontSize: '0.85rem' }}
+          >
+            <option value="acumulado">Acumulado del mes (todas)</option>
+            <option value="pagadas">Solo pagadas</option>
+          </select>
+        </div>
+        <p style={{ color: '#71717a', fontSize: '0.75rem', marginTop: '0.4rem' }}>
+          {includeUnsettled
+            ? (estimateFailed
+                ? 'No se pudo calcular el acumulado: se muestra solo lo ya pagado.'
+                : 'Suma todas las liquidaciones del mes, estén las semanas abiertas o cerradas y las liquidaciones pagadas o no. Lo que no está pagado puede cambiar hasta que se cierre y se pague.')
+            : 'Muestra solo las liquidaciones ya pagadas (semanas cerradas y liquidadas).'}
+        </p>
       </div>
 
       {/* ── Historial de inversiones (inyección de dinero) ── */}

@@ -93,16 +93,32 @@ export interface Benefit {
   /** Si es true, al elegir este beneficio hay que ingresar el DNI y validarlo
    *  contra la lista de socios vitalicios. Si el DNI no está, no se guarda el corte. */
   requires_member_document: boolean
+  /** Lista de personas habilitadas contra la que se valida el DNI (migración 104).
+   *  null = beneficio viejo sin lista: vale cualquier persona activa. */
+  member_list_id: string | null
   /** Se intento eliminar pero tenia historial: queda fuera de la grilla principal.
    *  Distinto de is_active = false, que es una pausa deliberada y sigue visible. */
   archived_at: string | null
 }
 
-/** Socio vitalicio habilitado para el beneficio. Lista global (no por sucursal). */
+/** Lista de personas habilitadas (ej: "Socio Vitalicio", "Jubilados"). */
+export interface MemberList {
+  id: string
+  name: string
+  /** null = vale en todas las sucursales. */
+  branch_id: string | null
+  is_active: boolean
+  archived_at: string | null
+  created_at: string
+}
+
+/** Persona habilitada (tabla lifetime_members, ahora con lista). */
 export interface LifetimeMember {
   id: string
   full_name: string
   document_number: string
+  /** Lista a la que pertenece. */
+  list_id: string
   is_active: boolean
   created_at: string
   /** Se intento eliminar pero tenia historial: queda fuera de la grilla principal.
@@ -350,13 +366,14 @@ export type ProfileInsert = Omit<Profile, 'created_at' | 'archived_at' | 'receiv
   classic_service_id?: string | null
 }
 
-export type BenefitInsert = Omit<Benefit, 'id' | 'created_at' | 'archived_at' | 'is_active' | 'full_amount_to_barber'> & {
+export type BenefitInsert = Omit<Benefit, 'id' | 'created_at' | 'archived_at' | 'is_active' | 'full_amount_to_barber' | 'member_list_id'> & {
   is_active?: boolean
   full_amount_to_barber?: boolean
+  member_list_id?: string | null
 }
 
 export type BenefitUpdate = Partial<
-  Pick<Benefit, 'name' | 'description' | 'discount_type' | 'discount_value' | 'is_active' | 'full_amount_to_barber' | 'requires_member_document'>
+  Pick<Benefit, 'name' | 'description' | 'discount_type' | 'discount_value' | 'is_active' | 'full_amount_to_barber' | 'requires_member_document' | 'member_list_id'>
 >
 
 export type ServiceCatalogInsert = Omit<ServiceCatalog, 'id' | 'created_at' | 'archived_at'>

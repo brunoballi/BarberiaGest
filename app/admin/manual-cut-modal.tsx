@@ -320,9 +320,9 @@ export default function ManualCutModal({
       // Si no está, NO se guarda el corte.
       let lifetimeMemberId: string | null = null
       if (selectedBenefit?.requires_member_document) {
-        const member = await findLifetimeMemberByDocument(memberDocument)
+        const member = await findLifetimeMemberByDocument(memberDocument, selectedBenefit.member_list_id)
         if (!member) {
-          setError('El DNI no está en la lista de socios vitalicios. Por favor, comunicate con el administrador.')
+          setError('El DNI no está habilitado para este beneficio. Por favor, comunicate con el administrador.')
           setSubmitting(false)
           return
         }
@@ -462,7 +462,7 @@ export default function ManualCutModal({
                   {/* Socio vitalicio: DNI obligatorio, se valida contra la lista al guardar */}
                   {selectedBenefit?.requires_member_document && (
                     <div style={{ marginTop: '0.6rem' }}>
-                      <label className="form-label">Número de documento del socio *</label>
+                      <label className="form-label">Número de documento *</label>
                       <TextInput
                         className="form-input"
                         value={memberDocument}
@@ -472,7 +472,7 @@ export default function ManualCutModal({
                         allowNumbers
                       />
                       <p style={{ color: '#71717a', fontSize: '0.7rem', marginTop: '0.25rem' }}>
-                        Se valida contra la lista de socios vitalicios al guardar.
+                        Se valida contra la lista de personas habilitadas de este beneficio al guardar.
                       </p>
                     </div>
                   )}

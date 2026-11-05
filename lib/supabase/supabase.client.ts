@@ -44,6 +44,7 @@ import type {
   BenefitInsert,
   BenefitUpdate,
   LifetimeMember,
+  MemberList,
   MaintenanceSettings,
   MaintenanceTemplateBlockWithTasks,
   MaintenanceSheetWithItems,
@@ -297,7 +298,7 @@ export async function updateService(
 export async function getBenefitsByBranch(branchId: string): Promise<Benefit[]> {
   const { data, error } = await supabase
     .from('benefits')
-    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at, full_amount_to_barber, requires_member_document, archived_at')
+    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at, full_amount_to_barber, requires_member_document, member_list_id, archived_at')
     .eq('branch_id', branchId)
     .order('name')
 
@@ -309,7 +310,7 @@ export async function getBenefitsByBranch(branchId: string): Promise<Benefit[]> 
 export async function getActiveBenefitsByBranch(branchId: string): Promise<Benefit[]> {
   const { data, error } = await supabase
     .from('benefits')
-    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at, full_amount_to_barber, requires_member_document, archived_at')
+    .select('id, branch_id, name, description, discount_type, discount_value, is_active, created_at, full_amount_to_barber, requires_member_document, member_list_id, archived_at')
     .eq('branch_id', branchId)
     .eq('is_active', true)
     .order('name')
@@ -2136,6 +2137,42 @@ export async function getPartnersByBranch(
     .sort((a, b) => a.full_name.localeCompare(b.full_name))
 }
 
+/**
+ * Participación de los socios en una sucursal (informativo, no afecta retiros ni
+ * liquidaciones): valor total en pesos y % de cada socio. Un socio sin fila tiene 0%.
+ */
+export interface BranchPartnerShares {
+  valuation: number
+  shares: { partner_id: string; pct: number }[]
+}
+
+export async function getBranchPartnerShares(branchId: string): Promise<BranchPartnerShares> {
+  const [val, sh] = await Promise.all([
+    supabase.from('branch_valuations').select('valuation').eq('branch_id', branchId).maybeSingle(),
+    supabase.from('branch_partner_shares').select('partner_id, pct').eq('branch_id', branchId),
+  ])
+  if (val.error) throw new Error(`[getBranchPartnerShares:valuation] ${val.error.message}`)
+  if (sh.error) throw new Error(`[getBranchPartnerShares:shares] ${sh.error.message}`)
+  return {
+    valuation: Number(val.data?.valuation ?? 0),
+    shares: (sh.data ?? []).map((r) => ({ partner_id: r.partner_id as string, pct: Number(r.pct) })),
+  }
+}
+
+/** Reemplaza el valor y el reparto de la sucursal de una sola vez (función atómica). */
+export async function saveBranchPartnerShares(
+  branchId: string,
+  valuation: number,
+  shares: { partner_id: string; pct: number }[],
+): Promise<void> {
+  const { error } = await supabase.rpc('save_branch_partner_shares', {
+    p_branch_id: branchId,
+    p_valuation: valuation,
+    p_shares: shares,
+  })
+  if (error) throw new Error(`[saveBranchPartnerShares] ${error.message}`)
+}
+
 export async function getExpensesByWeek(weekId: string): Promise<ExpenseWithUser[]> {
   const { data, error } = await supabase
     .from('expenses')
@@ -2311,19 +2348,60 @@ export async function deleteCapitalInjection(injectionId: string): Promise<void>
 // ============================================================
 // REPORTS
 // ============================================================
+/**
+ * Deja calculadas (en borrador) las liquidaciones de las semanas YA EMPEZADAS del mes
+ * que todavía no se liquidaron, para que el reporte pueda mostrarlas como estimado
+ * antes de cerrar. Usa el mismo cálculo que "Recalcular" y que el cierre de semana, y
+ * solo toca liquidaciones inexistentes o en borrador (nunca las confirmadas/pagadas).
+ * Solo se calculan los barberos que tienen cortes en esa semana.
+ * Devuelve cuántas semanas se prepararon.
+ */
+export async function prepareUnsettledWeeksForReport(
+  branches: Pick<Branch, 'id' | 'name'>[],
+  year: number,
+  month: number,
+): Promise<number> {
+  const now = new Date()
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`
+  let prepared = 0
+  await Promise.all(branches.map(async (b) => {
+    const ms = await getMonthsWithWeeks(b.id)
+    const m = ms.find((x) => x.year === year && x.month === month)
+    if (!m) return
+    for (const w of m.weeks) {
+      if (w.status !== 'open' || w.start_date > today) continue
+      const { data, error } = await supabase
+        .from('transactions')
+        .select('barber_id')
+        .eq('week_id', w.id)
+      if (error) throw new Error(`[prepareUnsettledWeeksForReport] ${error.message}`)
+      const barberIds = [...new Set((data ?? []).map((r) => r.barber_id as string))]
+      if (barberIds.length === 0) continue
+      await calculateAllSettlementsForWeek(w.id, barberIds)
+      prepared++
+    }
+  }))
+  return prepared
+}
+
 export async function getReportByPeriod(
   branches: Pick<Branch, 'id' | 'name'>[],
   startDate: string,
-  endDate: string
+  endDate: string,
+  /** true = cuenta también liquidaciones en borrador/confirmadas (estimado, migración 105). */
+  includeUnpaid = false,
 ): Promise<BranchReport[]> {
   const branchIds = branches.map((b) => b.id)
   if (branchIds.length === 0) return []
 
   // Agregación server-side: el RPC devuelve totales por sucursal (no filas crudas).
+  // p_include_unpaid solo se manda cuando hace falta: así el reporte de siempre
+  // sigue andando aunque la migración 105 todavía no esté aplicada.
   const { data, error } = await supabase.rpc('report_by_period', {
     p_branch_ids: branchIds,
     p_start: startDate,
     p_end: endDate,
+    ...(includeUnpaid ? { p_include_unpaid: true } : {}),
   })
   if (error) throw new Error(`[getReportByPeriod] ${error.message}`)
 
@@ -2736,28 +2814,34 @@ export function normalizeDocument(documentNumber: string): string {
   return documentNumber.replace(/[.\s-]/g, '').toUpperCase()
 }
 
-/** Busca un socio vitalicio activo por documento. null = no está en la lista. */
+/**
+ * Busca una persona habilitada activa por documento dentro de la lista del
+ * beneficio. null = no está en la lista. Sin listId (beneficio viejo sin lista)
+ * se busca en todas.
+ */
 export async function findLifetimeMemberByDocument(
   documentNumber: string,
+  listId?: string | null,
 ): Promise<LifetimeMember | null> {
   const doc = normalizeDocument(documentNumber)
   if (!doc) return null
-  const { data, error } = await supabase
+  let q = supabase
     .from('lifetime_members')
     .select('*')
     .eq('document_number', doc)
     .eq('is_active', true)
     .is('archived_at', null)
-    .maybeSingle()
+  if (listId) q = q.eq('list_id', listId)
+  const { data, error } = await q.limit(1)
   if (error) throw new Error(`[findLifetimeMemberByDocument] ${error.message}`)
-  return (data as LifetimeMember) ?? null
+  return ((data ?? [])[0] as LifetimeMember) ?? null
 }
 
-export async function getLifetimeMembers(): Promise<LifetimeMember[]> {
-  const { data, error } = await supabase
-    .from('lifetime_members')
-    .select('*')
-    .order('full_name', { ascending: true })
+/** Personas habilitadas; con listId, solo las de esa lista. */
+export async function getLifetimeMembers(listId?: string): Promise<LifetimeMember[]> {
+  let q = supabase.from('lifetime_members').select('*').order('full_name', { ascending: true })
+  if (listId) q = q.eq('list_id', listId)
+  const { data, error } = await q
   if (error) throw new Error(`[getLifetimeMembers] ${error.message}`)
   return (data ?? []) as LifetimeMember[]
 }
@@ -2765,18 +2849,87 @@ export async function getLifetimeMembers(): Promise<LifetimeMember[]> {
 export async function createLifetimeMember(
   fullName: string,
   documentNumber: string,
+  listId: string,
 ): Promise<LifetimeMember> {
   const { data, error } = await supabase
     .from('lifetime_members')
-    .insert({ full_name: fullName.trim(), document_number: normalizeDocument(documentNumber) })
+    .insert({ full_name: fullName.trim(), document_number: normalizeDocument(documentNumber), list_id: listId })
     .select()
     .single()
   if (error) {
-    // unique(document_number): mensaje entendible en vez del error crudo de Postgres.
-    if (error.code === '23505') throw new Error('Ya existe un socio vitalicio con ese documento.')
+    // unique(list_id, document_number): mensaje entendible en vez del error crudo de Postgres.
+    if (error.code === '23505') throw new Error('Ya existe una persona con ese documento en esta lista.')
     throw new Error(`[createLifetimeMember] ${error.message}`)
   }
   return data as LifetimeMember
+}
+
+/**
+ * Carga varias personas de una vez en una lista. Saltea las que ya están
+ * (mismo documento) y devuelve cuántas se agregaron y cuáles se omitieron.
+ */
+export async function createLifetimeMembersBulk(
+  listId: string,
+  rows: { fullName: string; documentNumber: string }[],
+): Promise<{ added: number; skipped: string[] }> {
+  const { data: existing, error: e1 } = await supabase
+    .from('lifetime_members')
+    .select('document_number')
+    .eq('list_id', listId)
+    .is('archived_at', null)
+  if (e1) throw new Error(`[createLifetimeMembersBulk] ${e1.message}`)
+  const seen = new Set((existing ?? []).map((r) => r.document_number as string))
+
+  const toInsert: { full_name: string; document_number: string; list_id: string }[] = []
+  const skipped: string[] = []
+  for (const r of rows) {
+    const doc = normalizeDocument(r.documentNumber)
+    if (!doc || !r.fullName.trim() || seen.has(doc)) { skipped.push(r.fullName.trim() || doc); continue }
+    seen.add(doc)
+    toInsert.push({ full_name: r.fullName.trim(), document_number: doc, list_id: listId })
+  }
+  if (toInsert.length > 0) {
+    const { error } = await supabase.from('lifetime_members').insert(toInsert)
+    if (error) throw new Error(`[createLifetimeMembersBulk] ${error.message}`)
+  }
+  return { added: toInsert.length, skipped }
+}
+
+// ── Listas de personas habilitadas ─────────────────────────────────────────
+
+export async function getMemberLists(): Promise<MemberList[]> {
+  const { data, error } = await supabase
+    .from('member_lists')
+    .select('*')
+    .is('archived_at', null)
+    .order('name', { ascending: true })
+  if (error) throw new Error(`[getMemberLists] ${error.message}`)
+  return (data ?? []) as MemberList[]
+}
+
+export async function createMemberList(name: string, branchId: string | null): Promise<MemberList> {
+  const { data, error } = await supabase
+    .from('member_lists')
+    .insert({ name: name.trim(), branch_id: branchId })
+    .select()
+    .single()
+  if (error) throw new Error(`[createMemberList] ${error.message}`)
+  return data as MemberList
+}
+
+export async function updateMemberList(
+  id: string,
+  updates: { name?: string; branch_id?: string | null; is_active?: boolean },
+): Promise<void> {
+  const { error } = await supabase.from('member_lists').update(updates).eq('id', id)
+  if (error) throw new Error(`[updateMemberList] ${error.message}`)
+}
+
+/** Borra la lista y sus personas si nada la usa; si no, el RPC explica por qué. */
+export async function deleteMemberList(id: string): Promise<string> {
+  const { data, error } = await supabase.rpc('admin_delete_member_list', { p_id: id })
+  if (error) throw new Error(error.message.replace(/^.*?: /, ''))
+  return data as string
 }
 
 export async function setLifetimeMemberActive(id: string, isActive: boolean): Promise<void> {

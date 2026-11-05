@@ -11,6 +11,8 @@ import {
   getWeeksByBranch,
   getExpensesByDateRange,
   getPartnersByBranch,
+  getBranchPartnerShares,
+  saveBranchPartnerShares,
   deleteExpense,
   supabase,
   MONTH_NAMES,
@@ -18,6 +20,7 @@ import {
 } from '@/lib/supabase/supabase.client'
 import { PaginationControls } from '@/app/components/pagination-controls'
 import { ExpenseFormModal } from '@/app/components/expense-form-modal'
+import { CurrencyInput } from '@/app/components/currency-input'
 import '../admin-dashboard.css'
 
 // ─── Utilidades ────────────────────────────────────────────────────────────
@@ -69,6 +72,13 @@ export default function RetirosSociosView() {
   const [editRetiro, setEditRetiro] = useState<ExpenseWithUser | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
+  // Participación de los socios (informativa): valor de la sucursal y % de cada uno.
+  const [valuation, setValuation] = useState('')
+  const [pcts, setPcts] = useState<Record<string, string>>({})
+  const [sharesError, setSharesError] = useState<string | null>(null)
+  const [sharesSaving, setSharesSaving] = useState(false)
+  const [sharesSaved, setSharesSaved] = useState(false)
+
   const [filterPartner, setFilterPartner] = useState('')
   const [page, setPage] = useState(1)
   const [pageSize, setPageSize] = useState(20)
@@ -115,6 +125,43 @@ export default function RetirosSociosView() {
   }, [router, setSelectedBranch])
 
   useEffect(() => { loadInitial() }, [loadInitial])
+
+  // La participación se carga aparte: si falla (ej. migración sin aplicar) no tiene
+  // que tirar abajo la pantalla de retiros.
+  useEffect(() => {
+    if (!selectedBranch) return
+    let cancelled = false
+    setSharesError(null)
+    setSharesSaved(false)
+    getBranchPartnerShares(selectedBranch)
+      .then((d) => {
+        if (cancelled) return
+        setValuation(d.valuation > 0 ? String(d.valuation) : '')
+        setPcts(Object.fromEntries(d.shares.map((s) => [s.partner_id, String(s.pct)])))
+      })
+      .catch((e) => {
+        if (!cancelled) setSharesError(e instanceof Error ? e.message : 'No se pudo cargar la participación')
+      })
+    return () => { cancelled = true }
+  }, [selectedBranch])
+
+  async function handleSaveShares() {
+    setSharesSaving(true)
+    setSharesError(null)
+    setSharesSaved(false)
+    try {
+      await saveBranchPartnerShares(
+        selectedBranch,
+        parseFloat(valuation) || 0,
+        partners.map((p) => ({ partner_id: p.id, pct: parseFloat(pcts[p.id] ?? '') || 0 })),
+      )
+      setSharesSaved(true)
+    } catch (e) {
+      setSharesError(e instanceof Error ? e.message : 'No se pudo guardar la participación')
+    } finally {
+      setSharesSaving(false)
+    }
+  }
 
   useEffect(() => {
     if (!selectedBranch) return
@@ -177,6 +224,11 @@ export default function RetirosSociosView() {
     }, {})
   ).sort((a, b) => b.total - a.total)
 
+  const valuationNum = parseFloat(valuation) || 0
+  const assignedPct = partners.reduce((s, p) => s + (parseFloat(pcts[p.id] ?? '') || 0), 0)
+  // Se redondea para que 33,33 + 33,33 + 33,34 no deje un resto de 0,0000001.
+  const missingPct = Math.round((100 - assignedPct) * 100) / 100
+
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize))
   const current = Math.min(page, totalPages)
   const paged = filtered.slice((current - 1) * pageSize, current * pageSize)
@@ -216,6 +268,90 @@ export default function RetirosSociosView() {
           >
             + Registrar retiro
           </button>
+        </div>
+      </div>
+
+      {/* Participación de los socios: informativa, no cambia retiros ni liquidaciones */}
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500">
+            Participación de los socios
+          </p>
+          <p className="text-zinc-500 text-xs mt-1">
+            Informativo: no cambia retiros, liquidaciones ni reportes.
+          </p>
+        </div>
+
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+          <label className="text-sm text-zinc-300 sm:w-56">Valor total de la sucursal</label>
+          <div className="flex items-center gap-2">
+            <span className="text-zinc-400 text-sm">$</span>
+            <CurrencyInput
+              value={valuation}
+              onChange={(v) => { setValuation(v); setSharesSaved(false) }}
+              placeholder="0"
+              className="w-48 bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
+            />
+          </div>
+        </div>
+
+        {partners.length === 0 ? (
+          <p className="text-zinc-500 text-sm">No hay socios (admins) asignados a esta sucursal.</p>
+        ) : (
+          <div className="space-y-2">
+            {partners.map((p) => {
+              const pct = parseFloat(pcts[p.id] ?? '') || 0
+              return (
+                <div key={p.id} className="flex flex-wrap items-center gap-3 text-sm">
+                  <span className="text-zinc-300 sm:w-56">{p.full_name}</span>
+                  <div className="flex items-center gap-2">
+                    <CurrencyInput
+                      value={pcts[p.id] ?? ''}
+                      onChange={(v) => {
+                        const n = parseFloat(v)
+                        // El tope de 100 es el de la base; se corta acá para no guardar algo inválido.
+                        setPcts((prev) => ({ ...prev, [p.id]: Number.isFinite(n) && n > 100 ? '100' : v }))
+                        setSharesSaved(false)
+                      }}
+                      placeholder="0"
+                      className="w-24 bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2 text-sm text-right focus:outline-none focus:border-amber-500"
+                    />
+                    <span className="text-zinc-400">%</span>
+                  </div>
+                  <span className="text-white font-semibold">
+                    {formatARS(Math.round((valuationNum * pct) / 100))}
+                  </span>
+                </div>
+              )
+            })}
+
+            <div className="flex flex-wrap items-center justify-between gap-2 text-sm pt-2 border-t border-zinc-800">
+              <span className="text-zinc-400 font-semibold">
+                Asignado: {Math.round(assignedPct * 100) / 100}%
+              </span>
+              {missingPct < 0 ? (
+                <span className="text-red-400 font-semibold">
+                  Los porcentajes superan el 100% por {Math.abs(missingPct)}%
+                </span>
+              ) : missingPct > 0 ? (
+                <span className="text-amber-400">Falta asignar {missingPct}%</span>
+              ) : (
+                <span className="text-emerald-400">Reparto completo (100%)</span>
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSaveShares}
+            disabled={sharesSaving || partners.length === 0}
+            className="admin-btn admin-btn--primary"
+          >
+            {sharesSaving ? 'Guardando...' : 'Guardar participación'}
+          </button>
+          {sharesSaved && <span className="text-emerald-400 text-sm">Guardado ✓</span>}
+          {sharesError && <span className="text-red-400 text-sm">{sharesError}</span>}
         </div>
       </div>
 
