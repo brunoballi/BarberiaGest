@@ -487,15 +487,22 @@ export async function ensureNextWeekOpen(
   const nextStart = dateToLocalString(start)
   const nextEnd   = dateToLocalString(end)
 
-  // ¿Ya existe alguna semana que abarque esa fecha?
+  // ¿Ya existe alguna semana POSTERIOR a la que se cierra? Entonces el calendario
+  // ya está generado (createYear arma todas las semanas) y no hay nada que abrir.
+  // Antes se buscaba solo una semana que EMPEZARA justo al día siguiente, y eso
+  // fallaba con las semanas cortadas por el cambio de mes (ej: 26–31/10 termina
+  // un sábado): el "día siguiente" era el domingo 1/11, no existía una semana que
+  // arrancara ahí y se creaba una semana fantasma 1–7/11 que pisaba a la real
+  // (2–8/11); al cerrarla, otra 8–14/11, y así.
   const { data: existing } = await supabase
     .from('weeks')
-    .select('id, status')
+    .select('id')
     .eq('branch_id', branchId)
-    .eq('start_date', nextStart)
+    .gt('start_date', afterEndDate)
+    .limit(1)
     .maybeSingle()
 
-  if (existing) return  // ya hay una semana ahí, no tocar
+  if (existing) return  // ya hay semanas posteriores, no tocar
 
   // Asegurar el mes (year/month del lunes de inicio)
   const nextYear  = start.getFullYear()
@@ -741,14 +748,21 @@ export async function createManualWeek(
 ): Promise<Week> {
   if (startDate > endDate) throw new Error('La fecha de inicio no puede ser mayor que la de fin')
 
-  // Verificar que no exista una semana con esa fecha de inicio
-  const { data: existing } = await supabase
+  // Verificar que no se solape con ninguna semana existente de la sucursal
+  // (dos semanas que comparten un día duplican cortes y checklists).
+  const { data: overlapping } = await supabase
     .from('weeks')
-    .select('id')
+    .select('week_number, start_date, end_date')
     .eq('branch_id', branchId)
-    .eq('start_date', startDate)
+    .lte('start_date', endDate)
+    .gte('end_date', startDate)
+    .limit(1)
     .maybeSingle()
-  if (existing) throw new Error('Ya existe una semana con esa fecha de inicio para esta sucursal')
+  if (overlapping) {
+    throw new Error(
+      `Se solapa con la semana ${overlapping.week_number} (${overlapping.start_date} a ${overlapping.end_date}) de esta sucursal`
+    )
+  }
 
   // Determinar mes a partir del startDate
   const [y, m] = startDate.split('-').map(Number)
