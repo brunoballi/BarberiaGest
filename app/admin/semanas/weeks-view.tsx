@@ -29,6 +29,7 @@ import {
   updateBarberExtraDays,
   supabase,
 } from '@/lib/supabase/supabase.client'
+import { ofrecerAplicarModeloActual } from '@/lib/modelo-desactualizado'
 import { settlementCompensation } from '@/lib/settlement-model'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 
@@ -255,6 +256,9 @@ export default function WeeksView() {
     try {
       const barbers = await getAllBarbersByBranch(selectedBranch)
       const activeBarbers = barbers.filter((b) => b.is_active)
+      // Antes de cerrar: si el perfil de algún barbero cambió de modelo, preguntar
+      // si se aplica (después de cerrar la semana ya no se puede corregir).
+      await ofrecerAplicarModeloActual(selectedWeek)
       if (activeBarbers.length > 0) {
         await calculateAllSettlementsForWeek(selectedWeek.id, activeBarbers.map((b) => b.id))
       }

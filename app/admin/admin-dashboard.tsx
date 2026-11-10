@@ -73,6 +73,7 @@ import { CurrencyInputInline } from '@/app/components/currency-input-inline'
 import { TextInput } from '@/app/components/text-input'
 import { AdminSideDrawer } from '@/app/components/admin-side-drawer'
 import { confirmDialog } from '@/lib/confirm-dialog'
+import { ofrecerAplicarModeloActual } from '@/lib/modelo-desactualizado'
 
 // ─── Utilidades ────────────────────────────────────────────────────────────
 function formatARS(n: number): string {
@@ -529,6 +530,9 @@ export default function AdminDashboard() {
     try {
       setActionLoading('close-week')
       const barbers = await getBarbersByBranch(selectedBranch)
+      // Antes de cerrar: si el perfil de algún barbero cambió de modelo, preguntar
+      // si se aplica (después de cerrar la semana ya no se puede corregir).
+      await ofrecerAplicarModeloActual(selectedWeek)
       await closeWeek(selectedWeek.id, currentUserId)
       await calculateAllSettlementsForWeek(selectedWeek.id, barbers.map((b) => b.id))
       const ms = await getMonthsWithWeeks(selectedBranch)
@@ -548,6 +552,7 @@ export default function AdminDashboard() {
     try {
       setActionLoading('recalc')
       const barbers = await getBarbersByBranch(selectedBranch)
+      await ofrecerAplicarModeloActual(selectedWeek)
       await calculateAllSettlementsForWeek(selectedWeek.id, barbers.map((b) => b.id))
       await loadTabData()
     } catch (e) {
@@ -564,6 +569,9 @@ export default function AdminDashboard() {
   ) {
     try {
       setActionLoading(`recalc-${settlementId}`)
+      if (selectedWeek && selectedWeek.id === weekId) {
+        await ofrecerAplicarModeloActual(selectedWeek, barberId)
+      }
       await recalculateSettlementFull(weekId, barberId)
       await loadTabData()
     } catch (e) {

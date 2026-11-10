@@ -2549,6 +2549,32 @@ export async function updateBarberProfile(
   if (error) throw new Error(`[updateBarberProfile] ${error.message}`)
 }
 
+export interface CambioDeModeloResultado {
+  semanas_recalculadas: number
+  semanas_saltadas: number
+  primera_semana: string | null
+}
+
+/**
+ * Aplica el modelo de compensación ACTUAL del perfil a las semanas del barbero
+ * que terminan en o después de `desde` (migración 106). Guardar el perfil solo
+ * alcanza para los cortes futuros: lo ya trabajado conserva el reparto y la
+ * semana ya terminada queda congelada con el modelo viejo. Esta llamada
+ * re-reparte los cortes y recalcula las liquidaciones en borrador; las
+ * confirmadas o pagadas no se tocan (vuelven como `semanas_saltadas`).
+ */
+export async function aplicarCambioDeModelo(
+  barberId: string,
+  desde: string,
+): Promise<CambioDeModeloResultado> {
+  const { data, error } = await supabase.rpc('aplicar_cambio_de_modelo', {
+    p_barber_id: barberId,
+    p_desde: desde,
+  })
+  if (error) throw new Error(error.message)
+  return data as CambioDeModeloResultado
+}
+
 // ============================================================
 // EXPENSES CRUD
 // ============================================================

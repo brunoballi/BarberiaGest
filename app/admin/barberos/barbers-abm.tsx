@@ -17,7 +17,9 @@ import {
   getServicesByBranch,
   supabase,
   updateBarberProfile,
+  aplicarCambioDeModelo,
 } from '@/lib/supabase/supabase.client'
+import type { CambioDeModeloResultado } from '@/lib/supabase/supabase.client'
 import { mensajeDeArchivado, unarchive } from '@/lib/supabase/supabase.client'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import { CurrencyInput } from '@/app/components/currency-input'
@@ -118,6 +120,48 @@ function profileToEditForm(p: Profile): EditForm {
     is_new_barber: p.is_new_barber,
     classic_service_id: p.classic_service_id ?? '',
   }
+}
+
+/** Hoy en Argentina (YYYY-MM-DD): las semanas y los cortes se miden en esa zona. */
+function hoyArgentina(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+}
+
+function distintos(a: number | null, b: number | null): boolean {
+  if (a == null || b == null) return a !== b
+  return Math.abs(a - b) > 1e-9
+}
+
+/**
+ * ¿El admin cambió algo que define cómo se reparte la plata (modelo, % de
+ * comisión o alquiler diario)? Solo en ese caso hay que decidir desde cuándo rige.
+ */
+function cambioElModelo(p: Profile, f: EditForm): boolean {
+  if (f.compensation_type !== p.compensation_type) return true
+  if (f.compensation_type === 'percentage') {
+    const next = f.commission_rate ? parseFloat(f.commission_rate) / 100 : null
+    return distintos(next, p.commission_rate != null ? Number(p.commission_rate) : null)
+  }
+  if (f.compensation_type === 'box_rental') {
+    const next = f.box_rental_amount ? parseFloat(f.box_rental_amount) : null
+    return distintos(next, p.box_rental_amount != null ? Number(p.box_rental_amount) : null)
+  }
+  return false
+}
+
+function resumenCambioDeModelo(r: CambioDeModeloResultado): string {
+  const plural = (n: number, uno: string, varios: string) => `${n} ${n === 1 ? uno : varios}`
+  const partes = [
+    r.semanas_recalculadas > 0
+      ? `Cambio aplicado: se recalcularon ${plural(r.semanas_recalculadas, 'semana', 'semanas')} en borrador`
+      : 'Cambio guardado: no había semanas en borrador para recalcular',
+  ]
+  if (r.semanas_saltadas > 0) {
+    partes.push(
+      `${plural(r.semanas_saltadas, 'semana ya liquidada no se tocó', 'semanas ya liquidadas no se tocaron')} (para cambiarla, anulala a borrador y volvé a aplicar)`,
+    )
+  }
+  return partes.join('. ') + '.'
 }
 
 // ─── Compensation fields sub-form ─────────────────────────────────────────
@@ -228,6 +272,8 @@ export default function BarbersAbm() {
   const [editEmailLoading, setEditEmailLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [editError, setEditError] = useState<string | null>(null)
+  // Desde cuándo rige un cambio de modelo (solo se pide si el admin lo tocó).
+  const [modeloDesde, setModeloDesde] = useState(hoyArgentina())
 
   // Invite existing barber (sin cuenta auth)
   const [invitingExisting, setInvitingExisting] = useState<Profile | null>(null)
@@ -370,6 +416,7 @@ export default function BarbersAbm() {
     setEditingBarber(barber)
     setEditForm(profileToEditForm(barber))
     setEditError(null)
+    setModeloDesde(hoyArgentina())
     setEditEmail('')
     setEditEmailOriginal('')
     setEditEmailLoading(true)
@@ -458,7 +505,29 @@ export default function BarbersAbm() {
           : 0,
       }
 
+      const modeloCambiado = cambioElModelo(editingBarber, editForm)
+      if (modeloCambiado && !modeloDesde) {
+        throw new Error('Indicá desde qué fecha rige el cambio de modelo')
+      }
+      if (modeloCambiado && modeloDesde > hoyArgentina()) {
+        throw new Error('La fecha desde la que rige el cambio no puede ser futura')
+      }
+
       await updateBarberProfile(editingBarber.id, updates)
+
+      // El perfil ya quedó guardado; ahora se aplica a lo ya trabajado. Si esto
+      // falla no se pierde el cambio de perfil: se avisa y se puede reintentar.
+      if (modeloCambiado) {
+        try {
+          setNotice(resumenCambioDeModelo(await aplicarCambioDeModelo(editingBarber.id, modeloDesde)))
+        } catch (err) {
+          setNotice(
+            `El perfil se guardó, pero no se pudo aplicar el cambio a las semanas ya trabajadas: ${
+              err instanceof Error ? err.message : 'error desconocido'
+            }. Volvé a editar al barbero y guardá de nuevo para reintentar.`,
+          )
+        }
+      }
 
       // Actualizar email en auth si cambió
       const newEmail = editEmail.trim()
@@ -1059,6 +1128,31 @@ export default function BarbersAbm() {
                 form={editForm}
                 onChange={patchEditForm}
               />
+
+              {editingBarber && cambioElModelo(editingBarber, editForm) && (
+                <div className="bg-amber-500/5 border border-amber-500/30 rounded-lg px-4 py-3 space-y-2">
+                  <label
+                    htmlFor="modelo-desde"
+                    className="block text-xs font-semibold uppercase tracking-widest text-amber-400"
+                  >
+                    El cambio rige desde
+                  </label>
+                  <input
+                    id="modelo-desde"
+                    type="date"
+                    value={modeloDesde}
+                    max={hoyArgentina()}
+                    onChange={(e) => setModeloDesde(e.target.value)}
+                    className="w-full bg-zinc-800 border border-zinc-700 text-white rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-amber-500"
+                  />
+                  <p className="text-xs text-zinc-400">
+                    Por defecto es hoy: se recalcula la semana en curso. Si el barbero ya trabajó con el modelo nuevo,
+                    poné la fecha en que empezó. Se recalculan las semanas en borrador que terminen desde esa fecha
+                    (la semana completa, porque cada semana tiene un solo modelo). Las liquidaciones confirmadas o
+                    pagadas no se tocan.
+                  </p>
+                </div>
+              )}
 
               {editForm.compensation_type === 'percentage' && (
                 <div className="bg-zinc-800/40 border border-zinc-700 rounded-lg px-4 py-3">
