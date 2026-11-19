@@ -95,7 +95,7 @@ export default function HorariosView() {
   if (error) return <div className="p-6 text-red-400">{error}</div>
   if (barbers.length === 0) {
     return (
-      <div className="w-full px-4 py-8">
+      <div className="w-full px-4 pt-4 pb-8">
         <p className="text-[var(--text-muted)] text-sm">
           No hay barberos activos. Cargá uno desde{' '}
           <a href="/admin/barberos" className="text-amber-400 hover:underline">Barberos</a>{' '}
@@ -106,9 +106,9 @@ export default function HorariosView() {
   }
 
   return (
-    <div className="w-full px-4 py-8 space-y-8">
-      <div className="flowi-page-header">
-        <h1 className="text-2xl font-bold text-[var(--text)]">Horarios de atención</h1>
+    <div className="w-full px-4 pt-4 pb-8 space-y-8">
+      <div>
+        <h2 className="text-lg font-bold text-[var(--text)]">Horarios de atención</h2>
         <p className="text-[var(--text-muted)] text-sm mt-1">
           Definen los huecos que ofrece el turnero. Cada franja tiene su propio
           modo: con turno, o por orden de llegada (no se reserva hora).

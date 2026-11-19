@@ -9,8 +9,8 @@
 //    vuelve a dejar en íconos.
 //  - Celular (<1024px): franja de íconos dentro de la barra "Volver al panel" (AdminNavStrip),
 //    con ☰ para abrir el mismo panel desplegado. En el panel inicial lo abre el botón ≡.
-//  - Configuración es UNA sola ruedita: en modo íconos abre un recuadro con sus secciones;
-//    en el panel desplegado es un acordeón. Así la lista no se hace larguísima.
+//  - Configuración es UNA sola ruedita: en modo íconos despliega el menú con Configuración
+//    abierta; en el panel desplegado es un acordeón. Así la lista no se hace larguísima.
 //
 // Las secciones salen de lib/admin-nav.ts. "Registrar corte" vive en el panel inicial
 // (su modal depende de la semana elegida): acá solo avisa por un evento, o lleva al panel
@@ -75,50 +75,6 @@ function NavLink({
   )
 }
 
-// ── Recuadro de Configuración (modo íconos) ──────────────────────────────
-
-interface PopPos { x: number; y: number }
-
-/** Dónde abrir el recuadro: al costado del botón (columna) o debajo (franja del celular). */
-function popPosition(el: HTMLElement, mode: 'side' | 'below'): PopPos {
-  const r = el.getBoundingClientRect()
-  if (mode === 'side') {
-    return { x: r.right + 8, y: Math.max(8, Math.min(r.top, window.innerHeight - 330)) }
-  }
-  return { x: Math.max(8, Math.min(r.left, window.innerWidth - 224)), y: r.bottom + 6 }
-}
-
-function ConfigPopover({
-  items, pos, pathname, onClose,
-}: { items: AdminNavItem[]; pos: PopPos; pathname: string; onClose: () => void }) {
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
-    window.addEventListener('keydown', onKey)
-    return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
-
-  return (
-    <>
-      <div className="admin-pop__scrim" onClick={onClose} aria-hidden="true" />
-      <div className="admin-pop" style={{ left: pos.x, top: pos.y }} role="menu" aria-label="Configuración">
-        <p className="admin-pop__title">Configuración</p>
-        {items.map((it) => (
-          <Link
-            key={it.href}
-            href={it.href}
-            role="menuitem"
-            className={`admin-pop__item${isAdminNavActive(pathname, it.href) ? ' is-active' : ''}`}
-            onClick={onClose}
-          >
-            <span aria-hidden="true">{it.icon}</span>
-            <span>{it.label}</span>
-          </Link>
-        ))}
-      </div>
-    </>
-  )
-}
-
 function groupActive(group: AdminNavGroup, pathname: string): boolean {
   return group.items.some((it) => isAdminNavActive(pathname, it.href))
 }
@@ -130,12 +86,15 @@ export function AdminNav({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const router = useRouter()
   const user = useNavUser()
   const groups = adminNavGroups(user)
-  const [pop, setPop] = useState<PopPos | null>(null)
   const [configOpen, setConfigOpen] = useState(false)
 
   // El botón ≡ del panel inicial (celular) abre este mismo menú.
   useEffect(() => {
-    const onOpen = () => onOpenChange(true)
+    const onOpen = (e: Event) => {
+      // La ruedita de la franja del celular pide el menú con Configuración ya abierta.
+      if ((e as CustomEvent<{ config?: boolean } | undefined>).detail?.config) setConfigOpen(true)
+      onOpenChange(true)
+    }
     window.addEventListener(ADMIN_NAV_OPEN_EVENT, onOpen)
     return () => window.removeEventListener(ADMIN_NAV_OPEN_EVENT, onOpen)
   }, [onOpenChange])
@@ -214,44 +173,33 @@ export function AdminNav({ open, onOpenChange }: { open: boolean; onOpenChange: 
           {groups.map((g) =>
             g.id === 'configuracion' ? (
               <div key={g.id} className="admin-rail__group">
-                {open ? (
-                  <>
-                    <button
-                      type="button"
-                      className={`admin-rail__item${groupActive(g, pathname) ? ' is-active' : ''}`}
-                      onClick={() => setConfigOpen((v) => !v)}
-                      aria-expanded={configOpen}
-                    >
-                      <span className="admin-rail__icon" aria-hidden="true">⚙️</span>
-                      <span className="admin-rail__label">Configuración</span>
-                      <span className={`admin-rail__chev${configOpen ? ' is-up' : ''}`} aria-hidden="true">▾</span>
-                    </button>
-                    {configOpen && (
-                      <div className="admin-rail__sub">
-                        {g.items.map((it) => (
-                          <NavLink
-                            key={it.href}
-                            item={it}
-                            active={isAdminNavActive(pathname, it.href)}
-                            className="admin-rail__item"
-                            onNavigate={close}
-                          />
-                        ))}
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    className={`admin-rail__item${groupActive(g, pathname) ? ' is-active' : ''}`}
-                    onClick={(e) => setPop(popPosition(e.currentTarget, 'side'))}
-                    aria-haspopup="menu"
-                    aria-label="Configuración"
-                    title="Configuración"
-                  >
-                    <span className="admin-rail__icon" aria-hidden="true">⚙️</span>
-                    <span className="admin-rail__label">Configuración</span>
-                  </button>
+                <button
+                  type="button"
+                  className={`admin-rail__item${groupActive(g, pathname) ? ' is-active' : ''}`}
+                  onClick={() => {
+                    // En modo íconos despliega el menú con Configuración abierta; ya desplegado, la pliega o abre.
+                    if (!open) { setConfigOpen(true); onOpenChange(true) } else setConfigOpen((v) => !v)
+                  }}
+                  aria-expanded={open && configOpen}
+                  aria-label="Configuración"
+                  title="Configuración"
+                >
+                  <span className="admin-rail__icon" aria-hidden="true">⚙️</span>
+                  <span className="admin-rail__label">Configuración</span>
+                  <span className={`admin-rail__chev${configOpen ? ' is-up' : ''}`} aria-hidden="true">▾</span>
+                </button>
+                {open && configOpen && (
+                  <div className="admin-rail__sub">
+                    {g.items.map((it) => (
+                      <NavLink
+                        key={it.href}
+                        item={it}
+                        active={isAdminNavActive(pathname, it.href)}
+                        className="admin-rail__item"
+                        onNavigate={close}
+                      />
+                    ))}
+                  </div>
                 )}
               </div>
             ) : (
@@ -285,14 +233,6 @@ export function AdminNav({ open, onOpenChange }: { open: boolean; onOpenChange: 
         </div>
       </nav>
 
-      {pop && (
-        <ConfigPopover
-          items={groups.find((g) => g.id === 'configuracion')?.items ?? []}
-          pos={pop}
-          pathname={pathname}
-          onClose={() => setPop(null)}
-        />
-      )}
     </>
   )
 }
@@ -304,7 +244,6 @@ export function AdminNavStrip({ onOpenMenu }: { onOpenMenu: () => void }) {
   const groups = adminNavGroups(user)
   const config = groups.find((g) => g.id === 'configuracion')
   const ref = useRef<HTMLElement>(null)
-  const [pop, setPop] = useState<PopPos | null>(null)
 
   // Deja a la vista el ícono de la pantalla actual (la franja scrollea de costado).
   useEffect(() => {
@@ -332,8 +271,7 @@ export function AdminNavStrip({ onOpenMenu }: { onOpenMenu: () => void }) {
           <button
             type="button"
             className={`admin-strip__item${groupActive(config, pathname) ? ' is-active' : ''}`}
-            onClick={(e) => setPop(popPosition(e.currentTarget, 'below'))}
-            aria-haspopup="menu"
+            onClick={() => window.dispatchEvent(new CustomEvent(ADMIN_NAV_OPEN_EVENT, { detail: { config: true } }))}
             aria-label="Configuración"
             title="Configuración"
           >
@@ -341,9 +279,6 @@ export function AdminNavStrip({ onOpenMenu }: { onOpenMenu: () => void }) {
           </button>
         )}
       </nav>
-      {pop && config && (
-        <ConfigPopover items={config.items} pos={pop} pathname={pathname} onClose={() => setPop(null)} />
-      )}
     </>
   )
 }

@@ -166,37 +166,11 @@
   text-overflow: ellipsis;
 }
 .admin-rail--open .admin-rail__label { display: block; }
-.admin-rail__chev { font-size: 0.75rem; transition: transform 0.15s; }
+.admin-rail__chev { display: none; font-size: 0.75rem; transition: transform 0.15s; }
+.admin-rail--open .admin-rail__chev { display: block; }
 .admin-rail__chev.is-up { transform: rotate(180deg); }
 .admin-rail__sub { margin: 0.125rem 0 0 0.75rem; padding-left: 0.5rem; border-left: 2px solid #27272a; }
 .admin-strip__item .admin-rail__label { display: none; }
-
-/* Recuadro de Configuración (modo íconos) */
-.admin-pop__scrim { position: fixed; inset: 0; z-index: 46; }
-.admin-pop {
-  position: fixed;
-  z-index: 47;
-  width: 14rem;
-  padding: 0.375rem;
-  background: #18181b;
-  border: 1px solid #3f3f46;
-  border-radius: 0.625rem;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
-}
-.admin-pop__title { margin: 0; padding: 0.25rem 0.5rem; font-size: 0.6875rem; letter-spacing: 0.06em; text-transform: uppercase; color: #71717a; }
-.admin-pop__item {
-  display: flex;
-  align-items: center;
-  gap: 0.625rem;
-  height: 2.125rem;
-  padding: 0 0.5rem;
-  border-radius: 0.5rem;
-  font-size: 0.875rem;
-  color: #e4e4e7;
-  text-decoration: none;
-}
-.admin-pop__item:hover { background: #27272a; color: #fff; }
-.admin-pop__item.is-active { background: #27272a; box-shadow: inset 3px 0 0 #f59e0b; }
 
 /* Botón ≡ del panel inicial: solo celular (en computadora está el ☰ de la columna) */
 @media (min-width: 1024px) {

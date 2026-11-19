@@ -7,9 +7,9 @@ import HorariosView from '../horarios/horarios-view'
 type Tab = 'datos' | 'horarios'
 
 /**
- * Barberos en dos solapas: "Datos personales" (alta, comisiones, foto) y "Horarios" (franjas
- * semanales y días bloqueados de cada uno). Los horarios son del turnero: sin turnero
- * habilitado se muestra solo la primera, sin barra.
+ * Módulo Barberos: el título, y debajo sus dos solapas: "Datos personales" (alta, comisiones,
+ * foto) y "Horarios" (franjas semanales y días bloqueados de cada uno). Los horarios son del
+ * turnero: sin turnero habilitado se muestra solo la primera, sin barra de solapas.
  */
 export default function BarberosTabs({ turnero, initialTab }: { turnero: boolean; initialTab: Tab }) {
   const [tab, setTab] = useState<Tab>(turnero ? initialTab : 'datos')
@@ -22,8 +22,17 @@ export default function BarberosTabs({ turnero, initialTab }: { turnero: boolean
 
   return (
     <div>
+      <div className="w-full px-4 pt-8">
+        <div className="flowi-page-header">
+          <h1 className="text-2xl font-bold text-white">Barberos</h1>
+          <p className="text-zinc-400 text-sm mt-1">
+            Invitá, editá comisiones y gestioná el equipo
+          </p>
+        </div>
+      </div>
+
       {turnero && (
-        <div className="px-4 pt-6">
+        <div className="px-4 pt-4">
           <div role="tablist" className="inline-flex rounded-lg border border-[var(--border-mid)] bg-[var(--bg2)] p-1 gap-1">
             {([['datos', 'Datos personales'], ['horarios', 'Horarios']] as const).map(([k, label]) => (
               <button

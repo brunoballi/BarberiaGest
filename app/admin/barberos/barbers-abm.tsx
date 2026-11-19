@@ -699,16 +699,10 @@ export default function BarbersAbm() {
   const inactive = barbers.filter((b) => !b.is_active && b.archived_at == null)
 
   return (
-    <div className="w-full px-4 py-8 space-y-6">
+    <div className="w-full px-4 pt-4 pb-8 space-y-6">
 
-      {/* Header */}
-      <div className="flowi-page-header flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-white">Barberos</h1>
-          <p className="text-zinc-400 text-sm mt-1">
-            Invitá, editá comisiones y gestioná el equipo
-          </p>
-        </div>
+      {/* El título "Barberos" lo pone barberos-tabs; acá solo la acción de la solapa. */}
+      <div className="flex justify-end">
         <button
           onClick={() => { setShowInvite(true); setInviteError(null) }}
           className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold px-4 py-2.5 rounded-lg text-sm transition-colors"
