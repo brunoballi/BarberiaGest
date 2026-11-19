@@ -26,7 +26,6 @@ import {
 import type { BarberDebtSummary } from '@/lib/supabase/database.types'
 import { getMyBranchesCached } from '@/lib/hooks/use-catalogs'
 import { MONTH_NAMES } from '@/lib/supabase/supabase.client'
-import CapitalInjectionsView from './capital-injections-view'
 import './reportes.css'
 
 // ── Utilidades ────────────────────────────────────────────────────
@@ -292,25 +291,6 @@ export default function ReportesView() {
             : 'Muestra solo las liquidaciones ya pagadas (semanas cerradas y liquidadas).'}
         </p>
       </div>
-
-      {/* ── Historial de inversiones (inyección de dinero) ── */}
-      {monthFins.length > 0 && (
-        <section className="report-section">
-          <h2 className="report-section__title">Historial de inversiones</h2>
-          <div className="report-cards-grid">
-            {monthFins.map(({ branchId, branchName, monthId }) => (
-              <div key={branchId} className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-                <p className="font-bold text-zinc-100 mb-3">{branchName}</p>
-                <CapitalInjectionsView
-                  branchId={branchId}
-                  monthId={monthId}
-                  onInjectionChange={() => load()}
-                />
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
 
       {/* ── Saldo deudor: liquidaciones confirmadas con deuda (solo lectura) ── */}
       <section className="report-section">

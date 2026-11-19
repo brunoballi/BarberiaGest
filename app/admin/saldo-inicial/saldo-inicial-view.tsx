@@ -14,6 +14,7 @@ import {
   MONTH_NAMES,
 } from '@/lib/supabase/supabase.client'
 import { CurrencyInput } from '@/app/components/currency-input'
+import CapitalInjectionsView from './capital-injections-view'
 import '../admin-dashboard.css'
 
 function formatARS(n: number): string {
@@ -197,6 +198,16 @@ export default function SaldoInicialView() {
               </div>
             )}
           </div>
+
+          {/* Historial de inversiones (inyección de dinero) del mes elegido */}
+          {selectedBranch && monthId && (
+            <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+              <p className="text-xs font-semibold uppercase tracking-widest text-zinc-500 mb-3">
+                Historial de inversiones de {current ? `${MONTH_NAMES[current.month - 1]} ${current.year}` : '—'}
+              </p>
+              <CapitalInjectionsView branchId={selectedBranch} monthId={monthId} />
+            </div>
+          )}
 
           <p className="text-sm text-zinc-500">
             El detalle de ganancia neta (saldo + ingresos − gastos) se ve en el módulo <strong>Reportes</strong>.
