@@ -71,8 +71,8 @@ import { PaginationControls } from '@/app/components/pagination-controls'
 import { CurrencyInput } from '@/app/components/currency-input'
 import { CurrencyInputInline } from '@/app/components/currency-input-inline'
 import { TextInput } from '@/app/components/text-input'
-import { AdminSideDrawer } from '@/app/components/admin-side-drawer'
-import { confirmDialog } from '@/lib/confirm-dialog'
+import { ADMIN_NAV_OPEN_EVENT, ADMIN_REGISTER_CUT_EVENT } from '@/app/components/admin-nav-rail'
+import { confirmDialog, errorDialog } from '@/lib/confirm-dialog'
 import { ofrecerAplicarModeloActual } from '@/lib/modelo-desactualizado'
 
 // ─── Utilidades ────────────────────────────────────────────────────────────
@@ -215,10 +215,30 @@ export default function AdminDashboard() {
   const [error, setError] = useState<string | null>(null)
   const [currentUserId, setCurrentUserId] = useState<string>('')
   const [adminName, setAdminName]         = useState<string>('')
-  const [adminIsBarber, setAdminIsBarber] = useState<boolean>(false)
   const [showManualCut, setShowManualCut] = useState(false)
   const [debtModal, setDebtModal] = useState<{ settlementId: string; barberId: string; branchId: string; barberName: string; outstanding: number } | null>(null)
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
+
+  // "Registrar corte" desde el menú: el modal vive acá (depende de la semana elegida).
+  useEffect(() => {
+    const abrir = () => {
+      if (selectedWeek?.status === 'open') setShowManualCut(true)
+      else void errorDialog('La semana seleccionada está cerrada. Posicionate en una semana abierta para registrar cortes.')
+    }
+    window.addEventListener(ADMIN_REGISTER_CUT_EVENT, abrir)
+    return () => window.removeEventListener(ADMIN_REGISTER_CUT_EVENT, abrir)
+  }, [selectedWeek?.status])
+
+  // Llegada desde otra pantalla con "Registrar corte" (?registrar-corte=1): se abre una sola vez.
+  useEffect(() => {
+    if (!selectedWeek || !currentUserId) return
+    if (!new URLSearchParams(window.location.search).has('registrar-corte')) return
+    window.history.replaceState(null, '', '/admin')
+    const t = setTimeout(() => {
+      if (selectedWeek.status === 'open') setShowManualCut(true)
+      else void errorDialog('La semana seleccionada está cerrada. Posicionate en una semana abierta para registrar cortes.')
+    }, 0)
+    return () => clearTimeout(t)
+  }, [selectedWeek, currentUserId])
 
   // Semanas del mes seleccionado (derivado)
   const weeks: Week[] = months[selectedMonthIdx]?.weeks ?? []
@@ -353,7 +373,6 @@ export default function AdminDashboard() {
         }
         setCurrentUserId(profile.id)
         setAdminName(profile.full_name ?? '')
-        setAdminIsBarber(profile.is_barber ?? false)
         setBranches(branchList)
 
         // Reseña a Flowi: se ofrece una sola vez por sesión de navegador, y
@@ -771,11 +790,6 @@ export default function AdminDashboard() {
     }
   }
 
-  async function handleLogout() {
-    await supabase.auth.signOut()
-    window.location.href = '/login'
-  }
-
   // ─── KPIs de la semana ─────────────────────────────────────────────
   const kpis = {
     grossTotal: settlements.reduce((s, x) => s + x.gross_amount, 0),
@@ -799,15 +813,6 @@ export default function AdminDashboard() {
 
   return (
     <div className="admin-app">
-      <AdminSideDrawer
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-        onLogout={handleLogout}
-        onRegisterCut={() => { setIsDrawerOpen(false); setShowManualCut(true) }}
-        adminName={adminName}
-        isWeekClosed={selectedWeek?.status !== 'open'}
-        showBarberView={adminIsBarber}
-      />
       {/* ── HEADER WRAPPER (sticky) ── */}
       <div className="admin-header-wrapper">
 
@@ -917,10 +922,10 @@ export default function AdminDashboard() {
                 + Registrar corte
               </button>
             )}
-            {/* Botón hamburguesa para menú lateral */}
+            {/* Abre el menú lateral. Solo celular: en computadora la columna de íconos ya está a la vista. */}
             <button
-              onClick={() => setIsDrawerOpen(true)}
-              className="admin-btn admin-btn--ghost"
+              onClick={() => window.dispatchEvent(new Event(ADMIN_NAV_OPEN_EVENT))}
+              className="admin-btn admin-btn--ghost admin-nav-open-btn"
               aria-label="Abrir menú"
               title="Menú"
             >

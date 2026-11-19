@@ -75,11 +75,132 @@
 .admin-strip__item .admin-rail__icon { font-size: 1.125rem; }
 .admin-strip__item .admin-rail__label { display: none; }
 
-/* Computadora: columna fija a la izquierda, solo íconos; el botón la expande */
-.admin-rail,
-.admin-rail__scrim { display: none; }
+/* Menú único: columna de íconos a la izquierda; desplegado muestra nombres. */
+.admin-rail__scrim { position: fixed; inset: 0; z-index: 44; background: rgba(0, 0, 0, 0.45); }
 
+/* Celular: el menú solo existe desplegado, como panel que sale por la izquierda */
+.admin-rail { display: none; }
+.admin-rail--open {
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: min(16rem, 86vw);
+  z-index: 45;
+  padding: 0.5rem 0.5rem 0.75rem;
+  background: #09090b;
+  border-right: 1px solid #1c1c1e;
+  box-shadow: 8px 0 24px rgba(0, 0, 0, 0.5);
+}
+
+.admin-rail__head { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.25rem; }
+.admin-rail__who { display: none; min-width: 0; line-height: 1.2; }
+.admin-rail__who strong { display: block; font-size: 0.9rem; color: #fff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-rail__who span { font-size: 0.7rem; color: #71717a; }
+.admin-rail--open .admin-rail__who { display: block; }
+.admin-rail--open .admin-rail__toggle { width: 2.125rem; flex-shrink: 0; padding: 0; justify-content: center; }
+
+.admin-rail__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: none;
+}
+.admin-rail__body::-webkit-scrollbar { display: none; }
+.admin-rail__foot { margin-top: auto; padding-top: 0.375rem; border-top: 1px solid #1c1c1e; }
+
+.admin-rail__group + .admin-rail__group,
+.admin-rail__head + .admin-rail__body > .admin-rail__group + .admin-rail__group {
+  margin-top: 0.375rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid #1c1c1e;
+}
+.admin-rail__title {
+  display: none;
+  margin: 0;
+  padding: 0.25rem 0.625rem 0.125rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #71717a;
+}
+.admin-rail--open .admin-rail__title { display: block; }
+
+.admin-rail__item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  height: 2.125rem;
+  flex-shrink: 0;
+  padding: 0 0.625rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: #d4d4d8;
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.admin-rail__item:hover { background: #27272a; color: #fff; }
+.admin-rail__item.is-active { background: #27272a; color: #fff; box-shadow: inset 3px 0 0 #f59e0b; }
+.admin-rail__item:focus-visible { outline: 2px solid #f59e0b; outline-offset: -2px; }
+.admin-rail__item--accent { background: rgba(245, 158, 11, 0.1); color: #fbbf24; }
+.admin-rail__item--accent:hover { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
+.admin-rail__item--logout { color: #fca5a5; }
+.admin-rail__item--logout:hover { background: rgba(239, 68, 68, 0.15); color: #fecaca; }
+
+.admin-rail__icon { flex-shrink: 0; width: 1.25rem; text-align: center; font-size: 1.125rem; line-height: 1; }
+.admin-rail__label {
+  display: none;
+  flex: 1;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.admin-rail--open .admin-rail__label { display: block; }
+.admin-rail__chev { font-size: 0.75rem; transition: transform 0.15s; }
+.admin-rail__chev.is-up { transform: rotate(180deg); }
+.admin-rail__sub { margin: 0.125rem 0 0 0.75rem; padding-left: 0.5rem; border-left: 2px solid #27272a; }
+.admin-strip__item .admin-rail__label { display: none; }
+
+/* Recuadro de Configuración (modo íconos) */
+.admin-pop__scrim { position: fixed; inset: 0; z-index: 46; }
+.admin-pop {
+  position: fixed;
+  z-index: 47;
+  width: 14rem;
+  padding: 0.375rem;
+  background: #18181b;
+  border: 1px solid #3f3f46;
+  border-radius: 0.625rem;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.55);
+}
+.admin-pop__title { margin: 0; padding: 0.25rem 0.5rem; font-size: 0.6875rem; letter-spacing: 0.06em; text-transform: uppercase; color: #71717a; }
+.admin-pop__item {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  height: 2.125rem;
+  padding: 0 0.5rem;
+  border-radius: 0.5rem;
+  font-size: 0.875rem;
+  color: #e4e4e7;
+  text-decoration: none;
+}
+.admin-pop__item:hover { background: #27272a; color: #fff; }
+.admin-pop__item.is-active { background: #27272a; box-shadow: inset 3px 0 0 #f59e0b; }
+
+/* Botón ≡ del panel inicial: solo celular (en computadora está el ☰ de la columna) */
 @media (min-width: 1024px) {
+  .admin-nav-open-btn { display: none !important; }
   .admin-strip { display: none; }
 
   .admin-shell { padding-left: 3.5rem; }
@@ -92,79 +213,17 @@
     bottom: 0;
     left: 0;
     width: 3.5rem;
-    z-index: 30; /* debajo de los modales (z-50) y del cajón de la pantalla inicial */
+    z-index: 30; /* debajo de los modales (z-50) */
     padding: 0.5rem 0.375rem;
     background: #09090b;
     border-right: 1px solid #1c1c1e;
-    overflow-x: hidden;
-    overflow-y: auto;
-    scrollbar-width: none; /* si la pantalla es baja se desliza igual, sin barra a la vista */
     transition: width 0.18s ease, box-shadow 0.18s ease;
   }
-  /* Expandido: se superpone al contenido (no lo empuja) */
+  /* Desplegado: se superpone al contenido (no lo empuja) */
   .admin-rail--open {
-    width: 15rem;
+    width: 16rem;
     z-index: 45;
+    padding: 0.5rem 0.5rem 0.75rem;
     box-shadow: 8px 0 24px rgba(0, 0, 0, 0.5);
   }
-  .admin-rail__scrim {
-    display: block;
-    position: fixed;
-    inset: 0;
-    z-index: 44;
-    background: rgba(0, 0, 0, 0.35);
-  }
-
-  .admin-rail__group + .admin-rail__group,
-  .admin-rail__toggle + .admin-rail__group {
-    margin-top: 0.375rem;
-    padding-top: 0.375rem;
-    border-top: 1px solid #1c1c1e;
-  }
-  .admin-rail__title {
-    display: none;
-    margin: 0;
-    padding: 0.25rem 0.625rem 0.125rem;
-    font-size: 0.6875rem;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: #71717a;
-  }
-  .admin-rail--open .admin-rail__title { display: block; }
-
-  .admin-rail__item {
-    display: flex;
-    align-items: center;
-    gap: 0.75rem;
-    width: 100%;
-    height: 2.125rem; /* compacto: que entren las 18 secciones en una pantalla baja */
-    flex-shrink: 0;
-    padding: 0 0.625rem;
-    border: 0;
-    border-radius: 0.5rem;
-    background: transparent;
-    color: #d4d4d8;
-    font: inherit;
-    text-decoration: none;
-    cursor: pointer;
-    transition: background 0.12s, color 0.12s;
-  }
-  .admin-rail__item:hover { background: #27272a; color: #fff; }
-  .admin-rail__item.is-active { background: #27272a; color: #fff; box-shadow: inset 3px 0 0 #f59e0b; }
-  .admin-rail__item:focus-visible { outline: 2px solid #f59e0b; outline-offset: -2px; }
-
-  .admin-rail__icon { flex-shrink: 0; width: 1.25rem; text-align: center; font-size: 1.125rem; line-height: 1; }
-  .admin-rail__label {
-    display: none;
-    font-size: 0.875rem;
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .admin-rail--open .admin-rail__label { display: block; }
-}
-
-@media (min-width: 1024px) {
-  .admin-rail::-webkit-scrollbar { display: none; }
 }
