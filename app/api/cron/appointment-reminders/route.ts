@@ -20,7 +20,7 @@ import { createClient } from '@supabase/supabase-js'
 import { sendTemplateMessage, isWhatsAppConfigured, toWhatsAppRecipient, WhatsAppError } from '@/lib/whatsapp'
 import { resolveSenderPhoneNumberId } from '@/lib/whatsapp-sender'
 import { registerWhatsAppMessage } from '@/lib/whatsapp-log'
-import { hora, primerNombre } from '@/lib/whatsapp-format'
+import { hora, numeroConsulta, primerNombre } from '@/lib/whatsapp-format'
 
 function adminClient() {
   return createClient(
@@ -88,6 +88,19 @@ export async function GET(request: NextRequest) {
   // Un número por sucursal: se resuelve una vez por sucursal y por corrida.
   const numeros = new Map<string, string | null>()
 
+  // WhatsApp de consulta de cada sucursal, para la leyenda del aviso ("escribinos al ..."):
+  // una sola consulta por corrida, y cada turno usa el de SU sucursal.
+  const consultas = new Map<string, string | null>()
+  if (due.length > 0) {
+    const { data: sucursales } = await db
+      .from('branches')
+      .select('id, whatsapp_phone')
+      .in('id', [...new Set(due.map((d) => d.branch_id))])
+    for (const s of (sucursales ?? []) as { id: string; whatsapp_phone: string | null }[]) {
+      consultas.set(s.id, s.whatsapp_phone)
+    }
+  }
+
   for (const appt of due) {
     if (!numeros.has(appt.branch_id)) {
       numeros.set(appt.branch_id, await resolveSenderPhoneNumberId(appt.branch_id))
@@ -114,7 +127,7 @@ export async function GET(request: NextRequest) {
         phoneNumberId,
         to: destinatario,
         templateName: 'recordatorio_turno_v4',
-        bodyParams: [primerNombre(appt.client_name), appt.branch_name, hora(appt.starts_at), appt.services ?? ''],
+        bodyParams: [primerNombre(appt.client_name), appt.branch_name, hora(appt.starts_at), appt.services ?? '', numeroConsulta(consultas.get(appt.branch_id))],
         buttonUrlParam: `${appt.reference}&sucursal=${appt.branch_id}`,
       })
       await registerWhatsAppMessage({ wamid: messageId, branchId: appt.branch_id, appointmentId: appt.appointment_id, kind: 'recordatorio', recipient: destinatario })

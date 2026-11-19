@@ -27,7 +27,7 @@ import { sendTemplateMessage, isWhatsAppConfigured, toWhatsAppRecipient, WhatsAp
 import { findAppointmentForNotice, claimNotice } from '@/lib/supabase/booking-notices'
 import { resolveSenderPhoneNumberId } from '@/lib/whatsapp-sender'
 import { registerWhatsAppMessage } from '@/lib/whatsapp-log'
-import { fechaLarga, hora, primerNombre } from '@/lib/whatsapp-format'
+import { fechaLarga, hora, numeroConsulta, primerNombre } from '@/lib/whatsapp-format'
 import { turneroApiGate } from '@/lib/turnero-guard'
 
 export async function POST(request: NextRequest) {
@@ -92,7 +92,7 @@ export async function POST(request: NextRequest) {
       phoneNumberId,
       to: destinatario,
       templateName: 'confirmacion_turno_v4',
-      bodyParams: [primerNombre(appt.clientName), appt.branchName, fechaLarga(appt.startsAt), hora(appt.startsAt), servicios, appt.reference],
+      bodyParams: [primerNombre(appt.clientName), appt.branchName, fechaLarga(appt.startsAt), hora(appt.startsAt), servicios, appt.reference, numeroConsulta(appt.branchWhatsapp)],
       buttonUrlParam: botonParam,
     })
     await registerWhatsAppMessage({ wamid: messageId, branchId: appt.branchId, appointmentId: appt.id, kind: 'confirmacion', recipient: destinatario })

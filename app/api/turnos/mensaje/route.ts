@@ -21,7 +21,7 @@ import { turneroApiGate } from '@/lib/turnero-guard'
 import { sendTemplateMessage, isWhatsAppConfigured, toWhatsAppRecipient, WhatsAppError } from '@/lib/whatsapp'
 import { resolveSenderPhoneNumberId } from '@/lib/whatsapp-sender'
 import { registerWhatsAppMessage } from '@/lib/whatsapp-log'
-import { hora, primerNombre } from '@/lib/whatsapp-format'
+import { hora, numeroConsulta, primerNombre } from '@/lib/whatsapp-format'
 import { AVISOS_BARBERO, motivoNoAvisable } from '@/lib/aviso-barbero'
 
 interface TurnoParaAviso {
@@ -32,7 +32,7 @@ interface TurnoParaAviso {
   starts_at: string
   reference: string
   client: { full_name: string; phone: string } | null
-  branch: { name: string } | null
+  branch: { name: string; whatsapp_phone: string | null } | null
 }
 
 export async function POST(request: NextRequest) {
@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
   const { data: turno } = await admin
     .from('appointments')
-    .select('id, branch_id, barber_id, status, starts_at, reference, client:appointment_clients(full_name, phone), branch:branches(name)')
+    .select('id, branch_id, barber_id, status, starts_at, reference, client:appointment_clients(full_name, phone), branch:branches(name, whatsapp_phone)')
     .eq('id', body.appointmentId)
     .maybeSingle<TurnoParaAviso>()
   // Un turno de otro barbero responde igual que uno inexistente.
@@ -99,12 +99,12 @@ export async function POST(request: NextRequest) {
 
   try {
     // El ORDEN de bodyParams tiene que coincidir con {{1}}, {{2}}... de la plantilla
-    // (lib/whatsapp-templates.ts): nombre, sucursal, hora del turno.
+    // (lib/whatsapp-templates.ts): nombre, sucursal, hora del turno, WhatsApp de consulta de la sucursal.
     const { messageId } = await sendTemplateMessage({
       phoneNumberId,
       to: destinatario,
       templateName: aviso.plantilla,
-      bodyParams: [primerNombre(turno.client.full_name), turno.branch?.name ?? '', hora(turno.starts_at)],
+      bodyParams: [primerNombre(turno.client.full_name), turno.branch?.name ?? '', hora(turno.starts_at), numeroConsulta(turno.branch?.whatsapp_phone)],
       buttonUrlParam: `${turno.reference}&sucursal=${turno.branch_id}`,
     })
     await registerWhatsAppMessage({

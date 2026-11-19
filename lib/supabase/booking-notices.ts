@@ -20,6 +20,8 @@ export interface AppointmentNotice {
   createdAt: string
   branchId: string
   branchName: string
+  /** WhatsApp de consulta de la sucursal (branches.whatsapp_phone), para la leyenda de los avisos. */
+  branchWhatsapp: string | null
   barberName: string
   clientName: string
   clientEmail: string | null
@@ -49,7 +51,7 @@ export async function findAppointmentForNotice(
   if (!client || client.phone !== phone.trim()) return null
 
   const [{ data: branch }, { data: barber }, { data: services }] = await Promise.all([
-    db.from('branches').select('name').eq('id', appt.branch_id).maybeSingle(),
+    db.from('branches').select('name, whatsapp_phone').eq('id', appt.branch_id).maybeSingle(),
     db.from('profiles').select('full_name').eq('id', appt.barber_id).maybeSingle(),
     db.from('appointment_services')
       .select('service_name, price')
@@ -68,6 +70,7 @@ export async function findAppointmentForNotice(
     createdAt: appt.created_at,
     branchId: appt.branch_id,
     branchName: branch?.name ?? 'la barbería',
+    branchWhatsapp: (branch?.whatsapp_phone as string | null | undefined) ?? null,
     barberName: barber?.full_name ?? '',
     clientName: client.full_name,
     clientEmail: client.email,

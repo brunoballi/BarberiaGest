@@ -30,6 +30,16 @@ export interface TemplateDef {
 /** Valores de ejemplo que Meta pide para revisar. No son datos reales de nadie. */
 const GESTIONAR_EJEMPLO = '9CD153CA&sucursal=00000000-0000-0000-0000-000000000000'
 
+/**
+ * Leyenda al final de cada aviso: los avisos salen de un número SOLO para avisos (no recibe
+ * mensajes), y el cliente tiene que saber a qué WhatsApp escribir. La variable es el WhatsApp
+ * de consulta de LA SUCURSAL del turno (branches.whatsapp_phone, formateado con numeroConsulta).
+ * Termina en texto a propósito: Meta rechaza plantillas que terminan en una variable.
+ */
+const leyenda = (n: number) =>
+  `\n\n💬 Este número es solo para avisos. Para consultas o atención al cliente, escribinos al WhatsApp de la sucursal: {{${n}}}. ¡Gracias!`
+const EJEMPLO_CONSULTA = '341 682-5981'
+
 export function plantillasTurnero(origin: string): TemplateDef[] {
   const boton = (texto: string, url: string, dinamica: boolean) => ({
     type: 'BUTTONS',
@@ -54,8 +64,9 @@ export function plantillasTurnero(origin: string): TemplateDef[] {
             '🗓️ *Cuándo:* {{3}} a las {{4}} hs\n' +
             '✂️ *Servicio:* {{5}}\n' +
             '🔖 *Código de reserva:* {{6}}\n\n' +
-            'Si no podés venir, cancelalo desde el botón de abajo.',
-          example: { body_text: [['Juan', 'Barbería Central', 'viernes, 2 de octubre', '18:40', 'Corte clásico', '9CD153CA']] },
+            'Si no podés venir, cancelalo desde el botón de abajo.' +
+            leyenda(7),
+          example: { body_text: [['Juan', 'Barbería Central', 'viernes, 2 de octubre', '18:40', 'Corte clásico', '9CD153CA', EJEMPLO_CONSULTA]] },
         },
         boton('Gestionar mi turno', `${origin}/reservar/gestionar?ref={{1}}`, true),
       ],
@@ -72,8 +83,9 @@ export function plantillasTurnero(origin: string): TemplateDef[] {
             '📍 *Dónde:* {{2}}\n' +
             '🕒 *Hora:* {{3}} hs\n' +
             '✂️ *Servicio:* {{4}}\n\n' +
-            'Si no podés venir, cancelalo desde el botón de abajo así otra persona puede usar el horario.',
-          example: { body_text: [['Juan', 'Barbería Central', '18:40', 'Corte clásico']] },
+            'Si no podés venir, cancelalo desde el botón de abajo así otra persona puede usar el horario.' +
+            leyenda(5),
+          example: { body_text: [['Juan', 'Barbería Central', '18:40', 'Corte clásico', EJEMPLO_CONSULTA]] },
         },
         boton('Gestionar mi turno', `${origin}/reservar/gestionar?ref={{1}}`, true),
       ],
@@ -87,8 +99,9 @@ export function plantillasTurnero(origin: string): TemplateDef[] {
           type: 'BODY',
           text:
             'Hola {{1}}, tu turno en {{2}} del {{3}} a las {{4}} hs quedó cancelado ❌\n\n' +
-            'Cuando quieras, podés reservar uno nuevo desde el botón de abajo.',
-          example: { body_text: [['Juan', 'Barbería Central', 'viernes, 2 de octubre', '18:40']] },
+            'Cuando quieras, podés reservar uno nuevo desde el botón de abajo.' +
+            leyenda(5),
+          example: { body_text: [['Juan', 'Barbería Central', 'viernes, 2 de octubre', '18:40', EJEMPLO_CONSULTA]] },
         },
         boton('Reservar de nuevo', `${origin}/reservar`, false),
       ],
@@ -102,8 +115,9 @@ export function plantillasTurnero(origin: string): TemplateDef[] {
           type: 'BODY',
           text:
             'Hola {{1}}, te escribimos de {{2}}: tu turno de las {{3}} hs ya empezó y te estamos esperando ⏳\n\n' +
-            'Si no vas a llegar, cancelalo desde el botón de abajo así otra persona puede usar el horario.',
-          example: { body_text: [['Juan', 'Barbería Central', '18:40']] },
+            'Si no vas a llegar, cancelalo desde el botón de abajo así otra persona puede usar el horario.' +
+            leyenda(4),
+          example: { body_text: [['Juan', 'Barbería Central', '18:40', EJEMPLO_CONSULTA]] },
         },
         boton('Gestionar mi turno', `${origin}/reservar/gestionar?ref={{1}}`, true),
       ],
@@ -117,8 +131,9 @@ export function plantillasTurnero(origin: string): TemplateDef[] {
           type: 'BODY',
           text:
             'Hola {{1}}, en {{2}} tuvimos un imprevisto y tu turno de las {{3}} hs puede demorarse unos minutos. Gracias por la paciencia 🙏\n\n' +
-            'Si preferís no esperar, podés cancelarlo desde el botón de abajo.',
-          example: { body_text: [['Juan', 'Barbería Central', '18:40']] },
+            'Si preferís no esperar, podés cancelarlo desde el botón de abajo.' +
+            leyenda(4),
+          example: { body_text: [['Juan', 'Barbería Central', '18:40', EJEMPLO_CONSULTA]] },
         },
         boton('Gestionar mi turno', `${origin}/reservar/gestionar?ref={{1}}`, true),
       ],
