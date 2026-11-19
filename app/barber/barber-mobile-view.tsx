@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { CurrencyInput } from '@/app/components/currency-input'
 import { TextInput } from '@/app/components/text-input'
 import {
@@ -36,7 +36,12 @@ import {
 } from '@/lib/supabase/supabase.client'
 import { settlementCompensation, isBoxRentalSettlement } from '@/lib/settlement-model'
 import { useServices, useActiveBenefits } from '@/lib/hooks/use-catalogs'
-import { BarberSideDrawer } from '@/app/components/barber-side-drawer'
+import {
+  BARBER_NAV_GO_EVENT,
+  setBarberNavState,
+  resetBarberNavState,
+  type BarberNavTarget,
+} from '@/lib/barber-nav-store'
 import BarberAgendaView from './barber-agenda-view'
 import { linkAppointmentTransaction, type BarberAgendaAppointment } from '@/lib/supabase/appointments'
 import { canUseTurnero } from '@/lib/turnero-access'
@@ -149,7 +154,6 @@ export default function BarberMobileView() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false)
 
   // Servicios desde React Query (cache 10 min, compartido). Fallback a defaults.
   const servicesQuery = useServices(profile?.branch_id)
@@ -829,10 +833,39 @@ export default function BarberMobileView() {
     setView('register')
   }
 
-  async function handleLogout() {
-    await supabase.auth.signOut()
-    window.location.href = '/login'
-  }
+  // Menú lateral (components/barber-nav, en el layout): se le publica qué vista está abierta y qué
+  // secciones tiene habilitadas este barbero, y se atienden sus pedidos de ir a una sección.
+  useEffect(() => {
+    setBarberNavState({
+      view,
+      name: profile?.full_name ?? '',
+      turnero: turneroOn,
+      advances: advancesAllowed,
+      isAdmin: profile?.role === 'admin',
+    })
+  }, [view, profile?.full_name, profile?.role, turneroOn, advancesAllowed])
+  useEffect(() => resetBarberNavState, [])
+
+  const navGoRef = useRef<(target: BarberNavTarget) => void>(() => {})
+  useEffect(() => {
+    // Sin lista de dependencias a propósito: cada render deja la versión actual de las funciones.
+    navGoRef.current = (target) => {
+      switch (target) {
+        case 'home': setEditingTx(null); setView('home'); break
+        case 'register': goToRegister(); break
+        case 'settlements': void goToSettlements(); break
+        case 'maintenance': void goToMaintenance(); break
+        case 'agenda': setView('agenda'); break
+        // "Pedir adelanto" se pide desde el inicio, que es donde vive su ventana.
+        case 'advance': setView('home'); setShowAdvanceModal(true); setAdvanceDone(false); break
+      }
+    }
+  })
+  useEffect(() => {
+    const onGo = (e: Event) => navGoRef.current((e as CustomEvent<{ target: BarberNavTarget }>).detail.target)
+    window.addEventListener(BARBER_NAV_GO_EVENT, onGo)
+    return () => window.removeEventListener(BARBER_NAV_GO_EVENT, onGo)
+  }, [])
 
   if (loading) {
     return (
@@ -1784,20 +1817,6 @@ export default function BarberMobileView() {
         onClose={() => setShowFlowyReviewPrompt(false)}
       />
     )}
-    <BarberSideDrawer
-      isOpen={isDrawerOpen}
-      onClose={() => setIsDrawerOpen(false)}
-      onLogout={handleLogout}
-      onRegisterCut={() => { setIsDrawerOpen(false); goToRegister() }}
-      onViewLiquidations={() => { setIsDrawerOpen(false); goToSettlements() }}
-      onViewMaintenance={() => { setIsDrawerOpen(false); goToMaintenance() }}
-      onViewAgenda={turneroOn ? () => { setIsDrawerOpen(false); setView('agenda') } : undefined}
-      onRequestAdvance={() => { setIsDrawerOpen(false); setShowAdvanceModal(true); setAdvanceDone(false) }}
-      advanceEnabled={advancesAllowed}
-      barberName={profile?.full_name || 'Barbero'}
-      showAdminPanel={profile?.role === 'admin'}
-      onGoToAdminPanel={() => { window.location.href = '/admin' }}
-    />
     <div className="valhalla-app animate-fadein min-h-screen flex flex-col">
       <header className="barber-header">
         <div className="barber-header__brand">
@@ -1815,9 +1834,6 @@ export default function BarberMobileView() {
               </p>
             </div>
           </div>
-          <button onClick={() => setIsDrawerOpen(true)} className="icon-btn" aria-label="Abrir menú" title="Menú">
-            <span className="text-xl">≡</span>
-          </button>
         </div>
       </header>
 

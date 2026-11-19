@@ -29,6 +29,7 @@ import {
   type AdminNavGroup,
   type AdminNavItem,
 } from '@/lib/admin-nav'
+import './side-nav.css'
 
 /** Eventos que se mandan entre el menú y el panel inicial. */
 export const ADMIN_NAV_OPEN_EVENT = 'admin-nav:open'

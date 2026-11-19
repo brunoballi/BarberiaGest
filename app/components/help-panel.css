@@ -22,12 +22,6 @@
   justify-content: center;
 }
 
-/* Cuando el drawer lateral está abierto (ancho 16rem), el FAB se corre
-   a la izquierda del panel para no tapar el botón "Cerrar sesión". */
-body.drawer-open .help-fab {
-  right: 17rem;
-}
-
 .help-fab:hover {
   transform: translateY(-2px) scale(1.05);
   box-shadow:
