@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import './admin-layout.css'
 import HelpPanel from '../components/help-panel'
+import { AdminNavRail, AdminNavStrip } from '../components/admin-nav-rail'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
@@ -11,7 +12,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const isSelectBranch = pathname === '/admin/select-branch'
 
   return (
-    <>
+    <div className={isSelectBranch ? undefined : 'admin-shell'}>
+      {/* Menú de íconos en todo /admin/* (menos el selector de sucursal, que es previo al panel) */}
+      {!isSelectBranch && <AdminNavRail />}
       {!isRoot && (
         <div className="admin-back-bar">
           <Link href="/admin" className="admin-back-btn">
@@ -21,11 +24,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </svg>
             Volver al panel
           </Link>
+          {!isSelectBranch && <AdminNavStrip />}
         </div>
       )}
       {children}
       {/* FAB de ayuda en todo /admin/* excepto select-branch */}
       {!isSelectBranch && <HelpPanel role="admin" />}
-    </>
+    </div>
   )
 }

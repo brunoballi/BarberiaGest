@@ -4,6 +4,12 @@ import React, { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase/supabase.client'
 import { canUseTurnero, isDeveloper } from '@/lib/turnero-access'
+import {
+  ADMIN_NAV_PRINCIPAL,
+  ADMIN_NAV_TURNERO,
+  ADMIN_NAV_CONFIGURACION,
+  ADMIN_NAV_RESENAS,
+} from '@/lib/admin-nav'
 
 interface AdminSideDrawerProps {
   isOpen: boolean
@@ -110,51 +116,22 @@ export function AdminSideDrawer({
             {isWeekClosed && <span className="ml-auto text-xs text-zinc-500">semana cerrada</span>}
           </button>
 
-          <Link
-            href="/admin/gastos"
-            onClick={onClose}
-            className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
-          >
-            <span className="text-xl">💸</span>
-            <span className="font-medium">Gastos</span>
-          </Link>
-
-          <Link
-            href="/admin/saldo-inicial"
-            onClick={onClose}
-            className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
-          >
-            <span className="text-xl">💵</span>
-            <span className="font-medium">Saldo inicial</span>
-          </Link>
-
-          <Link
-            href="/admin/retiros-socios"
-            onClick={onClose}
-            className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
-          >
-            <span className="text-xl">🏦</span>
-            <span className="font-medium">Retiros socios</span>
-          </Link>
-
-          <Link
-            href="/admin/reportes"
-            onClick={onClose}
-            className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
-          >
-            <span className="text-xl">📊</span>
-            <span className="font-medium">Reportes</span>
-          </Link>
+          {ADMIN_NAV_PRINCIPAL.map((it) => (
+            <Link
+              key={it.href}
+              href={it.href}
+              onClick={onClose}
+              className="drawer-item flex items-center gap-3 px-4 py-3 rounded-lg hover:bg-zinc-800 transition-colors text-white"
+            >
+              <span className="text-xl">{it.icon}</span>
+              <span className="font-medium">{it.label}</span>
+            </Link>
+          ))}
 
           {showTurnero && (
             <div className="mt-2 pt-2 border-t border-zinc-800">
               <p className="px-4 py-1 text-[11px] uppercase tracking-wide text-zinc-500">Turnero</p>
-              {[
-                { href: '/admin/turnos', icon: '📆', label: 'Turnos' },
-                { href: '/admin/bloqueos', icon: '🔒', label: 'Bloqueos' },
-                { href: '/admin/clientes', icon: '🧑‍🤝‍🧑', label: 'Clientes' },
-                { href: '/admin/marca', icon: '🎨', label: 'Marca y WhatsApp' },
-              ].map((it) => (
+              {ADMIN_NAV_TURNERO.map((it) => (
                 <Link
                   key={it.href}
                   href={it.href}
@@ -181,64 +158,16 @@ export function AdminSideDrawer({
             {/* Submenu de configuración */}
             {showConfigSubmenu && (
               <div className="space-y-1 mt-1 ml-4 border-l-2 border-zinc-700 pl-3">
-                <Link
-                  href="/admin/configuracion"
-                  onClick={onClose}
-                  className="drawer-submenu-item flex items-center gap-2 px-3 py-2 rounded text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors text-sm"
-                >
-                  📅 Calendario
-                </Link>
-                <Link
-                  href="/admin/barberos"
-                  onClick={onClose}
-                  className="drawer-submenu-item flex items-center gap-2 px-3 py-2 rounded text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors text-sm"
-                >
-                  👥 Barberos
-                </Link>
-                <Link
-                  href="/admin/servicios"
-                  onClick={onClose}
-                  className="drawer-submenu-item flex items-center gap-2 px-3 py-2 rounded text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors text-sm"
-                >
-                  🎯 Servicios
-                </Link>
-                <Link
-                  href="/admin/beneficios"
-                  onClick={onClose}
-                  className="drawer-submenu-item flex items-center gap-2 px-3 py-2 rounded text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors text-sm"
-                >
-                  🎁 Beneficios
-                </Link>
-                <Link
-                  href="/admin/mantenimiento"
-                  onClick={onClose}
-                  className="drawer-submenu-item flex items-center gap-2 px-3 py-2 rounded text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors text-sm"
-                >
-                  🧹 Mantenimiento
-                </Link>
-                <Link
-                  href="/admin/auditoria"
-                  onClick={onClose}
-                  className="drawer-submenu-item flex items-center gap-2 px-3 py-2 rounded text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors text-sm"
-                >
-                  🔍 Auditoría
-                </Link>
-                <Link
-                  href="/admin/admins"
-                  onClick={onClose}
-                  className="drawer-submenu-item flex items-center gap-2 px-3 py-2 rounded text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors text-sm"
-                >
-                  🔐 Administradores
-                </Link>
-                {showDev && (
+                {(showDev ? [...ADMIN_NAV_CONFIGURACION, ADMIN_NAV_RESENAS] : ADMIN_NAV_CONFIGURACION).map((it) => (
                   <Link
-                    href="/admin/resenas"
+                    key={it.href}
+                    href={it.href}
                     onClick={onClose}
                     className="drawer-submenu-item flex items-center gap-2 px-3 py-2 rounded text-zinc-300 hover:text-white hover:bg-zinc-800 transition-colors text-sm"
                   >
-                    ⭐ Reseñas Flowi
+                    {it.icon} {it.label}
                   </Link>
-                )}
+                ))}
               </div>
             )}
           </div>
