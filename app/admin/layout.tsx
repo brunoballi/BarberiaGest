@@ -5,13 +5,13 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import './admin-layout.css'
 import HelpPanel from '../components/help-panel'
-import { AdminNav, AdminNavStrip } from '../components/admin-nav-rail'
+import { AdminNav } from '../components/admin-nav-rail'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const isRoot = pathname === '/admin'
   const isSelectBranch = pathname === '/admin/select-branch'
-  // Menú desplegado (con nombres) o solo íconos. Lo comparten la columna y la franja del celular.
+  // Menú desplegado (con nombres) o solo íconos.
   const [navOpen, setNavOpen] = useState(false)
 
   return (
@@ -27,7 +27,6 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
             </svg>
             Volver al panel
           </Link>
-          {!isSelectBranch && <AdminNavStrip onOpenMenu={() => setNavOpen(true)} />}
         </div>
       )}
       {children}

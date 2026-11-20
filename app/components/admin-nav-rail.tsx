@@ -4,11 +4,9 @@
 // EL menú del admin (reemplaza al cajón del panel inicial). Está en TODAS las
 // pantallas de /admin.
 //
-//  - Computadora (≥1024px): columna fija a la izquierda, SOLO íconos. El botón ☰ la
+//  - Columna fija a la izquierda, SOLO íconos, en celular y en computadora. El botón ☰ la
 //    despliega mostrando los nombres (encima del contenido, sin moverlo); la ✕ la
 //    vuelve a dejar en íconos.
-//  - Celular (<1024px): franja de íconos dentro de la barra "Volver al panel" (AdminNavStrip),
-//    con ☰ para abrir el mismo panel desplegado. En el panel inicial lo abre el botón ≡.
 //  - Configuración es UNA sola ruedita: en modo íconos despliega el menú con Configuración
 //    abierta; en el panel desplegado es un acordeón. Así la lista no se hace larguísima.
 //
@@ -17,7 +15,7 @@
 // con ?registrar-corte=1 si se pide desde otra pantalla.
 // ============================================================
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { supabase, getCurrentProfile } from '@/lib/supabase/supabase.client'
@@ -31,8 +29,7 @@ import {
 } from '@/lib/admin-nav'
 import './side-nav.css'
 
-/** Eventos que se mandan entre el menú y el panel inicial. */
-export const ADMIN_NAV_OPEN_EVENT = 'admin-nav:open'
+/** Evento que se manda del menú al panel inicial. */
 export const ADMIN_REGISTER_CUT_EVENT = 'admin:register-cut'
 
 interface NavUser { name: string; isBarber: boolean; showTurnero: boolean; showDev: boolean }
@@ -88,17 +85,6 @@ export function AdminNav({ open, onOpenChange }: { open: boolean; onOpenChange: 
   const user = useNavUser()
   const groups = adminNavGroups(user)
   const [configOpen, setConfigOpen] = useState(false)
-
-  // El botón ≡ del panel inicial (celular) abre este mismo menú.
-  useEffect(() => {
-    const onOpen = (e: Event) => {
-      // La ruedita de la franja del celular pide el menú con Configuración ya abierta.
-      if ((e as CustomEvent<{ config?: boolean } | undefined>).detail?.config) setConfigOpen(true)
-      onOpenChange(true)
-    }
-    window.addEventListener(ADMIN_NAV_OPEN_EVENT, onOpen)
-    return () => window.removeEventListener(ADMIN_NAV_OPEN_EVENT, onOpen)
-  }, [onOpenChange])
 
   useEffect(() => {
     if (!open) return
@@ -234,52 +220,6 @@ export function AdminNav({ open, onOpenChange }: { open: boolean; onOpenChange: 
         </div>
       </nav>
 
-    </>
-  )
-}
-
-/** Franja de íconos para celular, dentro de la barra "Volver al panel". */
-export function AdminNavStrip({ onOpenMenu }: { onOpenMenu: () => void }) {
-  const pathname = usePathname()
-  const user = useNavUser()
-  const groups = adminNavGroups(user)
-  const config = groups.find((g) => g.id === 'configuracion')
-  const ref = useRef<HTMLElement>(null)
-
-  // Deja a la vista el ícono de la pantalla actual (la franja scrollea de costado).
-  useEffect(() => {
-    ref.current?.querySelector('.is-active')?.scrollIntoView({ inline: 'center', block: 'nearest' })
-  }, [pathname, groups.length])
-
-  return (
-    <>
-      <nav ref={ref} className="admin-strip" aria-label="Secciones de administración">
-        <button type="button" className="admin-strip__item" onClick={onOpenMenu} aria-label="Desplegar menú" title="Desplegar menú">
-          <span className="admin-rail__icon" aria-hidden="true">☰</span>
-        </button>
-        {groups
-          .filter((g) => g.id !== 'configuracion')
-          .flatMap((g) => g.items)
-          .map((it) => (
-            <NavLink
-              key={it.href}
-              item={it}
-              active={isAdminNavActive(pathname, it.href)}
-              className="admin-strip__item"
-            />
-          ))}
-        {config && (
-          <button
-            type="button"
-            className={`admin-strip__item${groupActive(config, pathname) ? ' is-active' : ''}`}
-            onClick={() => window.dispatchEvent(new CustomEvent(ADMIN_NAV_OPEN_EVENT, { detail: { config: true } }))}
-            aria-label="Configuración"
-            title="Configuración"
-          >
-            <span className="admin-rail__icon" aria-hidden="true">⚙️</span>
-          </button>
-        )}
-      </nav>
     </>
   )
 }

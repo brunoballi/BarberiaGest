@@ -3,10 +3,8 @@
 // ============================================================
 // Menú lateral del barbero: el mismo que el del admin (components/admin-nav-rail).
 //
-//  - Computadora (≥1024px): columna fija a la izquierda, SOLO íconos; ☰ la despliega con los
-//    nombres y ✕ la vuelve a dejar en íconos.
-//  - Celular (<1024px): franja de íconos fija arriba en todas las pantallas, con ☰ para
-//    desplegar el mismo panel por la izquierda.
+//  - Columna fija a la izquierda, SOLO íconos, en celular y en computadora; ☰ la despliega con
+//    los nombres (encima del contenido, sin moverlo) y ✕ la vuelve a dejar en íconos.
 //
 // Las secciones del barbero no son páginas sino vistas dentro de /barber: el menú pide la
 // vista con un evento (lib/barber-nav-store) y barber-mobile-view la abre.
@@ -63,34 +61,7 @@ export function BarberNav({ open, onOpenChange }: { open: boolean; onOpenChange:
     <>
       {open && <div className="admin-rail__scrim" onClick={close} aria-hidden="true" />}
 
-      {/* Celular: franja de íconos fija arriba */}
-      <div className="side-strip-bar">
-        <nav className="admin-strip admin-strip--bar" aria-label="Secciones del barbero">
-          <button type="button" className="admin-strip__item" onClick={() => onOpenChange(true)} aria-label="Desplegar menú" title="Desplegar menú">
-            <span className="admin-rail__icon" aria-hidden="true">☰</span>
-          </button>
-          {items.map((it) => (
-            <button
-              key={it.target}
-              type="button"
-              className={`admin-strip__item${it.active ? ' is-active' : ''}`}
-              onClick={() => goBarberNav(it.target)}
-              aria-label={it.label}
-              aria-current={it.active ? 'page' : undefined}
-              title={it.label}
-            >
-              <span className="admin-rail__icon" aria-hidden="true">{it.icon}</span>
-            </button>
-          ))}
-          {s.isAdmin && (
-            <Link href="/admin" className="admin-strip__item" aria-label="Panel de administración" title="Panel de administración">
-              <span className="admin-rail__icon" aria-hidden="true">🛠️</span>
-            </Link>
-          )}
-        </nav>
-      </div>
-
-      {/* Computadora: columna de íconos; desplegada, panel con nombres */}
+      {/* Columna lateral de íconos (celular y computadora); desplegada, panel con nombres */}
       <nav className={`admin-rail${open ? ' admin-rail--open' : ''}`} aria-label="Menú del barbero">
         <div className="admin-rail__head">
           <button

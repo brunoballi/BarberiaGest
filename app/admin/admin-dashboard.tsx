@@ -71,7 +71,7 @@ import { PaginationControls } from '@/app/components/pagination-controls'
 import { CurrencyInput } from '@/app/components/currency-input'
 import { CurrencyInputInline } from '@/app/components/currency-input-inline'
 import { TextInput } from '@/app/components/text-input'
-import { ADMIN_NAV_OPEN_EVENT, ADMIN_REGISTER_CUT_EVENT } from '@/app/components/admin-nav-rail'
+import { ADMIN_REGISTER_CUT_EVENT } from '@/app/components/admin-nav-rail'
 import { confirmDialog, errorDialog } from '@/lib/confirm-dialog'
 import { ofrecerAplicarModeloActual } from '@/lib/modelo-desactualizado'
 
@@ -922,15 +922,6 @@ export default function AdminDashboard() {
                 + Registrar corte
               </button>
             )}
-            {/* Abre el menú lateral. Solo celular: en computadora la columna de íconos ya está a la vista. */}
-            <button
-              onClick={() => window.dispatchEvent(new Event(ADMIN_NAV_OPEN_EVENT))}
-              className="admin-btn admin-btn--ghost admin-nav-open-btn"
-              aria-label="Abrir menú"
-              title="Menú"
-            >
-              ≡
-            </button>
           </div>
         </header>
 
