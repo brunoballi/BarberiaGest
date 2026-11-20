@@ -19,7 +19,10 @@ import { requireAdmin } from '@/lib/api-admin'
 import { isWhatsAppConfigured } from '@/lib/whatsapp'
 import { isDeveloper } from '@/lib/turnero-access'
 
-const WA_API = 'https://graph.facebook.com/v21.0'
+// v25: desde fines de octubre de 2026 Meta migro las cuentas a "Messaging Accounts"; con v21 la ruta de
+// plantillas/suscripcion responde #100 (2388339 / "nonexisting field"). El id va con el de la Messaging Account
+// (el que muestra WhatsApp Manager), no con el de la cuenta WABA. El envio de mensajes sigue en lib/whatsapp.ts.
+const WA_API = 'https://graph.facebook.com/v25.0'
 
 export async function GET(request: NextRequest) {
   const caller = await requireAdmin()
