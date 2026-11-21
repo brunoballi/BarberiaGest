@@ -78,6 +78,9 @@ export async function POST(request: NextRequest) {
   const signature = request.headers.get('x-hub-signature-256') ?? ''
   const expected = 'sha256=' + createHmac('sha256', appSecret).update(raw).digest('hex')
   if (!safeEqual(signature, expected)) {
+    // Queda anotado SIN datos sensibles: si Meta manda avisos y se rechazan, casi siempre es que
+    // WHATSAPP_APP_SECRET no es el de la app que envía (cada app de Meta tiene el suyo).
+    console.error('[whatsapp-webhook] firma inválida', { conFirma: signature.length > 0, bytes: Buffer.byteLength(raw) })
     return NextResponse.json({ error: 'invalid_signature' }, { status: 401 })
   }
 
@@ -110,5 +113,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  console.log('[whatsapp-webhook] recibido', { estados: processed })
   return NextResponse.json({ ok: true, processed })
 }
