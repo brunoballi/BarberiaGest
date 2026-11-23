@@ -8,16 +8,16 @@ import React, { useCallback, useState, useEffect } from 'react'
  * Por qué existe (y por qué normaliza):
  * el teléfono NO es un dato de contacto más — es el IDENTIFICADOR del cliente
  * en la base (`unique (branch_id, phone)` en appointment_clients). Si la misma
- * persona reserva una vez como "3413487910" y otra como "+54 341 348-7910",
+ * persona reserva una vez como "3411234567" y otra como "+54 341 123-4567",
  * queda como dos clientes distintos: se parte el historial y el límite de 3
  * turnos activos por teléfono deja de aplicar. Guardar siempre la misma forma
  * canónica es lo que evita eso.
  *
  * Forma canónica: +54 seguido de código de área + número, sin separadores.
- *   +543413487910
+ *   +543411234567
  *
  * Qué acepta al escribir (todo esto termina en el mismo valor guardado):
- *   341 348 7910      0341 15 348-7910      +54 341 348-7910      3413487910
+ *   341 123 4567      0341 15 123-4567      +54 341 123-4567      3411234567
  *
  * El formateo NO se aplica mientras se tipea, a propósito: reescribir el valor
  * en cada tecla mueve el cursor al final y hace imposible corregir un dígito
@@ -53,11 +53,13 @@ export function normalizePhone(raw: string): string {
   if (d.startsWith('54')) d = d.slice(2)
   // Prefijo nacional de larga distancia: 0341 -> 341
   if (d.startsWith('0')) d = d.replace(/^0+/, '')
-  // Celular viejo estilo: 341 15 3487910 -> 341 3487910.
-  // El '15' solo se saca si está pegado al código de área (2 a 4 dígitos) y
-  // lo que queda tiene largo de número real.
+  // Celular viejo estilo: 341 15 1234567 -> 341 1234567.
+  // El '15' solo se saca si está pegado al código de área (2 a 4 dígitos) Y lo que queda suma
+  // exactamente 10 dígitos (área + número, siempre 10 en Argentina). Sin esa condición se comía
+  // dígitos de números completos que simplemente tienen un "15" en esa posición: 3415099604 (área 341
+  // + 5099604) se leía como área "34" + "15" + 099604 y quedaba 34099604.
   const conQuince = d.match(/^(\d{2,4})15(\d{6,8})$/)
-  if (conQuince) d = conQuince[1] + conQuince[2]
+  if (conQuince && conQuince[1].length + conQuince[2].length === 10) d = conQuince[1] + conQuince[2]
   // El 9 de celular que usa la numeración internacional argentina se descarta:
   // lo importante acá es que el MISMO teléfono produzca SIEMPRE la misma
   // cadena, no reconstruir el formato de discado.
@@ -68,7 +70,7 @@ export function normalizePhone(raw: string): string {
 }
 
 /**
- * Muestra +543413487910 como "+54 341 348-7910".
+ * Muestra +543411234567 como "+54 341 123-4567".
  *
  * Los códigos de área argentinos son de 2, 3 o 4 dígitos y el total (área +
  * número) siempre suma 10, así que NO se puede deducir el corte por el largo:
@@ -105,7 +107,7 @@ export function PhoneInput({
   mostrarPreview = true,
   className,
   hintClassName,
-  placeholder = '+54 341 348-7910',
+  placeholder = '+54 341 123-4567',
   ...rest
 }: PhoneInputProps) {
   // Borrador local: lo que se ve mientras se escribe, sin reformatear.
