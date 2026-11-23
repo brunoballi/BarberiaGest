@@ -201,8 +201,32 @@ export async function createScheduleException(params: {
   if (error) throw new Error(error.message)
 }
 
+/** Quita un bloqueo. El admin quita cualquiera de su sucursal; el barbero, solo los que cargó él. */
 export async function deleteScheduleException(id: string): Promise<void> {
   const { error } = await supabase.rpc('delete_schedule_exception', { p_id: id })
+  if (error) throw new Error(error.message)
+}
+
+/**
+ * Edita un bloqueo (fecha, franja y motivo; no cambia de barbero ni de sucursal). El admin edita
+ * cualquiera de su sucursal; el barbero, solo los que cargó él (migración 112).
+ */
+export async function updateScheduleException(params: {
+  id: string
+  exceptionDate: string
+  closedAllDay: boolean
+  startTime?: string | null
+  endTime?: string | null
+  reason?: string | null
+}): Promise<void> {
+  const { error } = await supabase.rpc('update_schedule_exception', {
+    p_id: params.id,
+    p_exception_date: params.exceptionDate,
+    p_closed_all_day: params.closedAllDay,
+    p_start_time: params.startTime ?? null,
+    p_end_time: params.endTime ?? null,
+    p_reason: params.reason ?? null,
+  })
   if (error) throw new Error(error.message)
 }
 

@@ -5,7 +5,12 @@ import { useRouter } from 'next/navigation'
 import { getStoredBranch } from '@/lib/hooks/usePersistedBranch'
 import { useRealtimeRefresh } from '@/lib/hooks/use-realtime-refresh'
 import { getAllBarbersByBranch } from '@/lib/supabase/supabase.client'
-import { deleteScheduleException, getScheduleExceptions, type ScheduleException } from '@/lib/supabase/appointments'
+import {
+  deleteScheduleException,
+  getScheduleExceptions,
+  updateScheduleException,
+  type ScheduleException,
+} from '@/lib/supabase/appointments'
 import type { Profile } from '@/lib/supabase/database.types'
 import { confirmDialog, errorDialog } from '@/lib/confirm-dialog'
 
@@ -30,6 +35,109 @@ function franja(x: ScheduleException): string {
 const TODOS = 'todos'
 const SUCURSAL = 'sucursal'
 
+/** Edita fecha, franja y motivo de un bloqueo (no cambia de barbero ni de sucursal). */
+function EditarBloqueoModal({
+  x,
+  quien,
+  onClose,
+  onSaved,
+}: {
+  x: ScheduleException
+  quien: string
+  onClose: () => void
+  onSaved: () => void
+}) {
+  const [fecha, setFecha] = useState(x.exception_date)
+  const [todoElDia, setTodoElDia] = useState(x.closed_all_day)
+  const [desde, setDesde] = useState(x.start_time?.slice(0, 5) ?? '18:00')
+  const [hasta, setHasta] = useState(x.end_time?.slice(0, 5) ?? '21:00')
+  const [motivo, setMotivo] = useState(x.reason ?? '')
+  const [guardando, setGuardando] = useState(false)
+  const [err, setErr] = useState<string | null>(null)
+
+  async function guardar(e: React.FormEvent) {
+    e.preventDefault()
+    if (!todoElDia && desde >= hasta) {
+      setErr('La hora de inicio tiene que ser antes que la de fin')
+      return
+    }
+    setGuardando(true)
+    setErr(null)
+    try {
+      await updateScheduleException({
+        id: x.id,
+        exceptionDate: fecha,
+        closedAllDay: todoElDia,
+        startTime: todoElDia ? null : desde,
+        endTime: todoElDia ? null : hasta,
+        reason: motivo.trim() || null,
+      })
+      onSaved()
+    } catch (er) {
+      setErr(er instanceof Error ? er.message : 'No se pudo guardar el bloqueo')
+    } finally {
+      setGuardando(false)
+    }
+  }
+
+  const inputCls =
+    'w-full bg-[var(--bg3)] border border-[var(--border-mid)] text-[var(--text)] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500'
+
+  return (
+    // Sin cierre por clic afuera: hay un formulario cargado. Se sale con la X o con Cancelar.
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 overflow-y-auto">
+      <form onSubmit={guardar} className="bg-[var(--bg2)] border border-[var(--border-mid)] rounded-2xl w-full max-w-md p-6 space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-[var(--text)] font-bold text-base">Editar bloqueo</h3>
+            <p className="text-xs text-[var(--text-muted)]">{quien}</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Cerrar" className="text-lg leading-none text-[var(--text-muted)] hover:text-[var(--text)]">✕</button>
+        </div>
+
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-1">Fecha</p>
+          <input type="date" required value={fecha} onChange={(e) => setFecha(e.target.value)} className={inputCls} />
+        </div>
+
+        <label className="flex items-center gap-2 cursor-pointer select-none">
+          <input type="checkbox" checked={todoElDia} onChange={(e) => setTodoElDia(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+          <span className="text-sm text-[var(--text)]">Todo el día</span>
+        </label>
+
+        {!todoElDia && (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-1">Desde</p>
+              <input type="time" required value={desde} onChange={(e) => setDesde(e.target.value)} className={inputCls} />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-1">Hasta</p>
+              <input type="time" required value={hasta} onChange={(e) => setHasta(e.target.value)} className={inputCls} />
+            </div>
+          </div>
+        )}
+
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-widest text-[var(--text-muted)] mb-1">Motivo (opcional)</p>
+          <input type="text" maxLength={120} value={motivo} onChange={(e) => setMotivo(e.target.value)} placeholder="ej: turno médico" className={inputCls} />
+        </div>
+
+        {err && <p className="text-red-400 text-sm">{err}</p>}
+
+        <div className="flex gap-2 pt-1">
+          <button type="submit" disabled={guardando} className="flex-1 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 text-zinc-950 font-bold px-4 py-2.5 rounded-lg text-sm">
+            {guardando ? 'Guardando...' : 'Guardar cambios'}
+          </button>
+          <button type="button" onClick={onClose} className="flex-1 border border-[var(--border-mid)] text-[var(--text)] hover:bg-[var(--bg3)] px-4 py-2.5 rounded-lg text-sm">
+            Cancelar
+          </button>
+        </div>
+      </form>
+    </div>
+  )
+}
+
 /**
  * Todos los bloqueos de la sucursal (franco, médico, comida, feriado) en una lista: los que cargaron
  * los barberos, los de un barbero puntual y los de toda la sucursal. Se filtra por barbero y por período.
@@ -43,6 +151,7 @@ export default function BloqueosView() {
   const [error, setError] = useState<string | null>(null)
   const [quien, setQuien] = useState(TODOS)
   const [periodo, setPeriodo] = useState<'proximos' | 'mes' | 'pasados'>('proximos')
+  const [editando, setEditando] = useState<ScheduleException | null>(null)
 
   const desde = periodo === 'pasados' ? addDaysISO(todayISO(), -90) : todayISO()
 
@@ -176,12 +285,20 @@ export default function BloqueosView() {
                       </p>
                     </div>
                     {x.exception_date >= hoy && (
-                      <button
-                        onClick={() => borrar(x)}
-                        className="shrink-0 text-xs px-3 py-1.5 rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10"
-                      >
-                        Quitar
-                      </button>
+                      <div className="shrink-0 flex gap-2">
+                        <button
+                          onClick={() => setEditando(x)}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-[var(--border-mid)] text-[var(--text)] hover:bg-[var(--bg3)]"
+                        >
+                          Editar
+                        </button>
+                        <button
+                          onClick={() => borrar(x)}
+                          className="text-xs px-3 py-1.5 rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10"
+                        >
+                          Quitar
+                        </button>
+                      </div>
                     )}
                   </li>
                 ))}
@@ -189,6 +306,16 @@ export default function BloqueosView() {
             </section>
           ))}
         </div>
+      )}
+
+      {editando && (
+        <EditarBloqueoModal
+          key={editando.id}
+          x={editando}
+          quien={nombre(editando)}
+          onClose={() => setEditando(null)}
+          onSaved={() => { setEditando(null); void cargar(branchId, desde) }}
+        />
       )}
     </div>
   )

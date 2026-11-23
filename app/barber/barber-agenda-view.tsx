@@ -11,6 +11,8 @@ import {
   type BarberSchedule,
   createAppointmentBarber,
   createScheduleExceptionBarber,
+  deleteScheduleException,
+  updateScheduleException,
   editAppointmentBarber,
   cancelAppointmentBarber,
   setAppointmentStatus,
@@ -89,6 +91,8 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
   const [error, setError] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
   const [showBlock, setShowBlock] = useState(false)
+  // Bloqueo propio que se está editando (null = ninguno; el modal sirve para crear y para editar).
+  const [editingBlock, setEditingBlock] = useState<ScheduleException | null>(null)
   const [selected, setSelected] = useState<(BarberAgendaAppointment & { barber_id: string }) | null>(null)
   const [editing, setEditing] = useState<BarberAgendaAppointment | null>(null)
   const [bloqueos, setBloqueos] = useState<ScheduleException[]>([])
@@ -195,6 +199,28 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
   function cambiarVista(v: 'dia' | 'mes') {
     setVista(v)
     cambiarDia(date, v)
+  }
+
+  // Solo se gestionan los bloqueos que cargó el propio barbero; los de toda la sucursal y los que
+  // le puso el admin se ven pero no se tocan (la base lo exige igual: migración 112).
+  const esMio = (x: ScheduleException) => x.barber_id === barber.id && x.created_by === barber.id
+
+  async function quitarBloqueo(x: ScheduleException) {
+    const franjaTxt = x.closed_all_day || !x.start_time || !x.end_time
+      ? 'todo el día'
+      : `de ${x.start_time.slice(0, 5)} a ${x.end_time.slice(0, 5)}`
+    if (!(await confirmDialog({
+      title: 'Quitar bloqueo',
+      message: `¿Quitar tu bloqueo del ${x.exception_date.split('-').reverse().join('/')} (${franjaTxt})? Ese horario vuelve a quedar disponible para reservar.`,
+      danger: true,
+      confirmLabel: 'Quitar bloqueo',
+    }))) return
+    try {
+      await deleteScheduleException(x.id)
+      await recargar()
+    } catch (e) {
+      void errorDialog(e instanceof Error ? e.message : 'No se pudo quitar el bloqueo')
+    }
   }
 
   async function handleCancel(appt: BarberAgendaAppointment) {
@@ -342,6 +368,9 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
               bloqueos={bloqueosProximos}
               date={date}
               quien={(x) => x.barber_id === null ? 'Toda la sucursal' : 'Vos'}
+              puedeGestionar={esMio}
+              onEditar={setEditingBlock}
+              onQuitar={(x) => void quitarBloqueo(x)}
             />
             <AgendaGrid
               barbers={[barber]}
@@ -392,11 +421,13 @@ export default function BarberAgendaView({ services, branchId, barber, locked, o
         />
       )}
 
-      {showBlock && (
+      {(showBlock || editingBlock) && (
         <BlockScheduleModal
-          defaultDate={date}
-          onClose={() => setShowBlock(false)}
-          onBlocked={() => { setShowBlock(false); void recargar() }}
+          key={editingBlock?.id ?? 'nuevo'}
+          defaultDate={editingBlock?.exception_date ?? date}
+          editing={editingBlock}
+          onClose={() => { setShowBlock(false); setEditingBlock(null) }}
+          onBlocked={() => { setShowBlock(false); setEditingBlock(null); void recargar() }}
         />
       )}
     </div>
@@ -816,20 +847,23 @@ function franjaSeSuperpone(appt: BarberAgendaAppointment, allDay: boolean, start
   return h(appt.starts_at) < endTime && h(appt.ends_at) > startTime
 }
 
+/** Crea un bloqueo propio o, con `editing`, edita uno que ya cargó el barbero. */
 function BlockScheduleModal({
   defaultDate,
+  editing,
   onClose,
   onBlocked,
 }: {
   defaultDate: string
+  editing?: ScheduleException | null
   onClose: () => void
   onBlocked: () => void
 }) {
   const [date, setDate] = useState(defaultDate)
-  const [allDay, setAllDay] = useState(true)
-  const [startTime, setStartTime] = useState('18:00')
-  const [endTime, setEndTime] = useState('21:00')
-  const [reason, setReason] = useState('')
+  const [allDay, setAllDay] = useState(editing ? editing.closed_all_day : true)
+  const [startTime, setStartTime] = useState(editing?.start_time?.slice(0, 5) ?? '18:00')
+  const [endTime, setEndTime] = useState(editing?.end_time?.slice(0, 5) ?? '21:00')
+  const [reason, setReason] = useState(editing?.reason ?? '')
   const [checking, setChecking] = useState(false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState<string | null>(null)
@@ -847,16 +881,18 @@ function BlockScheduleModal({
     setSaving(true)
     setErr(null)
     try {
-      await createScheduleExceptionBarber({
+      const datos = {
         exceptionDate: date,
         closedAllDay: allDay,
         startTime: allDay ? null : startTime,
         endTime: allDay ? null : endTime,
         reason: reason.trim() || null,
-      })
+      }
+      if (editing) await updateScheduleException({ id: editing.id, ...datos })
+      else await createScheduleExceptionBarber(datos)
       onBlocked()
     } catch (e) {
-      const msg = e instanceof Error ? e.message : 'Error al bloquear el horario'
+      const msg = e instanceof Error ? e.message : editing ? 'Error al guardar el bloqueo' : 'Error al bloquear el horario'
       setErr(msg)
       void errorDialog(msg)
     } finally {
@@ -907,7 +943,7 @@ function BlockScheduleModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4 py-6 overflow-y-auto">
       <div className="bg-zinc-900 border border-zinc-700 rounded-2xl w-full max-w-lg p-6 space-y-4 animate-fadein max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between">
-          <h3 className="text-white font-bold text-base">Bloquear horario</h3>
+          <h3 className="text-white font-bold text-base">{editing ? 'Editar bloqueo' : 'Bloquear horario'}</h3>
           <button onClick={onClose} className="icon-btn"><span className="text-lg leading-none">✕</span></button>
         </div>
 
@@ -918,7 +954,7 @@ function BlockScheduleModal({
               ⚠️ Tenés {conflicts.length} turno{conflicts.length === 1 ? '' : 's'} en ese horario
             </p>
             <p className="text-zinc-500 text-xs">
-              Bloquear igual NO cancela estos turnos. Si hace falta reprogramar, pedile al administrador que avise al cliente.
+              {editing ? 'Guardar igual' : 'Bloquear igual'} NO cancela estos turnos. Si hace falta reprogramar, pedile al administrador que avise al cliente.
             </p>
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {conflicts.map((a) => (
@@ -930,7 +966,7 @@ function BlockScheduleModal({
             </div>
             <div className="flex gap-2 pt-1">
               <button onClick={() => void submitBloqueo()} disabled={saving} className="btn-primary flex-1 disabled:opacity-40">
-                {saving ? 'Guardando...' : 'Bloquear igual'}
+                {saving ? 'Guardando...' : editing ? 'Guardar igual' : 'Bloquear igual'}
               </button>
               <button type="button" onClick={() => setConflicts(null)} className="btn-ghost flex-1">Volver</button>
             </div>
@@ -977,7 +1013,7 @@ function BlockScheduleModal({
 
               <div className="flex gap-2 pt-1">
                 <button type="submit" disabled={saving || checking} className="btn-primary flex-1 disabled:opacity-40">
-                  {checking ? 'Revisando turnos...' : saving ? 'Guardando...' : 'Bloquear'}
+                  {checking ? 'Revisando turnos...' : saving ? 'Guardando...' : editing ? 'Guardar cambios' : 'Bloquear'}
                 </button>
                 <button type="button" onClick={onClose} className="btn-ghost flex-1">Cancelar</button>
               </div>
