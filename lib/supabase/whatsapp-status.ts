@@ -76,27 +76,69 @@ export async function getWhatsAppDeliveries(appointmentIds: string[]): Promise<M
   return out
 }
 
-export interface WhatsAppFailureSummary {
-  count: number
-  lastCode: number | null
-  lastTitle: string | null
+export interface WhatsAppFailure {
+  appointmentId: string | null
+  /** Datos del turno para nombrarlo en el aviso; null si no se pudo leer. */
+  clientName: string | null
+  startsAt: string | null
+  errorCode: number | null
+  errorTitle: string | null
 }
 
-/** Mensajes que fallaron en los últimos `days` días en la sucursal. */
-export async function getRecentWhatsAppFailures(branchId: string, days = 7): Promise<WhatsAppFailureSummary> {
+interface FailureRow {
+  appointment_id: string | null
+  status: WhatsAppDeliveryStatus
+  error_code: number | null
+  error_title: string | null
+  appointments: { starts_at: string; appointment_clients: { full_name: string } | null } | null
+}
+
+/**
+ * Avisos sin resolver de los últimos `days` días en la sucursal: un turno cuenta
+ * solo si su ÚLTIMO mensaje falló (si se corrigió el número y se reenvió, sale
+ * de la lista). Los mensajes sin turno cuentan de a uno.
+ */
+export async function getRecentWhatsAppFailures(branchId: string, days = 7): Promise<WhatsAppFailure[]> {
   const since = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString()
   const { data, error } = await supabase
     .from('whatsapp_messages')
-    .select('error_code, error_title')
+    .select('appointment_id, status, error_code, error_title, appointments(starts_at, appointment_clients(full_name))')
     .eq('branch_id', branchId)
-    .eq('status', 'failed')
     .gte('created_at', since)
-    .order('updated_at', { ascending: false })
-    .limit(200)
+    .order('created_at', { ascending: false })
+    .limit(1000)
   if (error) {
     console.warn('[getRecentWhatsAppFailures]', error.message)
-    return { count: 0, lastCode: null, lastTitle: null }
+    return []
   }
-  const rows = (data ?? []) as { error_code: number | null; error_title: string | null }[]
-  return { count: rows.length, lastCode: rows[0]?.error_code ?? null, lastTitle: rows[0]?.error_title ?? null }
+
+  const vistos = new Set<string>()
+  const out: WhatsAppFailure[] = []
+  for (const row of (data ?? []) as unknown as FailureRow[]) {
+    if (row.appointment_id) {
+      if (vistos.has(row.appointment_id)) continue
+      vistos.add(row.appointment_id)
+    }
+    if (row.status !== 'failed') continue
+    out.push({
+      appointmentId: row.appointment_id,
+      clientName: row.appointments?.appointment_clients?.full_name ?? null,
+      startsAt: row.appointments?.starts_at ?? null,
+      errorCode: row.error_code,
+      errorTitle: row.error_title,
+    })
+  }
+  return out
+}
+
+/** Corrige el teléfono de un turno con WhatsApp fallido y reenvía la confirmación (solo admins). */
+export async function corregirTelefonoDelTurno(appointmentId: string, phone: string): Promise<{ sent: boolean }> {
+  const res = await fetch('/api/turnos/corregir-telefono', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ appointmentId, phone }),
+  })
+  const json = (await res.json().catch(() => null)) as { sent?: boolean; error?: string } | null
+  if (!res.ok) throw new Error(json?.error ?? 'No se pudo corregir el número.')
+  return { sent: !!json?.sent }
 }

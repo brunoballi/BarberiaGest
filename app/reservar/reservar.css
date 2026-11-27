@@ -782,3 +782,13 @@
   white-space: pre-line;
 }
 .bk-welcome-card__btn { margin-top: 1.4rem; }
+
+/* Revisión del número antes de reservar: bien grande para que un dígito mal salte a la vista. */
+.bk-phone-check {
+  margin: 0.9rem 0 0.5rem;
+  font-size: 1.6rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  color: var(--text);
+}

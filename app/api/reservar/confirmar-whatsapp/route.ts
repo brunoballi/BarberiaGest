@@ -23,11 +23,10 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server'
-import { sendTemplateMessage, isWhatsAppConfigured, toWhatsAppRecipient, WhatsAppError } from '@/lib/whatsapp'
+import { isWhatsAppConfigured, toWhatsAppRecipient, WhatsAppError } from '@/lib/whatsapp'
 import { findAppointmentForNotice, claimNotice } from '@/lib/supabase/booking-notices'
 import { resolveSenderPhoneNumberId } from '@/lib/whatsapp-sender'
-import { registerWhatsAppMessage } from '@/lib/whatsapp-log'
-import { fechaLarga, hora, numeroConsulta, primerNombre } from '@/lib/whatsapp-format'
+import { enviarConfirmacionTurno } from '@/lib/whatsapp-confirmacion'
 import { turneroApiGate } from '@/lib/turnero-guard'
 
 export async function POST(request: NextRequest) {
@@ -75,27 +74,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ sent: false, reason: 'ya_enviado' })
   }
 
-  const servicios = appt.services.map((s) => s.name).join(', ')
-
-  // Valor dinámico del botón "Gestionar mi turno" -- se concatena al final
-  // de la URL registrada en Meta (`.../gestionar?ref={{1}}`), así que tiene
-  // que ser lo mismo que arma confirmar-email/route.ts para el link del
-  // mail: la referencia y la sucursal (para que "reservar otro turno" desde
-  // ahí vuelva a la misma sucursal en vez del selector).
-  const botonParam = `${appt.reference}&sucursal=${appt.branchId}`
-
   try {
-    // El ORDEN de bodyParams tiene que coincidir exactamente con los
-    // {{1}}, {{2}}... de la plantilla "confirmacion_turno_v4" aprobada en
-    // Meta -- ver docs/whatsapp_templates.md para el texto exacto.
-    const { messageId } = await sendTemplateMessage({
-      phoneNumberId,
-      to: destinatario,
-      templateName: 'confirmacion_turno_v4',
-      bodyParams: [primerNombre(appt.clientName), appt.branchName, fechaLarga(appt.startsAt), hora(appt.startsAt), servicios, appt.reference, numeroConsulta(appt.branchWhatsapp)],
-      buttonUrlParam: botonParam,
-    })
-    await registerWhatsAppMessage({ wamid: messageId, branchId: appt.branchId, appointmentId: appt.id, kind: 'confirmacion', recipient: destinatario })
+    await enviarConfirmacionTurno(appt, destinatario, phoneNumberId)
     return NextResponse.json({ sent: true })
   } catch (e) {
     console.error('[confirmar-whatsapp]', e instanceof WhatsAppError ? e.message : e)

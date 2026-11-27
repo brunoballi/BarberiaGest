@@ -28,7 +28,7 @@ import {
   type BookingResult,
   type AppointmentLookup,
 } from '@/lib/supabase/booking'
-import { PhoneInput } from '@/app/components/phone-input'
+import { PhoneInput, formatPhoneDisplay } from '@/app/components/phone-input'
 import TurnoFicha from './turno-ficha'
 import './reservar.css'
 import BranchesMap from '@/app/components/branches-map'
@@ -114,6 +114,7 @@ export default function BookingView() {
   const [email, setEmail] = useState('')
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState<string | null>(null)
+  const [revisandoNumero, setRevisandoNumero] = useState(false)
   const [done, setDone] = useState<BookingResult | null>(null)
   const AUTO_RETURN_SEG = 15
   const [autoReturnIn, setAutoReturnIn] = useState(AUTO_RETURN_SEG)
@@ -331,11 +332,26 @@ export default function BookingView() {
   const stepIndex = (s: Step) => activeSteps.indexOf(s) + 1
   const totalSteps = activeSteps.length
 
-  async function handleConfirm(e: React.FormEvent) {
+  // "Confirmar turno" no reserva todavía: primero se muestra el número en grande
+  // para que el cliente lo revise. Un dígito mal tipeado deja el turno sin
+  // confirmación ni recordatorio, y la barbería sin forma de avisarle.
+  function handleConfirm(e: React.FormEvent) {
     e.preventDefault()
     if (!branch || !slotAt) return
     if (!name.trim()) { setFormError('Necesitamos tu nombre'); return }
     if (phone.trim().length < 6) { setFormError('Necesitamos un teléfono válido'); return }
+    setFormError(null)
+    setRevisandoNumero(true)
+  }
+
+  function corregirNumero() {
+    setRevisandoNumero(false)
+    document.getElementById('bk-phone')?.focus()
+  }
+
+  async function reservar() {
+    setRevisandoNumero(false)
+    if (!branch || !slotAt) return
 
     setSaving(true)
     setFormError(null)
@@ -904,6 +920,22 @@ export default function BookingView() {
           <p className="bk-hint bk-center-text">No se cobra nada online. Pagás en el local.</p>
         </form>
       </div>
+
+      {revisandoNumero && (
+        <div className="bk-welcome-overlay">
+          <div className="bk-welcome-card" role="dialog" aria-modal="true" aria-labelledby="bk-revisar-titulo">
+            <h2 id="bk-revisar-titulo" className="bk-welcome-card__title">¿Este es tu número?</h2>
+            <p className="bk-phone-check">{formatPhoneDisplay(phone)}</p>
+            <p className="bk-welcome-card__branch">Te mandamos la confirmación por WhatsApp.</p>
+            <button type="button" className="bk-btn bk-welcome-card__btn" onClick={() => void reservar()}>
+              Sí, reservar
+            </button>
+            <button type="button" className="bk-btn bk-btn--ghost" onClick={corregirNumero}>
+              Corregir
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

@@ -87,7 +87,8 @@ export async function POST(request: NextRequest) {
     .join('')
 
   try {
-    await resend.emails.send({
+    // El SDK de Resend no lanza cuando la API rechaza el envío: devuelve `error`.
+    const { error } = await resend.emails.send({
       from,
       to: appt.clientEmail,
       subject: `Turno confirmado en ${appt.branchName} — ${fechaLarga(appt.startsAt)}`,
@@ -142,6 +143,7 @@ export async function POST(request: NextRequest) {
         },
       ],
     })
+    if (error) throw new Error(`Resend: ${error.message}`)
     return NextResponse.json({ sent: true })
   } catch (e) {
     console.error('[confirmar-email]', e)

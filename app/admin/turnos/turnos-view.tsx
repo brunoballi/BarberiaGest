@@ -27,9 +27,10 @@ import {
   WHATSAPP_KIND_LABELS,
   WHATSAPP_STATUS_LABELS,
   type WhatsAppDelivery,
-  type WhatsAppFailureSummary,
+  corregirTelefonoDelTurno,
+  type WhatsAppFailure,
 } from '@/lib/supabase/whatsapp-status'
-import { getPublicBranch, type DayHours } from '@/lib/supabase/booking'
+import { getPublicBranch, slotDateTimeShort, type DayHours } from '@/lib/supabase/booking'
 import { PhoneInput } from '@/app/components/phone-input'
 import { confirmDialog, alertDialog, errorDialog } from '@/lib/confirm-dialog'
 import { useRealtimeRefresh } from '@/lib/hooks/use-realtime-refresh'
@@ -95,9 +96,10 @@ export default function TurnosView() {
   const [error, setError] = useState<string | null>(null)
   const [showNew, setShowNew] = useState(false)
   const [moving, setMoving] = useState<AgendaAppointment | null>(null)
-  const [selected, setSelected] = useState<AgendaAppointment | null>(null)
+  // Solo el id: el aviso de WhatsApp abre un turno antes de que cargue la agenda de su día.
+  const [selected, setSelected] = useState<{ id: string } | null>(null)
   const [wa, setWa] = useState<Map<string, WhatsAppDelivery[]>>(new Map())
-  const [waFailures, setWaFailures] = useState<WhatsAppFailureSummary | null>(null)
+  const [waFailures, setWaFailures] = useState<WhatsAppFailure[]>([])
 
   const cargarAgenda = useCallback(async (bId: string, d: string) => {
     setLoadingAgenda(true)
@@ -226,6 +228,20 @@ export default function TurnosView() {
     cambiarDia(date, r)
   }
 
+  // Desde el aviso de WhatsApp: ir al día del turno y abrir su detalle.
+  function verTurno(f: WhatsAppFailure) {
+    if (!f.appointmentId || !f.startsAt) return
+    const dia = new Date(f.startsAt).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' })
+    setRango('dia')
+    cambiarDia(dia, 'dia')
+    setSelected({ id: f.appointmentId })
+  }
+
+  function trasCorregirTelefono() {
+    void recargar()
+    if (branchId) void getRecentWhatsAppFailures(branchId).then(setWaFailures)
+  }
+
   async function handleStatus(appt: AgendaAppointment, status: Exclude<AppointmentStatus, 'reservado'>) {
     try {
       await setAppointmentStatus(appt.id, status)
@@ -284,12 +300,30 @@ export default function TurnosView() {
         </div>
       )}
 
-      {waFailures && waFailures.count > 0 && (
-        <div className="bg-[var(--bg2)] border border-red-500/30 rounded-xl px-5 py-4 text-sm text-[var(--text)]">
-          <strong className="text-red-300">
-            {waFailures.count} {waFailures.count === 1 ? 'mensaje de WhatsApp no llegó' : 'mensajes de WhatsApp no llegaron'}
-          </strong>{' '}
-          en los últimos 7 días. {whatsappErrorHint(waFailures.lastCode, waFailures.lastTitle)}
+      {waFailures.length > 0 && (
+        <div className="bg-[var(--bg2)] border border-red-500/30 rounded-xl px-5 py-4 text-sm text-[var(--text)] space-y-2">
+          <p>
+            <strong className="text-red-300">
+              {waFailures.length} {waFailures.length === 1 ? 'mensaje de WhatsApp no llegó' : 'mensajes de WhatsApp no llegaron'}
+            </strong>{' '}
+            en los últimos 7 días.
+          </p>
+          <ul className="space-y-2">
+            {waFailures.map((f, i) => (
+              <li key={f.appointmentId ?? i} className="flex flex-wrap items-center justify-between gap-2">
+                <span>
+                  {f.clientName && <span className="font-medium">{f.clientName}</span>}
+                  {f.startsAt && <span className="text-[var(--text-muted)]"> · turno {slotDateTimeShort(f.startsAt)}</span>}
+                  <span className="text-[var(--text-muted)]">{f.clientName ? ' — ' : ''}{whatsappErrorHint(f.errorCode, f.errorTitle)}</span>
+                </span>
+                {f.appointmentId && f.startsAt && (
+                  <button onClick={() => verTurno(f)} className="text-xs text-[var(--text)] border border-[var(--border-mid)] rounded-lg px-2.5 py-1">
+                    Ver turno
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
@@ -400,6 +434,7 @@ export default function TurnosView() {
                     onStatus={handleStatus}
                     onCancel={handleCancel}
                     onMove={() => setMoving(appt)}
+                    onPhoneFixed={trasCorregirTelefono}
                   />
                 ))}
               </div>
@@ -426,6 +461,7 @@ export default function TurnosView() {
                 onStatus={async (a, s) => { await handleStatus(a, s) }}
                 onCancel={async (a) => { await handleCancel(a); setSelected(null) }}
                 onMove={() => { setSelected(null); setMoving(appt) }}
+                onPhoneFixed={trasCorregirTelefono}
               />
             </div>
           </div>
@@ -472,14 +508,19 @@ function AppointmentCard({
   onStatus,
   onCancel,
   onMove,
+  onPhoneFixed,
 }: {
   appt: AgendaAppointment
   wa?: WhatsAppDelivery[]
   onStatus: (a: AgendaAppointment, s: Exclude<AppointmentStatus, 'reservado'>) => void
   onCancel: (a: AgendaAppointment) => void
   onMove: () => void
+  onPhoneFixed: () => void
 }) {
   const activo = appt.status === 'reservado' || appt.status === 'llego'
+  // wa viene ordenado por fecha: se ofrece corregir solo si el último aviso falló.
+  const puedeCorregir =
+    appt.status === 'reservado' && wa?.at(-1)?.status === 'failed' && new Date(appt.starts_at) > new Date()
 
   return (
     <div className={`bg-[var(--bg2)] border rounded-xl px-4 py-3 ${appt.status === 'cancelado' ? 'border-[var(--border)] opacity-50' : 'border-[var(--border)]'}`}>
@@ -516,6 +557,7 @@ function AppointmentCard({
               ))}
             </div>
           )}
+          {puedeCorregir && <CorregirTelefono appointmentId={appt.id} onDone={onPhoneFixed} />}
         </div>
 
         {activo && (
@@ -536,6 +578,64 @@ function AppointmentCard({
         )}
       </div>
     </div>
+  )
+}
+
+// ─── Corregir el número de un aviso que no llegó ───────────────────────
+function CorregirTelefono({ appointmentId, onDone }: { appointmentId: string; onDone: () => void }) {
+  const [abierto, setAbierto] = useState(false)
+  const [phone, setPhone] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!/^\+54\d{10}$/.test(phone)) {
+      void errorDialog('El número tiene que tener 10 dígitos: código de área y número.')
+      return
+    }
+    setSaving(true)
+    try {
+      const { sent } = await corregirTelefonoDelTurno(appointmentId, phone)
+      await alertDialog(sent
+        ? 'Número corregido. Reenviamos la confirmación: en un momento se ve en el turno si llegó.'
+        : 'El número quedó corregido, pero no se pudo reenviar la confirmación.')
+      setAbierto(false)
+      setPhone('')
+      onDone()
+    } catch (err) {
+      void errorDialog(err instanceof Error ? err.message : 'No se pudo corregir el número.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  if (!abierto) {
+    return (
+      <button type="button" onClick={() => setAbierto(true)} className="mt-2 text-xs font-semibold text-amber-300 border border-amber-500/40 rounded-lg px-2.5 py-1">
+        Corregir número
+      </button>
+    )
+  }
+
+  return (
+    <form onSubmit={handleSubmit} className="mt-2 space-y-2">
+      <PhoneInput
+        value={phone}
+        onChange={setPhone}
+        autoFocus
+        aria-label="Número correcto del cliente"
+        className="w-full bg-[var(--bg3)] border border-[var(--border-mid)] text-[var(--text)] placeholder-[var(--text-muted)] rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-amber-500"
+        hintClassName="text-[var(--text-muted)] text-xs"
+      />
+      <div className="flex gap-1.5">
+        <button type="submit" disabled={saving} className="bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold rounded-lg px-3 py-1.5 text-xs disabled:opacity-50">
+          {saving ? 'Guardando...' : 'Guardar y reenviar'}
+        </button>
+        <button type="button" onClick={() => { setAbierto(false); setPhone('') }} className="text-xs text-[var(--text-muted)] border border-[var(--border-mid)] rounded-lg px-2.5 py-1.5">
+          Volver
+        </button>
+      </div>
+    </form>
   )
 }
 
